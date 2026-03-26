@@ -1,0 +1,336 @@
+import { prisma } from "../utils/prisma";
+import { config } from "../config";
+import {
+  InsufficientBalanceError,
+  BadRequestError,
+  NotFoundError,
+} from "../utils/errors";
+
+export interface BurnResult {
+  burnId: string;
+  isWinner: boolean;
+  prizeTier: string | null;
+  prizeAmount: number | null;
+  ashReward: number | null;
+  weight: number;
+  finalWeight: number;
+  effectiveChance: number;
+}
+
+export class BurnService {
+  /**
+   * Execute a burn — the core game mechanic
+   * Follows: feature_spec.md Sections 4, 5, 6, 7
+   */
+  static async executeBurn(
+    userId: string,
+    amountUsdc: number,
+    useBoost: boolean = false
+  ): Promise<BurnResult> {
+    // Validate min amount
+    if (amountUsdc < config.game.minBurnAmount) {
+      throw new BadRequestError(`Minimum burn amount is $${config.game.minBurnAmount} USDC`);
+    }
+
+    // Get user with wallet
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        wallet: true,
+        referralsMade: { where: { isActive: true } },
+      },
+    });
+
+    if (!user || !user.wallet) {
+      throw new NotFoundError("User or wallet not found");
+    }
+
+    // Check balance
+    if (Number(user.wallet.usdcBalance) < amountUsdc) {
+      throw new InsufficientBalanceError(
+        `Insufficient balance. You have $${user.wallet.usdcBalance} USDC, need $${amountUsdc}`
+      );
+    }
+
+    // ---- CALCULATE WEIGHT ----
+    // Base weight = amount / 4.99
+    const baseWeight = amountUsdc / config.game.baseUnit;
+
+    // VIP bonus
+    let vipBonus = 0;
+    if (user.isVip && user.vipExpiresAt && user.vipExpiresAt > new Date()) {
+      switch (user.vipTier) {
+        case "SPARK":
+          vipBonus = config.weight.sparkBonus;
+          break;
+        case "ACTIVE_ASH":
+          vipBonus = config.weight.activeAshBonus;
+          break;
+        case "HOLY_FIRE":
+          vipBonus = config.weight.holyFireBonus;
+          break;
+      }
+    }
+
+    // Referral bonus: +0.20 per 5 active referrals
+    const activeReferrals = user.referralsMade.length;
+    const referralBonus =
+      Math.floor(activeReferrals / 5) * config.weight.referralBonusPer5;
+
+    // Boost bonus (ASH burn)
+    let boostBonus = 0;
+    if (useBoost) {
+      const ashBalance = Number(user.wallet.ashBalance);
+      if (ashBalance >= config.game.boostCostAsh) {
+        boostBonus = config.weight.ashBoostBonus;
+      }
+    }
+
+    const finalWeight = baseWeight + vipBonus + referralBonus + boostBonus;
+
+    // ---- DETERMINE WIN/LOSE ----
+    // EffectiveChance = FinalWeight / (FinalWeight + ConstantFactor)
+    const effectiveChance =
+      finalWeight / (finalWeight + config.game.constantFactor);
+
+    // VRF simulation (in production, use Switchboard VRF on-chain)
+    const randomNumber = Math.random();
+    const isWinner = randomNumber <= effectiveChance;
+
+    // ---- DETERMINE PRIZE OR ASH ----
+    let prizeTier: string | null = null;
+    let prizeAmount: number | null = null;
+    let ashReward: number | null = null;
+
+    if (isWinner) {
+      // Prize tier selection
+      const prizeRoll = Math.random();
+      if (prizeRoll <= 0.01) {
+        prizeTier = "JACKPOT";
+        prizeAmount = 2500;
+      } else if (prizeRoll <= 0.05) {
+        prizeTier = "BIG";
+        prizeAmount = 500;
+      } else if (prizeRoll <= 0.20) {
+        prizeTier = "MEDIUM";
+        prizeAmount = 200;
+      } else {
+        prizeTier = "SMALL";
+        prizeAmount = 50;
+      }
+    } else {
+      // ASH reward on lose
+      ashReward =
+        config.game.ashRewardMin +
+        Math.floor(
+          Math.random() * (config.game.ashRewardMax - config.game.ashRewardMin)
+        );
+
+      // VIP bonus: +20% ASH for Holy Fire
+      if (user.vipTier === "HOLY_FIRE") {
+        ashReward = Math.floor(ashReward * 1.2);
+      }
+    }
+
+    // ---- EXECUTE IN TRANSACTION ----
+    const burn = await prisma.$transaction(async (tx: any) => {
+      // 1. Deduct USDC from wallet
+      await tx.wallet.update({
+        where: { userId },
+        data: {
+          usdcBalance: { decrement: amountUsdc },
+        },
+      });
+
+      // 2. Deduct ASH for boost if used
+      if (useBoost && boostBonus > 0) {
+        await tx.wallet.update({
+          where: { userId },
+          data: {
+            ashBalance: { decrement: config.game.boostCostAsh },
+          },
+        });
+      }
+
+      // 3. Split burn amount into pools
+      const rewardPoolAmount = amountUsdc * config.game.rewardPoolSplit;
+
+      // Update reward pool
+      await tx.rewardPool.updateMany({
+        data: { totalBalance: { increment: rewardPoolAmount } },
+      });
+
+      // 4. Create burn record
+      const burnRecord = await tx.burn.create({
+        data: {
+          userId,
+          amountUsdc,
+          weight: baseWeight,
+          finalWeight,
+          isWinner,
+          prizeTier: prizeTier as any,
+          prizeAmount,
+          ashReward,
+          vrfSeed: randomNumber.toString(),
+        },
+      });
+
+      // 5. Credit winnings
+      if (isWinner && prizeAmount) {
+        await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { increment: prizeAmount } },
+        });
+
+        // Deduct from reward pool
+        await tx.rewardPool.updateMany({
+          data: {
+            totalBalance: { decrement: prizeAmount },
+            totalPaidOut: { increment: prizeAmount },
+          },
+        });
+
+        // Win transaction log
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "WIN",
+            amount: prizeAmount,
+            currency: "USDC",
+            status: "COMPLETED",
+            description: `Won ${prizeTier} prize`,
+          },
+        });
+      }
+
+      // 6. Credit ASH reward on loss
+      if (!isWinner && ashReward) {
+        await tx.wallet.update({
+          where: { userId },
+          data: { ashBalance: { increment: ashReward } },
+        });
+      }
+
+      // 7. Burn transaction log
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: "BURN",
+          amount: amountUsdc,
+          currency: "USDC",
+          status: "COMPLETED",
+          description: `Burned $${amountUsdc} USDC`,
+        },
+      });
+
+      // 8. Process referral reward (10% of burn from reward pool)
+      if (user.referredById) {
+        const referralReward = amountUsdc * config.game.referralCommission;
+
+        // Credit referrer's wallet
+        await tx.wallet.update({
+          where: { userId: user.referredById },
+          data: { usdcBalance: { increment: referralReward } },
+        });
+
+        // Update referral record
+        await tx.referral.updateMany({
+          where: {
+            referrerId: user.referredById,
+            refereeId: userId,
+          },
+          data: {
+            totalBurns: { increment: 1 },
+            totalEarned: { increment: referralReward },
+          },
+        });
+
+        // Referral transaction log
+        await tx.transaction.create({
+          data: {
+            userId: user.referredById,
+            type: "REFERRAL_REWARD",
+            amount: referralReward,
+            currency: "USDC",
+            status: "COMPLETED",
+            description: `Referral reward from ${user.username}'s burn`,
+          },
+        });
+
+        // Deduct from reward pool
+        await tx.rewardPool.updateMany({
+          data: { totalBalance: { decrement: referralReward } },
+        });
+      }
+
+      return burnRecord;
+    });
+
+    return {
+      burnId: burn.id,
+      isWinner,
+      prizeTier,
+      prizeAmount,
+      ashReward,
+      weight: baseWeight,
+      finalWeight,
+      effectiveChance,
+    };
+  }
+
+  /**
+   * Get burn history for a user
+   */
+  static async getBurnHistory(
+    userId: string,
+    page: number = 1,
+    limit: number = 20
+  ) {
+    const [burns, total] = await Promise.all([
+      prisma.burn.findMany({
+        where: { userId },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: (page - 1) * limit,
+      }),
+      prisma.burn.count({ where: { userId } }),
+    ]);
+
+    return {
+      burns,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  /**
+   * Get burn stats for a user
+   */
+  static async getBurnStats(userId: string) {
+    const [totalBurns, totalWins, stats, biggestWin] = await Promise.all([
+      prisma.burn.count({ where: { userId } }),
+      prisma.burn.count({ where: { userId, isWinner: true } }),
+      prisma.burn.aggregate({
+        where: { userId },
+        _sum: { amountUsdc: true, ashReward: true },
+      }),
+      prisma.burn.findFirst({
+        where: { userId, isWinner: true },
+        orderBy: { prizeAmount: "desc" },
+      }),
+    ]);
+
+    return {
+      totalBurns,
+      totalWins,
+      winRate: totalBurns > 0 ? ((totalWins / totalBurns) * 100).toFixed(1) : "0.0",
+      totalBurned: stats._sum.amountUsdc || 0,
+      totalAshEarned: stats._sum.ashReward || 0,
+      biggestWin: biggestWin?.prizeAmount || 0,
+    };
+  }
+}

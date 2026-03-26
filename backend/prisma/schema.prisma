@@ -1,0 +1,257 @@
+// ============================================================
+// Ashnance — Prisma Schema (PostgreSQL)
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- USER ----
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  username        String    @unique
+  passwordHash    String?   // null for OAuth/wallet-only users
+  avatarUrl       String?
+  country         String?
+
+  // Auth
+  authProvider    AuthProvider @default(EMAIL)
+  oauthId         String?   // Google/X/Telegram external ID
+  solanaAddress   String?   @unique
+
+  // VIP
+  isVip           Boolean   @default(false)
+  vipTier         VipTier?
+  vipExpiresAt    DateTime?
+
+  // Referral
+  referralCode    String    @unique @default(uuid())
+  referredById    String?
+  referredBy      User?     @relation("Referrals", fields: [referredById], references: [id])
+  referrals       User[]    @relation("Referrals")
+
+  // Security
+  twoFaEnabled    Boolean   @default(false)
+  twoFaSecret     String?
+  failedAttempts  Int       @default(0)
+  lockedUntil     DateTime?
+  privacyMode     Boolean   @default(false)
+
+  // Relations
+  wallet          Wallet?
+  burns           Burn[]
+  transactions    Transaction[]
+  referralsMade   Referral[]   @relation("ReferrerReferrals")
+  referralsFrom   Referral[]   @relation("RefereeReferrals")
+  refreshTokens   RefreshToken[]
+  whitelistAddrs  WhitelistedAddress[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("users")
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  TWITTER
+  TELEGRAM
+  WALLET
+}
+
+enum VipTier {
+  SPARK
+  ACTIVE_ASH
+  HOLY_FIRE
+}
+
+// ---- WALLET ----
+model Wallet {
+  id             String   @id @default(uuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  usdcBalance    Decimal  @default(0) @db.Decimal(18, 6)
+  ashBalance     Decimal  @default(0) @db.Decimal(18, 2)
+  depositAddress String   @unique
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("wallets")
+}
+
+// ---- BURN ----
+model Burn {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id])
+
+  amountUsdc    Decimal    @db.Decimal(18, 6)
+  weight        Decimal    @db.Decimal(10, 4)
+  finalWeight   Decimal    @db.Decimal(10, 4)
+
+  // Result
+  isWinner      Boolean    @default(false)
+  prizeTier     PrizeTier?
+  prizeAmount   Decimal?   @db.Decimal(18, 6)
+  ashReward     Int?       // ASH tokens earned on lose
+
+  // On-chain
+  txHash        String?
+  vrfSeed       String?
+  vrfResult     String?
+
+  createdAt     DateTime   @default(now())
+
+  @@index([userId, createdAt])
+  @@map("burns")
+}
+
+enum PrizeTier {
+  JACKPOT
+  BIG
+  MEDIUM
+  SMALL
+}
+
+// ---- TRANSACTION ----
+model Transaction {
+  id            String          @id @default(uuid())
+  userId        String
+  user          User            @relation(fields: [userId], references: [id])
+
+  type          TransactionType
+  amount        Decimal         @db.Decimal(18, 6)
+  currency      Currency        @default(USDC)
+  status        TxStatus        @default(PENDING)
+
+  txHash        String?
+  description   String?
+  metadata      Json?
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId, type, createdAt])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  BURN
+  WIN
+  REFERRAL_REWARD
+  VIP_PURCHASE
+  ASH_BOOST
+}
+
+enum Currency {
+  USDC
+  ASH
+  SOL
+}
+
+enum TxStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// ---- REFERRAL ----
+model Referral {
+  id            String   @id @default(uuid())
+  referrerId    String
+  referrer      User     @relation("ReferrerReferrals", fields: [referrerId], references: [id])
+  refereeId     String
+  referee       User     @relation("RefereeReferrals", fields: [refereeId], references: [id])
+
+  totalBurns    Int      @default(0)
+  totalEarned   Decimal  @default(0) @db.Decimal(18, 6)
+  isActive      Boolean  @default(true)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([referrerId, refereeId])
+  @@map("referrals")
+}
+
+// ---- WHITELISTED WITHDRAWAL ADDRESSES ----
+model WhitelistedAddress {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+
+  address       String
+  label         String?
+  isVerified    Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, address])
+  @@map("whitelisted_addresses")
+}
+
+// ---- REFRESH TOKENS ----
+model RefreshToken {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token         String   @unique
+  expiresAt     DateTime
+  isRevoked     Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---- PRIZE CONFIGURATION ----
+model PrizeConfig {
+  id            String    @id @default(uuid())
+  tier          PrizeTier @unique
+  value         Decimal   @db.Decimal(18, 6) // Fixed USDC value
+  poolPercent   Decimal   @db.Decimal(5, 4) // % of reward pool
+  probability   Decimal   @db.Decimal(5, 4) // Win probability within winners
+  isActive      Boolean   @default(true)
+
+  updatedAt     DateTime  @updatedAt
+
+  @@map("prize_configs")
+}
+
+// ---- PLATFORM CONFIG ----
+model PlatformConfig {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  value         String
+  description   String?
+
+  updatedAt     DateTime @updatedAt
+
+  @@map("platform_configs")
+}
+
+// ---- REWARD POOL ----
+model RewardPool {
+  id            String   @id @default(uuid())
+  totalBalance  Decimal  @default(0) @db.Decimal(18, 6)
+  totalPaidOut  Decimal  @default(0) @db.Decimal(18, 6)
+
+  updatedAt     DateTime @updatedAt
+
+  @@map("reward_pool")
+}
