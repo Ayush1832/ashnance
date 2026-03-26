@@ -11,6 +11,7 @@ import { initWebSocket } from "./websocket/socketHandler";
 import authRoutes from "./routes/authRoutes";
 import burnRoutes from "./routes/burnRoutes";
 import walletRoutes from "./routes/walletRoutes";
+import miscRoutes from "./routes/miscRoutes";
 
 // ============================================================
 // Express App
@@ -61,6 +62,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/burn", burnRoutes);
 app.use("/api/wallet", walletRoutes);
+app.use("/api", miscRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler);
