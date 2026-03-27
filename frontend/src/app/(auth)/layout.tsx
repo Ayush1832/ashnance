@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Login — Ashnance",
-  description: "Log in to your Ashnance account. Start burning USDC to win prizes and earn ASH tokens.",
+  title: "Ashnance — Enter the Forge",
+  description:
+    "Login or register to Ashnance. Burn USDC, earn ASH tokens, and win prizes in the fire-powered DeFi protocol.",
 };
 
 export default function AuthLayout({

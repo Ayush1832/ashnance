@@ -5,6 +5,7 @@ import {
   BadRequestError,
   NotFoundError,
 } from "../utils/errors";
+import { BlockchainService } from "./blockchainService";
 
 export interface BurnResult {
   burnId: string;
@@ -94,7 +95,7 @@ export class BurnService {
       finalWeight / (finalWeight + config.game.constantFactor);
 
     // VRF simulation (in production, use Switchboard VRF on-chain)
-    const randomNumber = Math.random();
+    const randomNumber = BlockchainService.simulateVRF(userId + Date.now().toString());
     const isWinner = randomNumber <= effectiveChance;
 
     // ---- DETERMINE PRIZE OR ASH ----
@@ -103,20 +104,33 @@ export class BurnService {
     let ashReward: number | null = null;
 
     if (isWinner) {
+      // Get reward pool balance for dynamic pricing
+      const pool = await prisma.rewardPool.findFirst();
+      const poolBalance = pool ? Number(pool.totalBalance) : 0;
+
       // Prize tier selection
       const prizeRoll = Math.random();
       if (prizeRoll <= 0.01) {
         prizeTier = "JACKPOT";
-        prizeAmount = 2500;
+        // Dynamic: 10% of pool, fallback to fixed $2,500
+        prizeAmount = poolBalance > 25000 ? Math.floor(poolBalance * 0.10) : 2500;
       } else if (prizeRoll <= 0.05) {
         prizeTier = "BIG";
-        prizeAmount = 500;
+        // Dynamic: 5% of pool, fallback to fixed $500
+        prizeAmount = poolBalance > 10000 ? Math.floor(poolBalance * 0.05) : 500;
       } else if (prizeRoll <= 0.20) {
         prizeTier = "MEDIUM";
-        prizeAmount = 200;
+        // Dynamic: 2% of pool, fallback to fixed $200
+        prizeAmount = poolBalance > 10000 ? Math.floor(poolBalance * 0.02) : 200;
       } else {
         prizeTier = "SMALL";
-        prizeAmount = 50;
+        // Dynamic: 1% of pool, fallback to fixed $50
+        prizeAmount = poolBalance > 5000 ? Math.floor(poolBalance * 0.01) : 50;
+      }
+
+      // Safety: ensure prize doesn't exceed pool balance
+      if (prizeAmount > poolBalance && poolBalance > 0) {
+        prizeAmount = Math.floor(poolBalance * 0.5); // Cap at 50% of pool 
       }
     } else {
       // ASH reward on lose

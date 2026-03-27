@@ -2,13 +2,44 @@ import { Request, Response, NextFunction, Router } from "express";
 import { AuthService } from "../services/authService";
 import { registerSchema, loginSchema, otpVerifySchema } from "../utils/validators";
 import { authenticate, AuthRequest } from "../middleware/auth";
-import { BadRequestError } from "../utils/errors";
+import { BadRequestError, UnauthorizedError } from "../utils/errors";
+import { EmailService } from "../services/emailService";
 
 const router = Router();
+
+// POST /api/auth/send-otp — send OTP to email for registration or login
+router.post("/send-otp", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") throw new BadRequestError("Email required");
+    await EmailService.sendOtp(email.toLowerCase().trim());
+    res.json({ success: true, message: "OTP sent to email" });
+  } catch (error) { next(error); }
+});
+
+// POST /api/auth/verify-otp — verify OTP (returns token for passwordless login if user exists)
+router.post("/verify-otp", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) throw new BadRequestError("Email and OTP required");
+    const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+    if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
+    res.json({ success: true, message: "OTP verified" });
+  } catch (error) { next(error); }
+});
 
 // POST /api/auth/register
 router.post("/register", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // Support OTP-based registration (no password required)
+    if (req.body.otp && !req.body.password) {
+      const { email, username, otp, referralCode } = req.body;
+      if (!email || !username || !otp) throw new BadRequestError("Email, username, and OTP required");
+      const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+      if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
+      const result = await AuthService.register({ email: email.toLowerCase().trim(), username, referralCode });
+      return res.status(201).json({ success: true, data: result });
+    }
     const data = registerSchema.parse(req.body);
     const result = await AuthService.register(data);
 
@@ -27,6 +58,15 @@ router.post("/register", async (req: Request, res: Response, next: NextFunction)
 // POST /api/auth/login
 router.post("/login", async (req: Request, res: Response, next: NextFunction) => {
   try {
+    // OTP-based login (passwordless)
+    if (req.body.otp && !req.body.password) {
+      const { email, otp } = req.body;
+      if (!email || !otp) throw new BadRequestError("Email and OTP required");
+      const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+      if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
+      const result = await AuthService.loginByEmail(email.toLowerCase().trim());
+      return res.json({ success: true, data: result });
+    }
     const data = loginSchema.parse(req.body);
     if (!data.password) {
       throw new BadRequestError("Password is required for email login");

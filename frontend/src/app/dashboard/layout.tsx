@@ -1,14 +1,7 @@
-import type { Metadata } from "next";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Dashboard — Ashnance",
-  description: "Your Ashnance dashboard. View balances, burn USDC, track wins, and manage your account.",
-};
+import AppShell from "@/components/AppShell";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return <>{children}</>;
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return <AppShell>{children}</AppShell>;
 }

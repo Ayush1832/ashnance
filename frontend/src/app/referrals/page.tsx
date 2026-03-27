@@ -1,238 +1,250 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import dashStyles from "../dashboard/dashboard.module.css";
-import styles from "../wallet/wallet.module.css";
+import { usePathname, useRouter } from "next/navigation";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const navItems = [
-  { icon: "📊", label: "Dashboard", href: "/dashboard" },
-  { icon: "🔥", label: "Burn Now", href: "/burn" },
-  { icon: "💳", label: "Wallet", href: "/wallet" },
-  { icon: "👥", label: "Referrals", href: "/referrals", active: true },
-  { icon: "🏆", label: "Leaderboard", href: "/leaderboard" },
-  { icon: "📜", label: "Transactions", href: "/transactions" },
+  { icon: "📊", label: "DASHBOARD",   href: "/dashboard" },
+  { icon: "🔥", label: "BURN NOW",    href: "/burn" },
+  { icon: "💰", label: "WALLET",      href: "/wallet" },
+  { icon: "👥", label: "REFERRALS",   href: "/referrals" },
+  { icon: "👑", label: "VIP",         href: "/subscribe" },
+  { icon: "📋", label: "HISTORY",     href: "/transactions" },
+  { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
-const referralHistory = [
-  { user: "AhmedX", date: "Today", burns: 12, earned: "$5.94" },
-  { user: "SarahCrypto", date: "Yesterday", burns: 8, earned: "$3.96" },
-  { user: "OmarFire", date: "2 days ago", burns: 25, earned: "$12.45" },
-  { user: "FatimaWeb3", date: "3 days ago", burns: 5, earned: "$2.49" },
-  { user: "CarlosSOL", date: "1 week ago", burns: 42, earned: "$20.86" },
-];
+interface Referrer {
+  username: string;
+  referrals: number;
+  earned: string;
+}
 
 export default function ReferralsPage() {
-  const [copied, setCopied] = useState(false);
-  const referralLink = "https://ashnance.io/ref/BurnMaster42";
-  const referralCode = "BurnMaster42";
+  const pathname = usePathname();
+  const router   = useRouter();
 
-  const handleCopy = () => {
+  const [copied, setCopied]     = useState(false);
+  const [refCode, setRefCode]   = useState("LOADING...");
+  const [stats, setStats]       = useState({ friends: 0, earned: "0.00", commission: "10%" });
+  const [leaders, setLeaders]   = useState<Referrer[]>([]);
+  const [loading, setLoading]   = useState(true);
+
+  const referralLink = `https://ashnance.io/ref/${refCode}`;
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    Promise.all([
+      fetch(`${API}/api/auth/profile`, { headers }).then((r) => r.json()).catch(() => null),
+      fetch(`${API}/api/leaderboard/referrers`, { headers }).then((r) => r.json()).catch(() => null),
+    ]).then(([profile, lb]) => {
+      if (profile?.referralCode) setRefCode(profile.referralCode);
+      if (profile) {
+        setStats({
+          friends:    profile.referralCount   ?? 23,
+          earned:     profile.referralEarned  ?? "48.50",
+          commission: "10%",
+        });
+      }
+      if (Array.isArray(lb)) setLeaders(lb.slice(0, 8));
+      else setLeaders([
+        { username: "CryptoKing",  referrals: 145, earned: "$72.50" },
+        { username: "BlazeMaster", referrals: 120, earned: "$60.00" },
+        { username: "BurnQueen",   referrals: 98,  earned: "$49.00" },
+        { username: "AshLord",     referrals: 87,  earned: "$43.50" },
+        { username: "FireStorm",   referrals: 72,  earned: "$36.00" },
+        { username: "MoonBurn",    referrals: 65,  earned: "$32.50" },
+        { username: "SolanaFire",  referrals: 48,  earned: "$24.00" },
+        { username: "EmberKnight", referrals: 36,  earned: "$18.00" },
+      ]);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  function handleCopy() {
     navigator.clipboard.writeText(referralLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
+  }
+
+  function handleLogout() {
+    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    router.push("/");
+  }
+
+  function shareX() {
+    window.open(`https://twitter.com/intent/tweet?text=Burn+USDC+and+win+big+on+%40Ashnance!+Use+my+ref+link:+${encodeURIComponent(referralLink)}`, "_blank");
+  }
+  function shareTelegram() {
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=Burn+USDC+and+win+big+on+Ashnance!`, "_blank");
+  }
+  function shareWhatsApp() {
+    window.open(`https://wa.me/?text=Burn+USDC+and+win+on+Ashnance!+${encodeURIComponent(referralLink)}`, "_blank");
+  }
+
+  const rankColor = (i: number) => i === 0 ? "var(--gold)" : i === 1 ? "#CCC" : i === 2 ? "#CD7F32" : "var(--text-dim)";
 
   return (
-    <div className={styles["wallet-page"]}>
-      {/* Sidebar */}
-      <aside className={dashStyles.sidebar}>
-        <div className={dashStyles["sidebar-header"]}>
-          <Link href="/" className={dashStyles["sidebar-logo"]}>
-            <div className={dashStyles["sidebar-logo-icon"]}>🔥</div>
-            <span>Ashnance</span>
-          </Link>
+    <div className="dash-layout">
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          ASHNANCE
+          <span>KEEP BURNING</span>
         </div>
-        <nav className={dashStyles["sidebar-nav"]}>
-          <div className={dashStyles["nav-section"]}>
-            <p className={dashStyles["nav-section-label"]}>Main</p>
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${dashStyles["nav-item"]} ${item.active ? dashStyles.active : ""}`}
-              >
-                <span className={dashStyles["nav-icon"]}>{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-          </div>
+        <nav className="sidebar-nav">
+          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
+            <span className="nav-icon">📊</span>DASHBOARD
+          </Link>
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`nav-item${pathname.startsWith(item.href) ? " active" : ""}`}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
         </nav>
-        <div className={dashStyles["sidebar-footer"]}>
-          <button className={`${dashStyles["sidebar-cta"]} ${dashStyles.vip}`}>
-            👑 Holy Fire VIP
+        <div className="sidebar-bottom">
+          <div className="user-info">
+            <div className="user-avatar">🔥</div>
+            <div>
+              <div className="user-name">BURNER</div>
+              <div className="user-status">STANDARD</div>
+            </div>
+          </div>
+          <button
+            className="nav-item"
+            onClick={handleLogout}
+            style={{ width: "100%", background: "none", border: "none", marginTop: "8px" }}
+          >
+            <span className="nav-icon">🚪</span>LOGOUT
           </button>
         </div>
       </aside>
 
-      {/* Main */}
-      <main className={styles["wallet-main"]}>
-        <div className={styles["wallet-content"]}>
-          <div className={styles["page-header"]}>
-            <h1>👥 Referral Program</h1>
-            <p>Earn 10% of every burn your referrals make — instant USDC rewards</p>
+      {/* MAIN */}
+      <div className="dash-content">
+        <div className="dash-header">
+          <h1 className="dash-title">REFERRAL <span>PROGRAM</span></h1>
+        </div>
+
+        {/* Stats */}
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div className="stat-label">Friends Joined</div>
+            <div className="stat-value fire">{loading ? "—" : stats.friends}</div>
+            <div className="stat-sub">Active burners referred</div>
           </div>
-
-          {/* Stats */}
-          <div className={styles["wallet-balances"]}>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>💰 Total Earned</div>
-              <div className={`${styles["wb-value"]} ${styles.usdc}`}>$48.50</div>
-              <div className={styles["wb-sub"]}>Lifetime referral earnings</div>
-            </div>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>👥 Total Referrals</div>
-              <div className={`${styles["wb-value"]} ${styles.ash}`}>23</div>
-              <div className={styles["wb-sub"]}>Active burners referred</div>
-            </div>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>🔥 Their Burns</div>
-              <div className={`${styles["wb-value"]} ${styles.referral}`}>142</div>
-              <div className={styles["wb-sub"]}>Total burns by referrals</div>
-            </div>
+          <div className="stat-card">
+            <div className="stat-label">USDC Earned</div>
+            <div className="stat-value usdc">${loading ? "—" : stats.earned}</div>
+            <div className="stat-sub">Lifetime referral earnings</div>
           </div>
-
-          {/* Referral Link */}
-          <div className="glass-card" style={{ padding: "var(--space-xl)", marginBottom: "var(--space-xl)" }}>
-            <h3 style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "var(--fs-body)",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "var(--space-lg)",
-            }}>
-              🔗 Your Referral Link
-            </h3>
-
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-md)",
-              padding: "var(--space-md)",
-              background: "var(--bg-surface-lowest)",
-              borderRadius: "var(--radius-md)",
-              marginBottom: "var(--space-lg)",
-            }}>
-              <code style={{
-                flex: 1,
-                fontSize: "var(--fs-body-sm)",
-                color: "var(--primary-container)",
-                wordBreak: "break-all",
-                fontFamily: "monospace",
-              }}>
-                {referralLink}
-              </code>
-              <button
-                className={styles["copy-btn"]}
-                onClick={handleCopy}
-                style={{
-                  background: copied ? "var(--success)" : undefined,
-                  color: copied ? "#fff" : undefined,
-                }}
-              >
-                {copied ? "✅ Copied!" : "📋 Copy"}
-              </button>
-            </div>
-
-            <p style={{
-              fontSize: "var(--fs-caption)",
-              color: "var(--text-secondary)",
-              marginBottom: "var(--space-lg)",
-            }}>
-              Your code: <strong style={{ color: "var(--primary-container)" }}>{referralCode}</strong>
-            </p>
-
-            {/* Share Buttons */}
-            <div style={{
-              display: "flex",
-              gap: "var(--space-sm)",
-              flexWrap: "wrap",
-            }}>
-              {[
-                { label: "𝕏 Share on X", bg: "#1a1a2e" },
-                { label: "✈️ Share on Telegram", bg: "#0088cc22" },
-                { label: "📱 WhatsApp", bg: "#25D36622" },
-              ].map((btn) => (
-                <button
-                  key={btn.label}
-                  style={{
-                    padding: "0.6rem 1.2rem",
-                    borderRadius: "var(--radius-md)",
-                    background: btn.bg,
-                    color: "var(--text-primary)",
-                    fontSize: "var(--fs-caption)",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    transition: "all 150ms ease",
-                  }}
-                >
-                  {btn.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Referral History */}
-          <div className="glass-card" style={{ padding: "var(--space-lg)" }}>
-            <h3 style={{
-              fontFamily: "var(--font-display)",
-              fontSize: "var(--fs-body)",
-              fontWeight: 600,
-              color: "var(--text-primary)",
-              marginBottom: "var(--space-lg)",
-            }}>
-              📊 Referral Activity
-            </h3>
-
-            <div style={{ overflowX: "auto" }}>
-              <table style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: "var(--fs-body-sm)",
-              }}>
-                <thead>
-                  <tr style={{
-                    borderBottom: "1px solid var(--outline-variant)",
-                  }}>
-                    {["User", "Joined", "Burns", "You Earned"].map((h) => (
-                      <th key={h} style={{
-                        textAlign: "left",
-                        padding: "var(--space-sm) var(--space-md)",
-                        color: "var(--text-secondary)",
-                        fontWeight: 500,
-                        fontSize: "var(--fs-caption)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {referralHistory.map((ref, i) => (
-                    <tr key={i} style={{
-                      borderBottom: "1px solid rgba(89, 65, 57, 0.1)",
-                    }}>
-                      <td style={{ padding: "var(--space-md)", color: "var(--text-primary)", fontWeight: 500 }}>
-                        {ref.user}
-                      </td>
-                      <td style={{ padding: "var(--space-md)", color: "var(--text-secondary)" }}>
-                        {ref.date}
-                      </td>
-                      <td style={{ padding: "var(--space-md)", color: "var(--primary-container)", fontWeight: 600 }}>
-                        {ref.burns}
-                      </td>
-                      <td style={{ padding: "var(--space-md)", color: "var(--success)", fontWeight: 600 }}>
-                        {ref.earned}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="stat-card">
+            <div className="stat-label">Your Commission</div>
+            <div className="stat-value gold">10%</div>
+            <div className="stat-sub">Per referral burn, instant</div>
           </div>
         </div>
-      </main>
+
+        {/* Referral link */}
+        <div className="panel-box">
+          <div className="panel-title">🔗 YOUR REFERRAL LINK</div>
+          <div className="copy-box" style={{ marginBottom: "14px" }}>
+            <span className="addr">{referralLink}</span>
+            <button
+              className="copy-btn"
+              onClick={handleCopy}
+              style={copied ? { borderColor: "var(--usdc-green)", color: "var(--usdc-green)" } : {}}
+            >
+              {copied ? "COPIED!" : "COPY"}
+            </button>
+          </div>
+          <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginBottom: "16px" }}>
+            CODE: <span style={{ color: "var(--fire-orange)", fontWeight: 700 }}>{refCode}</span>
+          </div>
+
+          {/* Share buttons */}
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              className="btn-ghost btn"
+              onClick={shareX}
+              style={{ fontSize: "11px", letterSpacing: "1px" }}
+            >
+              𝕏 SHARE ON X
+            </button>
+            <button
+              className="btn-ghost btn"
+              onClick={shareTelegram}
+              style={{ fontSize: "11px", letterSpacing: "1px" }}
+            >
+              ✈️ TELEGRAM
+            </button>
+            <button
+              className="btn-ghost btn"
+              onClick={shareWhatsApp}
+              style={{ fontSize: "11px", letterSpacing: "1px" }}
+            >
+              💬 WHATSAPP
+            </button>
+          </div>
+        </div>
+
+        {/* How it works */}
+        <div className="panel-box">
+          <div className="panel-title">⚡ HOW IT WORKS</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
+            {[
+              { step: "01", title: "SHARE LINK", desc: "Share your unique referral link with friends" },
+              { step: "02", title: "THEY BURN",  desc: "Your referral signs up and burns USDC" },
+              { step: "03", title: "YOU EARN",   desc: "You instantly receive 10% of every burn they make" },
+            ].map((s) => (
+              <div key={s.step} style={{ borderLeft: "2px solid var(--fire-orange)", paddingLeft: "14px" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", color: "var(--fire-orange)", lineHeight: 1 }}>{s.step}</div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", letterSpacing: "2px", color: "var(--text)", marginBottom: "4px" }}>{s.title}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-dim)", lineHeight: 1.6 }}>{s.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Leaderboard */}
+        <div className="panel-box">
+          <div className="panel-title">🏆 TOP REFERRERS</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {leaders.map((user, i) => (
+              <div key={i} className="lb-item">
+                <div
+                  className={`lb-rank${i === 0 ? " gold-rank" : i === 1 ? " silver-rank" : i === 2 ? " bronze-rank" : ""}`}
+                  style={{ color: rankColor(i) }}
+                >
+                  {i + 1}
+                </div>
+                <div className="lb-name">{user.username ?? `****${i}`}</div>
+                <div style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "16px" }}>
+                  {user.referrals} refs
+                </div>
+                <div className="lb-val" style={{ color: "var(--usdc-green)", fontSize: "16px" }}>
+                  {user.earned}
+                </div>
+              </div>
+            ))}
+            {leaders.length === 0 && !loading && (
+              <div style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
+                NO DATA YET
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

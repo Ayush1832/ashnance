@@ -152,6 +152,41 @@ export class AuthService {
   }
 
   /**
+   * Passwordless login by email (after OTP verified externally)
+   */
+  static async loginByEmail(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) throw new NotFoundError("No account found with this email. Please register.");
+
+    // Check lock
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new AccountLockedError(`Account locked until ${user.lockedUntil.toISOString()}`);
+    }
+
+    // Reset failed attempts
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const tokens = AuthService.generateTokens(user.id, user.email);
+    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        isVip: user.isVip,
+        vipTier: user.vipTier,
+        referralCode: user.referralCode,
+        role: user.role,
+      },
+      ...tokens,
+    };
+  }
+
+  /**
    * Refresh access token using refresh token
    */
   static async refreshToken(token: string) {

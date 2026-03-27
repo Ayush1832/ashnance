@@ -1,203 +1,269 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import dashStyles from "../dashboard/dashboard.module.css";
-import walletStyles from "../wallet/wallet.module.css";
+import { usePathname, useRouter } from "next/navigation";
+
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const navItems = [
-  { icon: "📊", label: "Dashboard", href: "/dashboard" },
-  { icon: "🔥", label: "Burn Now", href: "/burn" },
-  { icon: "💳", label: "Wallet", href: "/wallet" },
-  { icon: "📜", label: "Transactions", href: "/transactions", active: true },
-  { icon: "🏆", label: "Leaderboard", href: "/leaderboard" },
+  { icon: "📊", label: "DASHBOARD",   href: "/dashboard" },
+  { icon: "🔥", label: "BURN NOW",    href: "/burn" },
+  { icon: "💰", label: "WALLET",      href: "/wallet" },
+  { icon: "👥", label: "REFERRALS",   href: "/referrals" },
+  { icon: "👑", label: "VIP",         href: "/subscribe" },
+  { icon: "📋", label: "HISTORY",     href: "/transactions" },
+  { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
-const allTransactions = [
-  { id: "TX001", type: "BURN", amount: -4.99, currency: "USDC", status: "COMPLETED", desc: "Burned $4.99 USDC", date: "Today, 14:32" },
-  { id: "TX002", type: "WIN", amount: 50, currency: "USDC", status: "COMPLETED", desc: "Won Small prize", date: "Today, 14:32" },
-  { id: "TX003", type: "BURN", amount: -10, currency: "USDC", status: "COMPLETED", desc: "Burned $10 USDC", date: "Today, 12:15" },
-  { id: "TX004", type: "DEPOSIT", amount: 100, currency: "USDC", status: "COMPLETED", desc: "Deposited 100 USDC", date: "Yesterday" },
-  { id: "TX005", type: "REFERRAL_REWARD", amount: 0.49, currency: "USDC", status: "COMPLETED", desc: "Referral from AhmedX", date: "Yesterday" },
-  { id: "TX006", type: "WITHDRAWAL", amount: -50, currency: "USDC", status: "PROCESSING", desc: "Withdrawal to 9xkG...3hPq", date: "2 days ago" },
-  { id: "TX007", type: "BURN", amount: -50, currency: "USDC", status: "COMPLETED", desc: "Burned $50 USDC", date: "2 days ago" },
-  { id: "TX008", type: "WIN", amount: 200, currency: "USDC", status: "COMPLETED", desc: "Won Medium prize", date: "3 days ago" },
-  { id: "TX009", type: "VIP_PURCHASE", amount: -24.99, currency: "USDC", status: "COMPLETED", desc: "Holy Fire subscription", date: "1 week ago" },
-  { id: "TX010", type: "ASH_BOOST", amount: -1000, currency: "ASH", status: "COMPLETED", desc: "Burn boost activated", date: "1 week ago" },
+type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAWAL" | "REFERRAL_REWARD" | "VIP_PURCHASE";
+
+const FILTER_TABS: { key: TxType; label: string }[] = [
+  { key: "ALL",             label: "ALL"         },
+  { key: "BURN",            label: "🔥 BURNS"    },
+  { key: "WIN",             label: "💥 WINS"     },
+  { key: "DEPOSIT",         label: "💵 DEPOSITS" },
+  { key: "WITHDRAWAL",      label: "→ WITHDRAWALS" },
+  { key: "REFERRAL_REWARD", label: "👥 REFERRAL" },
+  { key: "VIP_PURCHASE",    label: "👑 VIP"      },
 ];
 
-const typeColors: Record<string, string> = {
-  BURN: "#e74c3c",
-  WIN: "#2ecc71",
-  DEPOSIT: "#3498db",
-  WITHDRAWAL: "#e67e22",
-  REFERRAL_REWARD: "#9b59b6",
-  VIP_PURCHASE: "#f1c40f",
-  ASH_BOOST: "#1abc9c",
+interface Tx {
+  id: string;
+  type: string;
+  amount: number;
+  currency: string;
+  status: string;
+  desc: string;
+  date: string;
+}
+
+const MOCK_TXS: Tx[] = [
+  { id: "TX001", type: "BURN",            amount: -4.99,  currency: "USDC", status: "COMPLETED",  desc: "Burned $4.99 USDC",           date: "Today, 14:32" },
+  { id: "TX002", type: "WIN",             amount: 50,     currency: "USDC", status: "COMPLETED",  desc: "Won Small prize",              date: "Today, 14:32" },
+  { id: "TX003", type: "BURN",            amount: -10,    currency: "USDC", status: "COMPLETED",  desc: "Burned $10 USDC",              date: "Today, 12:15" },
+  { id: "TX004", type: "DEPOSIT",         amount: 100,    currency: "USDC", status: "COMPLETED",  desc: "Deposited 100 USDC",           date: "Yesterday" },
+  { id: "TX005", type: "REFERRAL_REWARD", amount: 0.49,   currency: "USDC", status: "COMPLETED",  desc: "Referral commission — AhmedX", date: "Yesterday" },
+  { id: "TX006", type: "WITHDRAWAL",      amount: -50,    currency: "USDC", status: "PROCESSING", desc: "Withdrawal to 9xkG...3hPq",    date: "2 days ago" },
+  { id: "TX007", type: "BURN",            amount: -50,    currency: "USDC", status: "COMPLETED",  desc: "Burned $50 USDC",              date: "2 days ago" },
+  { id: "TX008", type: "WIN",             amount: 200,    currency: "USDC", status: "COMPLETED",  desc: "Won Medium prize",             date: "3 days ago" },
+  { id: "TX009", type: "VIP_PURCHASE",    amount: -24.99, currency: "USDC", status: "COMPLETED",  desc: "Holy Fire VIP subscription",   date: "1 week ago" },
+  { id: "TX010", type: "BURN",            amount: -25,    currency: "USDC", status: "COMPLETED",  desc: "Burned $25 USDC",              date: "1 week ago" },
+];
+
+const TX_ICONS: Record<string, string> = {
+  BURN:            "🔥",
+  WIN:             "💥",
+  DEPOSIT:         "💵",
+  WITHDRAWAL:      "→",
+  REFERRAL_REWARD: "👥",
+  VIP_PURCHASE:    "👑",
 };
 
-const typeLabels: Record<string, string> = {
-  BURN: "🔥 Burn",
-  WIN: "🏆 Win",
-  DEPOSIT: "📥 Deposit",
-  WITHDRAWAL: "📤 Withdraw",
-  REFERRAL_REWARD: "👥 Referral",
-  VIP_PURCHASE: "👑 VIP",
-  ASH_BOOST: "⚡ Boost",
+const TX_COLORS: Record<string, string> = {
+  BURN:            "var(--fire-red)",
+  WIN:             "var(--usdc-green)",
+  DEPOSIT:         "#3498db",
+  WITHDRAWAL:      "var(--fire-orange)",
+  REFERRAL_REWARD: "#9b59b6",
+  VIP_PURCHASE:    "var(--gold)",
 };
 
 export default function TransactionsPage() {
-  const [filter, setFilter] = useState("ALL");
-  const [search, setSearch] = useState("");
+  const pathname = usePathname();
+  const router   = useRouter();
 
-  const filtered = allTransactions.filter((tx) => {
+  const [filter, setFilter]   = useState<TxType>("ALL");
+  const [search, setSearch]   = useState("");
+  const [txList, setTxList]   = useState<Tx[]>(MOCK_TXS);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    if (!token) return;
+    setLoading(true);
+    const params = filter !== "ALL" ? `?type=${filter}` : "";
+    fetch(`${API}/api/wallet/transactions${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((data) => { if (Array.isArray(data) && data.length > 0) setTxList(data); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  function handleLogout() {
+    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    router.push("/");
+  }
+
+  const filtered = txList.filter((tx) => {
     if (filter !== "ALL" && tx.type !== filter) return false;
-    if (search && !tx.desc.toLowerCase().includes(search.toLowerCase()) && !tx.id.toLowerCase().includes(search.toLowerCase())) return false;
+    const q = search.toLowerCase();
+    if (q && !tx.desc.toLowerCase().includes(q) && !tx.id.toLowerCase().includes(q)) return false;
     return true;
   });
 
   return (
-    <div className={walletStyles["wallet-page"]}>
-      <aside className={dashStyles.sidebar}>
-        <div className={dashStyles["sidebar-header"]}>
-          <Link href="/" className={dashStyles["sidebar-logo"]}>
-            <div className={dashStyles["sidebar-logo-icon"]}>🔥</div>
-            <span>Ashnance</span>
-          </Link>
+    <div className="dash-layout">
+      {/* SIDEBAR */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          ASHNANCE
+          <span>KEEP BURNING</span>
         </div>
-        <nav className={dashStyles["sidebar-nav"]}>
-          <div className={dashStyles["nav-section"]}>
-            <p className={dashStyles["nav-section-label"]}>Main</p>
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${dashStyles["nav-item"]} ${item.active ? dashStyles.active : ""}`}
-              >
-                <span className={dashStyles["nav-icon"]}>{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-          </div>
+        <nav className="sidebar-nav">
+          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
+            <span className="nav-icon">📊</span>DASHBOARD
+          </Link>
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`nav-item${pathname.startsWith(item.href) ? " active" : ""}`}
+            >
+              <span className="nav-icon">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
         </nav>
+        <div className="sidebar-bottom">
+          <div className="user-info">
+            <div className="user-avatar">🔥</div>
+            <div>
+              <div className="user-name">BURNER</div>
+              <div className="user-status">STANDARD</div>
+            </div>
+          </div>
+          <button
+            className="nav-item"
+            onClick={handleLogout}
+            style={{ width: "100%", background: "none", border: "none", marginTop: "8px" }}
+          >
+            <span className="nav-icon">🚪</span>LOGOUT
+          </button>
+        </div>
       </aside>
 
-      <main className={walletStyles["wallet-main"]}>
-        <div className={walletStyles["wallet-content"]}>
-          <div className={walletStyles["page-header"]}>
-            <h1>📜 Transaction History</h1>
-            <p>All your deposits, withdrawals, burns, and rewards</p>
-          </div>
-
-          {/* Filters */}
-          <div className="glass-card" style={{ padding: "var(--space-lg)", marginBottom: "var(--space-lg)", display: "flex", gap: "var(--space-md)", flexWrap: "wrap", alignItems: "center" }}>
-            <input
-              type="text"
-              placeholder="🔍 Search transactions..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                flex: 1,
-                minWidth: 200,
-                padding: "0.6rem 1rem",
-                background: "var(--bg-surface-lowest)",
-                border: "1px solid var(--outline-variant)",
-                borderRadius: "var(--radius-md)",
-                color: "var(--text-primary)",
-                fontSize: "var(--fs-body-sm)",
-              }}
-            />
-            <div style={{ display: "flex", gap: "var(--space-xs)", flexWrap: "wrap" }}>
-              {["ALL", "BURN", "WIN", "DEPOSIT", "WITHDRAWAL", "REFERRAL_REWARD"].map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setFilter(t)}
-                  style={{
-                    padding: "0.4rem 0.8rem",
-                    background: filter === t ? "var(--primary-container)" : "var(--bg-surface-lowest)",
-                    color: filter === t ? "#fff" : "var(--text-secondary)",
-                    border: "1px solid " + (filter === t ? "transparent" : "var(--outline-variant)"),
-                    borderRadius: "var(--radius-pill)",
-                    fontSize: "0.75rem",
-                    fontWeight: 500,
-                    cursor: "pointer",
-                    transition: "all 150ms",
-                  }}
-                >
-                  {t === "ALL" ? "All" : typeLabels[t]?.split(" ")[1] || t}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Transaction List */}
-          <div className="glass-card" style={{ padding: "var(--space-lg)" }}>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-body-sm)" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--outline-variant)" }}>
-                    {["Type", "Description", "Amount", "Status", "Date"].map((h) => (
-                      <th key={h} style={{
-                        textAlign: "left",
-                        padding: "var(--space-sm) var(--space-md)",
-                        color: "var(--text-secondary)",
-                        fontWeight: 500,
-                        fontSize: "var(--fs-caption)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((tx) => (
-                    <tr key={tx.id} style={{ borderBottom: "1px solid rgba(89,65,57,0.08)" }}>
-                      <td style={{ padding: "var(--space-md)" }}>
-                        <span style={{
-                          padding: "0.25rem 0.6rem",
-                          background: `${typeColors[tx.type]}15`,
-                          color: typeColors[tx.type],
-                          borderRadius: "var(--radius-sm)",
-                          fontSize: "0.75rem",
-                          fontWeight: 600,
-                        }}>
-                          {typeLabels[tx.type] || tx.type}
-                        </span>
-                      </td>
-                      <td style={{ padding: "var(--space-md)", color: "var(--text-primary)" }}>{tx.desc}</td>
-                      <td style={{
-                        padding: "var(--space-md)",
-                        color: tx.amount > 0 ? "var(--success)" : "var(--error)",
-                        fontWeight: 700,
-                        fontFamily: "var(--font-display)",
-                      }}>
-                        {tx.amount > 0 ? "+" : ""}{tx.amount} {tx.currency}
-                      </td>
-                      <td style={{ padding: "var(--space-md)" }}>
-                        <span style={{
-                          color: tx.status === "COMPLETED" ? "var(--success)" : "var(--warning-text)",
-                          fontSize: "var(--fs-caption)",
-                          fontWeight: 500,
-                        }}>
-                          {tx.status === "COMPLETED" ? "✅" : "⏳"} {tx.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: "var(--space-md)", color: "var(--text-secondary)", fontSize: "var(--fs-caption)" }}>{tx.date}</td>
-                    </tr>
-                  ))}
-                  {filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={5} style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--text-secondary)" }}>
-                        No transactions found
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+      {/* MAIN */}
+      <div className="dash-content">
+        <div className="dash-header">
+          <h1 className="dash-title">TRANSACTION <span>HISTORY</span></h1>
         </div>
-      </main>
+
+        {/* Filter tab bar */}
+        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "16px" }}>
+          {FILTER_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={filter === tab.key ? "btn-fire btn" : "btn-ghost btn"}
+              style={{ fontSize: "9px", letterSpacing: "1px", padding: "6px 12px" }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search bar */}
+        <div style={{ marginBottom: "20px" }}>
+          <input
+            type="text"
+            placeholder="SEARCH TRANSACTIONS..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              width: "100%",
+              maxWidth: "440px",
+              background: "var(--black)",
+              border: "1px solid var(--border)",
+              color: "var(--text)",
+              padding: "10px 14px",
+              fontFamily: "var(--font-body)",
+              fontSize: "11px",
+              letterSpacing: "1px",
+              outline: "none",
+            }}
+          />
+        </div>
+
+        {/* Transaction list */}
+        <div className="panel-box">
+          {loading ? (
+            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)", letterSpacing: "2px", fontSize: "11px" }}>
+              LOADING...
+            </div>
+          ) : (
+            <div className="tx-list">
+              {filtered.map((tx) => (
+                <div key={tx.id} className="tx-item">
+                  {/* Icon */}
+                  <div className="tx-icon" style={{ color: TX_COLORS[tx.type] || "var(--text-dim)" }}>
+                    {TX_ICONS[tx.type] || "◆"}
+                  </div>
+
+                  {/* Details */}
+                  <div className="tx-details">
+                    <div className="tx-type">{tx.desc}</div>
+                    <div className="tx-date">{tx.date} · {tx.id}</div>
+                  </div>
+
+                  {/* Type badge */}
+                  <div style={{ marginRight: "12px" }}>
+                    <span style={{
+                      fontSize: "8px",
+                      letterSpacing: "1px",
+                      padding: "2px 8px",
+                      background: `${TX_COLORS[tx.type] || "var(--border)"}18`,
+                      border: `1px solid ${TX_COLORS[tx.type] || "var(--border)"}40`,
+                      color: TX_COLORS[tx.type] || "var(--text-dim)",
+                    }}>
+                      {tx.type.replace("_", " ")}
+                    </span>
+                  </div>
+
+                  {/* Amount */}
+                  <div className="tx-amount">
+                    <div className={`amount ${tx.amount > 0 ? "pos" : tx.currency === "ASH" ? "ash-col" : "neg"}`}>
+                      {tx.amount > 0 ? "+" : ""}{tx.amount} {tx.currency}
+                    </div>
+                    <div className="tx-status">
+                      {tx.status === "COMPLETED" ? "✓ COMPLETED" : tx.status === "PROCESSING" ? "⏳ PROCESSING" : tx.status}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {filtered.length === 0 && (
+                <div style={{ padding: "40px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
+                  NO TRANSACTIONS FOUND
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Summary stats */}
+        {filtered.length > 0 && (
+          <div style={{ marginTop: "16px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+            {[
+              { label: "TOTAL TXS",   value: String(filtered.length),                                      cls: "" },
+              { label: "TOTAL IN",    value: `+$${filtered.filter((t) => t.amount > 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0).toFixed(2)}`, cls: "usdc" },
+              { label: "TOTAL OUT",   value: `-$${Math.abs(filtered.filter((t) => t.amount < 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0)).toFixed(2)}`, cls: "fire" },
+            ].map((s) => (
+              <div key={s.label} style={{
+                background: "var(--panel)",
+                border: "1px solid var(--border)",
+                padding: "10px 16px",
+              }}>
+                <div className="stat-label">{s.label}</div>
+                <div className={`stat-value ${s.cls}`} style={{ fontSize: "22px" }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

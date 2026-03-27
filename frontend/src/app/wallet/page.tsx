@@ -1,249 +1,408 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import dashStyles from "../dashboard/dashboard.module.css";
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/api";
 import styles from "./wallet.module.css";
 
-type WalletTab = "deposit" | "withdraw" | "history";
+// ---- Types ----
+interface WalletData {
+  usdcBalance: number;
+  ashBalance: number;
+  depositAddress: string;
+}
 
-const navItems = [
-  { icon: "📊", label: "Dashboard", href: "/dashboard" },
-  { icon: "🔥", label: "Burn Now", href: "/burn" },
-  { icon: "💳", label: "Wallet", href: "/wallet", active: true },
-  { icon: "👥", label: "Referrals", href: "/referrals" },
-  { icon: "🏆", label: "Leaderboard", href: "/leaderboard" },
-  { icon: "📜", label: "Transactions", href: "/transactions" },
+interface Transaction {
+  id: string;
+  type: string;
+  amountUsdc?: number;
+  amountAsh?: number;
+  prizeAmount?: number;
+  status: string;
+  createdAt: string;
+  toAddress?: string;
+}
+
+type ModalType = "deposit" | "withdraw" | null;
+type TxFilter = "all" | "deposit" | "burn" | "win" | "withdraw" | "referral";
+
+const TX_FILTERS: { key: TxFilter; label: string }[] = [
+  { key: "all",      label: "ALL"       },
+  { key: "deposit",  label: "DEPOSITS"  },
+  { key: "burn",     label: "BURNS"     },
+  { key: "win",      label: "WINS"      },
+  { key: "withdraw", label: "WITHDRAWS" },
+  { key: "referral", label: "REFERRALS" },
 ];
 
-const txHistory = [
-  { id: 1, type: "deposit", title: "USDC Deposit", time: "Today, 10:30 AM", amount: "+500.00 USDC", amountClass: "positive" },
-  { id: 2, type: "burn", title: "Burned 10 USDC", time: "Today, 10:32 AM", amount: "-10.00 USDC", amountClass: "negative" },
-  { id: 3, type: "win", title: "Won Medium Prize", time: "Today, 10:32 AM", amount: "+200.00 USDC", amountClass: "gold" },
-  { id: 4, type: "burn", title: "Burned 4.99 USDC", time: "Today, 10:45 AM", amount: "-4.99 USDC", amountClass: "negative" },
-  { id: 5, type: "referral", title: "Referral Reward", time: "Yesterday", amount: "+0.49 USDC", amountClass: "positive" },
-  { id: 6, type: "withdraw", title: "Withdrawal", time: "Yesterday", amount: "-100.00 USDC", amountClass: "negative" },
-];
+function txIcon(type: string) {
+  switch (type) {
+    case "burn":     return "🔥";
+    case "win":      return "🏆";
+    case "deposit":  return "💳";
+    case "withdraw": return "💸";
+    case "referral": return "👥";
+    default:         return "📋";
+  }
+}
 
-export default function WalletPage() {
-  const [activeTab, setActiveTab] = useState<WalletTab>("deposit");
-  const [txFilter, setTxFilter] = useState("all");
+function txAmtClass(type: string) {
+  return (type === "win" || type === "deposit" || type === "referral") ? "pos" : "neg";
+}
+
+function fmtAmt(tx: Transaction): string {
+  switch (tx.type) {
+    case "win":      return `+$${(tx.prizeAmount ?? 0).toFixed(2)} USDC`;
+    case "deposit":  return `+$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+    case "burn":     return `-$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+    case "withdraw": return `-$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+    case "referral": return `+$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+    default:
+      if (tx.amountAsh) return `+${tx.amountAsh} ASH`;
+      return `$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+  }
+}
+
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// ---- DEPOSIT MODAL ----
+function DepositModal({
+  address,
+  onClose,
+}: {
+  address: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function copyAddress() {
+    navigator.clipboard.writeText(address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
 
   return (
-    <div className={styles["wallet-page"]}>
-      {/* Sidebar */}
-      <aside className={dashStyles.sidebar}>
-        <div className={dashStyles["sidebar-header"]}>
-          <Link href="/" className={dashStyles["sidebar-logo"]}>
-            <div className={dashStyles["sidebar-logo-icon"]}>🔥</div>
-            <span>Ashnance</span>
-          </Link>
+    <div className={styles.modalOverlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={styles.modal}>
+        <div className={styles.modalHeader}>
+          <span className={styles.modalTitle}>DEPOSIT</span>
+          <button className={styles.modalClose} onClick={onClose}>✕</button>
         </div>
-        <nav className={dashStyles["sidebar-nav"]}>
-          <div className={dashStyles["nav-section"]}>
-            <p className={dashStyles["nav-section-label"]}>Main</p>
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${dashStyles["nav-item"]} ${item.active ? dashStyles.active : ""}`}
-              >
-                <span className={dashStyles["nav-icon"]}>{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
+        <div className={styles.modalBody}>
+          <div className="form-group">
+            <label>YOUR SOLANA USDC DEPOSIT ADDRESS</label>
+            <div className="copy-box">
+              <span className="addr">{address || "LOADING..."}</span>
+              <button className="copy-btn" onClick={copyAddress}>
+                {copied ? "COPIED!" : "COPY"}
+              </button>
+            </div>
           </div>
-        </nav>
-        <div className={dashStyles["sidebar-footer"]}>
-          <button className={`${dashStyles["sidebar-cta"]} ${dashStyles.vip}`}>
-            👑 Holy Fire VIP
+
+          <div className={styles.noticeBox}>
+            <strong>⚠ SOLANA NETWORK ONLY.</strong><br />
+            SEND USDC (SPL TOKEN) ONLY. MINIMUM: 1 USDC.
+            DEPOSITS REFLECT WITHIN 1–2 MINUTES.
+          </div>
+
+          <button className={`${styles.walletConnectBtn}`} style={{ marginTop: "20px" }}>
+            <span style={{ fontSize: "20px" }}>👻</span>
+            CONNECT PHANTOM WALLET
+          </button>
+          <button className={styles.walletConnectBtn}>
+            <span style={{ fontSize: "20px" }}>☀️</span>
+            CONNECT SOLFLARE
           </button>
         </div>
-      </aside>
-
-      {/* Main */}
-      <main className={styles["wallet-main"]}>
-        <div className={styles["wallet-content"]}>
-          <div className={styles["page-header"]}>
-            <h1>💳 Wallet</h1>
-            <p>Manage your USDC and ASH balances</p>
-          </div>
-
-          {/* Balances */}
-          <div className={styles["wallet-balances"]}>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>💵 USDC Balance</div>
-              <div className={`${styles["wb-value"]} ${styles.usdc}`}>$1,245.50</div>
-              <div className={styles["wb-sub"]}>Available for burn/withdraw</div>
-            </div>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>🔥 ASH Tokens</div>
-              <div className={`${styles["wb-value"]} ${styles.ash}`}>12,450</div>
-              <div className={styles["wb-sub"]}>Use for boosts & trading</div>
-            </div>
-            <div className={`glass-card ${styles["wallet-balance-card"]}`}>
-              <div className={styles["wb-label"]}>👥 Referral Earnings</div>
-              <div className={`${styles["wb-value"]} ${styles.referral}`}>$48.50</div>
-              <div className={styles["wb-sub"]}>Lifetime referral rewards</div>
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className={styles["wallet-tabs"]}>
-            {(["deposit", "withdraw", "history"] as WalletTab[]).map((tab) => (
-              <button
-                key={tab}
-                className={`${styles["wallet-tab"]} ${activeTab === tab ? styles.active : ""}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "deposit" ? "💳 Deposit" : tab === "withdraw" ? "💸 Withdraw" : "📜 History"}
-              </button>
-            ))}
-          </div>
-
-          {/* Deposit */}
-          {activeTab === "deposit" && (
-            <div className={styles["deposit-section"]}>
-              <div className={`glass-card ${styles["deposit-method"]}`}>
-                <h3>📍 Deposit Address</h3>
-                <div className={styles["deposit-address-box"]}>
-                  <p className={styles["deposit-address-label"]}>Your unique Solana USDC deposit address:</p>
-                  <div className={styles["deposit-address"]}>
-                    <code>7xK9mFz3Rg4cVnPq2tW8jYbE5hNd6sLf</code>
-                    <button className={styles["copy-btn"]}>📋 Copy</button>
-                  </div>
-                </div>
-                <p className={styles["deposit-note"]}>
-                  <strong>⚠️ Only send USDC (SPL) on Solana network.</strong><br />
-                  Minimum deposit: 1 USDC. Deposits reflect within 1–2 minutes.
-                </p>
-              </div>
-
-              <div className={`glass-card ${styles["deposit-method"]}`}>
-                <h3>🔗 Connect Wallet</h3>
-                <div className={styles["wallet-connect-grid"]}>
-                  {[
-                    { icon: "👻", name: "Phantom", desc: "Most popular Solana wallet" },
-                    { icon: "☀️", name: "Solflare", desc: "Advanced Solana wallet" },
-                    { icon: "🎒", name: "Backpack", desc: "Multi-chain wallet" },
-                  ].map((wallet) => (
-                    <button key={wallet.name} className={styles["wallet-connect-btn"]}>
-                      <span className={styles["wc-icon"]}>{wallet.icon}</span>
-                      <div>
-                        <div className={styles["wc-name"]}>{wallet.name}</div>
-                        <div className={styles["wc-desc"]}>{wallet.desc}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Withdraw */}
-          {activeTab === "withdraw" && (
-            <div className={`glass-card ${styles["withdraw-section"]}`} style={{ padding: "var(--space-xl)" }}>
-              <form className={styles["withdraw-form"]}>
-                <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-                  <label style={{ fontSize: "var(--fs-body-sm)", fontWeight: 500, color: "var(--text-primary)" }}>
-                    Withdraw Amount
-                  </label>
-                  <input
-                    type="number"
-                    placeholder="Enter amount"
-                    style={{
-                      padding: "0.8rem 1rem",
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--bg-surface-lowest)",
-                      color: "var(--text-primary)",
-                      fontSize: "var(--fs-body)",
-                      fontFamily: "var(--font-display)",
-                      fontWeight: 600,
-                      border: "1px solid transparent",
-                      outline: "none",
-                    }}
-                  />
-                  <span style={{ fontSize: "var(--fs-caption)", color: "var(--text-secondary)" }}>
-                    Available: $1,245.50 USDC • Min: $10.00
-                  </span>
-                </div>
-
-                <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-                  <label style={{ fontSize: "var(--fs-body-sm)", fontWeight: 500, color: "var(--text-primary)" }}>
-                    Withdrawal Address
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Solana wallet address"
-                    style={{
-                      padding: "0.8rem 1rem",
-                      borderRadius: "var(--radius-md)",
-                      background: "var(--bg-surface-lowest)",
-                      color: "var(--text-primary)",
-                      fontSize: "var(--fs-body)",
-                      fontFamily: "var(--font-body)",
-                      border: "1px solid transparent",
-                      outline: "none",
-                    }}
-                  />
-                </div>
-
-                <div style={{
-                  padding: "var(--space-md)",
-                  background: "rgba(255, 170, 0, 0.08)",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid rgba(255, 170, 0, 0.15)",
-                  fontSize: "var(--fs-caption)",
-                  color: "var(--warning)",
-                }}>
-                  🔐 2FA verification will be required to complete withdrawal
-                </div>
-
-                <button type="button" className="btn btn-primary btn-lg" style={{ width: "100%" }}>
-                  💸 Request Withdrawal
-                </button>
-              </form>
-            </div>
-          )}
-
-          {/* History */}
-          {activeTab === "history" && (
-            <div className={`glass-card ${styles["tx-history"]}`}>
-              <div className={styles["tx-filters"]}>
-                {["all", "deposits", "burns", "wins", "withdrawals", "referrals"].map((f) => (
-                  <button
-                    key={f}
-                    className={`${styles["tx-filter-btn"]} ${txFilter === f ? styles.active : ""}`}
-                    onClick={() => setTxFilter(f)}
-                  >
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
-              </div>
-              <div className={dashStyles["tx-list"]}>
-                {txHistory.map((tx) => (
-                  <div key={tx.id} className={dashStyles["tx-item"]}>
-                    <div className={`${dashStyles["tx-icon"]} ${dashStyles[tx.type]}`}>
-                      {tx.type === "deposit" && "💳"}
-                      {tx.type === "burn" && "🔥"}
-                      {tx.type === "win" && "🏆"}
-                      {tx.type === "withdraw" && "💸"}
-                      {tx.type === "referral" && "👥"}
-                    </div>
-                    <div className={dashStyles["tx-info"]}>
-                      <div className={dashStyles["tx-title"]}>{tx.title}</div>
-                      <div className={dashStyles["tx-time"]}>{tx.time}</div>
-                    </div>
-                    <div className={`${dashStyles["tx-amount"]} ${dashStyles[tx.amountClass]}`}>
-                      {tx.amount}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </main>
+      </div>
     </div>
+  );
+}
+
+// ---- WITHDRAW MODAL ----
+function WithdrawModal({
+  usdcBalance,
+  onClose,
+}: {
+  usdcBalance: number;
+  onClose: () => void;
+}) {
+  const [token,       setToken]       = useState<"USDC" | "ASH">("USDC");
+  const [amount,      setAmount]      = useState("");
+  const [address,     setAddress]     = useState("");
+  const [twoFa,       setTwoFa]       = useState("");
+  const [submitting,  setSubmitting]  = useState(false);
+  const [submitErr,   setSubmitErr]   = useState<string | null>(null);
+  const [submitted,   setSubmitted]   = useState(false);
+
+  async function handleWithdraw(e: React.FormEvent) {
+    e.preventDefault();
+    setSubmitErr(null);
+
+    const num = parseFloat(amount);
+    if (!num || num < 10) { setSubmitErr("MINIMUM WITHDRAWAL: $10 USDC"); return; }
+    if (!address)          { setSubmitErr("SOLANA ADDRESS REQUIRED");      return; }
+    if (!twoFa)            { setSubmitErr("2FA CODE REQUIRED");            return; }
+
+    try {
+      setSubmitting(true);
+      await api.wallet.withdraw(num, address, twoFa);
+      setSubmitted(true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "WITHDRAWAL FAILED";
+      setSubmitErr(msg.toUpperCase());
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className={styles.modalOverlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className={styles.modal}>
+          <div className={styles.modalHeader}>
+            <span className={styles.modalTitle}>SUBMITTED</span>
+            <button className={styles.modalClose} onClick={onClose}>✕</button>
+          </div>
+          <div className={styles.modalBody}>
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
+              <div style={{ fontSize: "48px", marginBottom: "16px" }}>✅</div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: "20px", letterSpacing: "3px", color: "var(--usdc-green)", marginBottom: "10px" }}>
+                WITHDRAWAL SUBMITTED
+              </div>
+              <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>
+                PROCESSING IN 10–30 MINUTES
+              </div>
+            </div>
+            <button className="btn btn-ghost" style={{ width: "100%", marginTop: "20px" }} onClick={onClose}>
+              CLOSE
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.modalOverlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={styles.modal}>
+        <div className={styles.modalHeader}>
+          <span className={styles.modalTitle}>WITHDRAW</span>
+          <button className={styles.modalClose} onClick={onClose}>✕</button>
+        </div>
+        <div className={styles.modalBody}>
+          <div className={styles.tokenTabs}>
+            <button
+              className={`${styles.tokenTab}${token === "USDC" ? " " + styles.active : ""}`}
+              onClick={() => setToken("USDC")}
+            >
+              USDC
+            </button>
+            <button
+              className={`${styles.tokenTab}${token === "ASH" ? " " + styles.active : ""}`}
+              onClick={() => setToken("ASH")}
+            >
+              ASH
+            </button>
+          </div>
+
+          <form className={styles.withdrawForm} onSubmit={handleWithdraw}>
+            <div className="form-group">
+              <label>AMOUNT ({token})</label>
+              <input
+                type="number"
+                min="10"
+                step="0.01"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                required
+              />
+              <div style={{ fontSize: "9px", color: "var(--text-dim)", marginTop: "4px", letterSpacing: "1px" }}>
+                AVAILABLE: ${usdcBalance.toFixed(2)} USDC &nbsp;•&nbsp; MIN: $10.00
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label>SOLANA WALLET ADDRESS</label>
+              <input
+                type="text"
+                placeholder="YOUR SOLANA ADDRESS"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label>2FA CODE</label>
+              <input
+                type="text"
+                placeholder="6-DIGIT CODE"
+                maxLength={6}
+                value={twoFa}
+                onChange={(e) => setTwoFa(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className={styles.twoFaNotice}>
+              🔐 2FA VERIFICATION REQUIRED TO COMPLETE WITHDRAWAL
+            </div>
+
+            {submitErr && (
+              <div className={styles.errorState}>{submitErr}</div>
+            )}
+
+            <button
+              type="submit"
+              className="btn btn-fire"
+              style={{ width: "100%" }}
+              disabled={submitting}
+            >
+              {submitting ? "PROCESSING..." : "💸 REQUEST WITHDRAWAL"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- MAIN PAGE ----
+export default function WalletPage() {
+  const [walletData,  setWalletData]  = useState<WalletData | null>(null);
+  const [txList,      setTxList]      = useState<Transaction[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [txLoading,   setTxLoading]   = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  const [modal,       setModal]       = useState<ModalType>(null);
+  const [txFilter,    setTxFilter]    = useState<TxFilter>("all");
+
+  // Load wallet balance
+  const loadWallet = useCallback(async () => {
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      if (token) api.setToken(token);
+
+      const res = await api.wallet.balance() as { data?: WalletData } & WalletData;
+      const data = res.data ?? res;
+      setWalletData(data);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load wallet";
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Load tx history
+  const loadTx = useCallback(async (filter: TxFilter) => {
+    try {
+      setTxLoading(true);
+      const type = filter === "all" ? undefined : filter;
+      const res  = await api.wallet.transactions(type, 1, 20) as { data?: { transactions: Transaction[] } } & { transactions?: Transaction[] };
+      const arr  = res.data?.transactions ?? res.transactions ?? (Array.isArray(res) ? res : []);
+      setTxList(arr);
+    } catch {
+      setTxList([]);
+    } finally {
+      setTxLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadWallet(); }, [loadWallet]);
+  useEffect(() => { loadTx(txFilter); }, [loadTx, txFilter]);
+
+  const usdc    = walletData?.usdcBalance    ?? 0;
+  const ash     = walletData?.ashBalance     ?? 0;
+  const depAddr = walletData?.depositAddress ?? "";
+
+  return (
+    <>
+      {/* ===== DASH HEADER ===== */}
+      <div className="dash-header">
+        <div className="dash-title">WALLET</div>
+      </div>
+
+      {error && <div className={styles.errorState}>⚠ {error}</div>}
+
+      {loading ? (
+        <div className={styles.loadingState}>LOADING WALLET...</div>
+      ) : (
+        <>
+          {/* ===== BALANCE CARDS ===== */}
+          <div className={styles.balanceGrid}>
+            <div className={styles.balCard}>
+              <div className={styles.balLabel}>💵 USDC BALANCE</div>
+              <div className={`${styles.balValue} ${styles.balUsdc}`}>${usdc.toFixed(2)}</div>
+              <div className={styles.balSub}>AVAILABLE FOR BURN / WITHDRAW</div>
+            </div>
+            <div className={styles.balCard}>
+              <div className={styles.balLabel}>🔥 ASH TOKENS</div>
+              <div className={`${styles.balValue} ${styles.balAsh}`}>{ash.toLocaleString()}</div>
+              <div className={styles.balSub}>USE FOR BOOSTS &amp; TRADING</div>
+            </div>
+          </div>
+
+          {/* ===== ACTION BUTTONS ===== */}
+          <div className={styles.actionRow}>
+            <button className="btn btn-fire"  onClick={() => setModal("deposit")}>💳 DEPOSIT</button>
+            <button className="btn btn-ghost" onClick={() => setModal("withdraw")}>💸 WITHDRAW</button>
+          </div>
+
+          {/* ===== TX HISTORY ===== */}
+          <div className="panel-box">
+            <div className="panel-title">TRANSACTION HISTORY</div>
+
+            <div className={styles.txFilters}>
+              {TX_FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  className={`${styles.txFilter}${txFilter === f.key ? " " + styles.active : ""}`}
+                  onClick={() => setTxFilter(f.key)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {txLoading ? (
+              <div className={styles.loadingState}>LOADING...</div>
+            ) : txList.length === 0 ? (
+              <div className={styles.emptyState}>NO TRANSACTIONS FOUND</div>
+            ) : (
+              <div className="tx-list">
+                {txList.map((tx) => (
+                  <div key={tx.id} className="tx-item">
+                    <div className="tx-icon">{txIcon(tx.type)}</div>
+                    <div className="tx-details">
+                      <div className="tx-type">{tx.type.toUpperCase()}</div>
+                      <div className="tx-date">{fmtDate(tx.createdAt)}</div>
+                    </div>
+                    <div className="tx-amount">
+                      <div className={`amount ${txAmtClass(tx.type)}`}>{fmtAmt(tx)}</div>
+                      <div className="tx-status">{tx.status}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ===== MODALS ===== */}
+      {modal === "deposit" && (
+        <DepositModal address={depAddr} onClose={() => setModal(null)} />
+      )}
+      {modal === "withdraw" && (
+        <WithdrawModal usdcBalance={usdc} onClose={() => { setModal(null); loadWallet(); }} />
+      )}
+    </>
   );
 }

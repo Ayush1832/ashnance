@@ -4,220 +4,237 @@ import { useState } from "react";
 import Link from "next/link";
 import styles from "../auth.module.css";
 
-type AuthTab = "email" | "wallet";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+type Tab = "LOGIN" | "REGISTER";
 
 export default function LoginPage() {
-  const [activeTab, setActiveTab] = useState<AuthTab>("email");
+  const [activeTab, setActiveTab] = useState<Tab>("LOGIN");
   const [email, setEmail] = useState("");
-  const [showOTP, setShowOTP] = useState(false);
+  const [password, setPassword] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (email) {
-      setShowOTP(true);
-    }
-  };
-
-  const handleOTPChange = (index: number, value: string) => {
-    if (value.length > 1) return;
-    const newOtp = [...otp];
-    newOtp[index] = value;
-    setOtp(newOtp);
-
-    // Auto-focus next input
+  // ---- OTP helpers ----
+  const handleOtpChange = (index: number, value: string) => {
+    if (!/^\d?$/.test(value)) return;
+    const next = [...otp];
+    next[index] = value;
+    setOtp(next);
     if (value && index < 5) {
-      const next = document.getElementById(`otp-${index + 1}`);
-      next?.focus();
+      document.getElementById(`login-otp-${index + 1}`)?.focus();
     }
   };
 
-  const handleOTPKeyDown = (index: number, e: React.KeyboardEvent) => {
+  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
     if (e.key === "Backspace" && !otp[index] && index > 0) {
-      const prev = document.getElementById(`otp-${index - 1}`);
-      prev?.focus();
+      document.getElementById(`login-otp-${index - 1}`)?.focus();
     }
+  };
+
+  // ---- Step 1: send OTP ----
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!email) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to send OTP");
+      setOtpSent(true);
+      setSuccess("OTP sent — check your inbox.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---- Step 2: verify OTP & login ----
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const otpCode = otp.join("");
+    if (otpCode.length < 6) {
+      setError("Enter all 6 digits");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: otpCode, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Login failed");
+      if (data.token) {
+        localStorage.setItem("ash_token", data.token);
+      }
+      window.location.href = "/dashboard";
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setEmail("");
+    setPassword("");
+    setOtpSent(false);
+    setOtp(["", "", "", "", "", ""]);
+    setError("");
+    setSuccess("");
   };
 
   return (
     <div className={styles["auth-page"]}>
       <div className={styles["auth-container"]}>
         {/* Logo */}
-        <div className={styles["auth-header"]}>
-          <Link href="/" className={styles["auth-logo"]}>
-            <div className={styles["auth-logo-icon"]}>🔥</div>
-            <span>Ashnance</span>
-          </Link>
-          <h1 className={styles["auth-title"]}>Welcome Back</h1>
-          <p className={styles["auth-subtitle"]}>
-            Log in to continue your burning journey
-          </p>
-        </div>
+        <Link href="/" className={styles["auth-logo"]}>
+          ASHNANCE
+        </Link>
 
-        {/* Auth Card */}
-        <div className={`glass-card ${styles["auth-card"]}`}>
+        {/* Card */}
+        <div className={styles["auth-card"]}>
           {/* Tabs */}
-          <div className={styles["auth-tabs"]}>
+          <div className="auth-tabs">
             <button
-              className={`${styles["auth-tab"]} ${activeTab === "email" ? styles.active : ""}`}
-              onClick={() => { setActiveTab("email"); setShowOTP(false); }}
+              className={`auth-tab${activeTab === "REGISTER" ? "" : " active"}`}
+              onClick={() => {
+                resetForm();
+                setActiveTab("LOGIN");
+              }}
             >
-              Email Login
+              LOGIN
             </button>
-            <button
-              className={`${styles["auth-tab"]} ${activeTab === "wallet" ? styles.active : ""}`}
-              onClick={() => { setActiveTab("wallet"); setShowOTP(false); }}
+            <Link
+              href="/register"
+              className="auth-tab"
+              style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
             >
-              Connect Wallet
-            </button>
+              REGISTER
+            </Link>
           </div>
 
-          {activeTab === "email" && !showOTP && (
-            <>
-              {/* Social Auth */}
-              <div className={styles["social-auth"]}>
-                <button className={styles["social-btn"]}>
-                  <span className={styles["social-icon"]}>🔵</span>
-                  Continue with Google
-                </button>
-                <div className={styles["social-row"]}>
-                  <button className={styles["social-btn"]}>
-                    <span className={styles["social-icon"]}>𝕏</span>
-                    X (Twitter)
-                  </button>
-                  <button className={styles["social-btn"]}>
-                    <span className={styles["social-icon"]}>✈️</span>
-                    Telegram
-                  </button>
-                </div>
+          {/* Error / Success banners */}
+          {error && <div className={styles["auth-error"]}>{error}</div>}
+          {success && <div className={styles["auth-success"]}>{success}</div>}
+
+          {/* Step 1 — email entry */}
+          {!otpSent && (
+            <form className={styles["auth-form"]} onSubmit={handleSendOtp}>
+              <div className="form-group">
+                <label htmlFor="login-email">EMAIL</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
               </div>
 
-              <div className={styles["auth-divider"]}>
-                <span>or continue with email</span>
+              <div className="form-group">
+                <label htmlFor="login-password">PASSWORD / OTP</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  placeholder="Enter password or leave blank for OTP"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                />
               </div>
 
-              {/* Email Form */}
-              <form className={styles["auth-form"]} onSubmit={handleEmailSubmit}>
-                <div className={styles["form-group"]}>
-                  <label className={styles["form-label"]} htmlFor="email">
-                    Email Address
-                  </label>
-                  <input
-                    id="email"
-                    type="email"
-                    className={styles["form-input"]}
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <button type="submit" className={styles["auth-submit"]}>
-                  Send Login Code
-                </button>
-              </form>
-            </>
+              <button type="submit" className={styles["auth-submit"]} disabled={loading}>
+                {loading && <span className={styles["auth-loading"]} />}
+                {loading ? "SENDING..." : "LOGIN"}
+              </button>
+            </form>
           )}
 
-          {activeTab === "email" && showOTP && (
-            <>
-              {/* OTP Verification */}
-              <div style={{ textAlign: "center", marginBottom: "var(--space-xl)" }}>
-                <p style={{ fontSize: "var(--fs-body-sm)", color: "var(--text-secondary)", marginBottom: "var(--space-sm)" }}>
-                  We sent a 6-digit code to
-                </p>
-                <p style={{ fontSize: "var(--fs-body)", color: "var(--text-primary)", fontWeight: 600 }}>
-                  {email}
-                </p>
-              </div>
+          {/* Step 2 — OTP verification */}
+          {otpSent && (
+            <form className={styles["auth-form"]} onSubmit={handleLogin}>
+              <p style={{ fontSize: "10px", letterSpacing: "1px", color: "var(--text-dim)", textAlign: "center", marginBottom: "4px" }}>
+                CODE SENT TO
+              </p>
+              <p style={{ fontSize: "12px", color: "var(--text)", textAlign: "center", marginBottom: "4px", letterSpacing: "1px" }}>
+                {email}
+              </p>
 
               <div className={styles["otp-group"]}>
                 {otp.map((digit, i) => (
                   <input
                     key={i}
-                    id={`otp-${i}`}
+                    id={`login-otp-${i}`}
                     type="text"
                     inputMode="numeric"
                     maxLength={1}
                     className={styles["otp-input"]}
                     value={digit}
-                    onChange={(e) => handleOTPChange(i, e.target.value)}
-                    onKeyDown={(e) => handleOTPKeyDown(i, e)}
+                    onChange={(e) => handleOtpChange(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                    autoFocus={i === 0}
                   />
                 ))}
               </div>
 
-              <div style={{ marginTop: "var(--space-xl)" }}>
-                <button
-                  className={styles["auth-submit"]}
-                  disabled={otp.some((d) => !d)}
-                >
-                  Verify & Login
-                </button>
-              </div>
-
-              <div style={{ textAlign: "center", marginTop: "var(--space-lg)" }}>
-                <button
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "var(--primary-container)",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontSize: "var(--fs-body-sm)",
-                  }}
-                  onClick={() => setShowOTP(false)}
-                >
-                  ← Change email
-                </button>
-              </div>
-            </>
-          )}
-
-          {activeTab === "wallet" && (
-            <>
-              <p style={{
-                textAlign: "center",
-                color: "var(--text-secondary)",
-                fontSize: "var(--fs-body-sm)",
-                marginBottom: "var(--space-xl)",
-              }}>
-                Connect your Solana wallet to sign in instantly
-              </p>
-
-              <div className={styles["wallet-grid"]}>
-                <button className={styles["wallet-btn"]}>
-                  <span className={styles["wallet-icon"]}>👻</span>
-                  Phantom
-                </button>
-                <button className={styles["wallet-btn"]}>
-                  <span className={styles["wallet-icon"]}>☀️</span>
-                  Solflare
-                </button>
-                <button className={styles["wallet-btn"]}>
-                  <span className={styles["wallet-icon"]}>🎒</span>
-                  Backpack
-                </button>
-              </div>
-
-              <div className={styles["auth-divider"]}>
-                <span>or use WalletConnect</span>
-              </div>
-
-              <button className={styles["social-btn"]} style={{ width: "100%" }}>
-                <span className={styles["social-icon"]}>🔗</span>
-                WalletConnect
+              <button
+                type="submit"
+                className={styles["auth-submit"]}
+                disabled={loading || otp.some((d) => !d)}
+              >
+                {loading && <span className={styles["auth-loading"]} />}
+                {loading ? "VERIFYING..." : "LOGIN"}
               </button>
-            </>
+
+              <button
+                type="button"
+                className={styles["back-link"]}
+                onClick={() => { setOtpSent(false); setOtp(["", "", "", "", "", ""]); setError(""); setSuccess(""); }}
+              >
+                ← CHANGE EMAIL
+              </button>
+            </form>
           )}
+
+          {/* Divider */}
+          <div className={styles["auth-divider"]}>— OR CONTINUE WITH —</div>
+
+          {/* Social buttons 2x2 */}
+          <div className="social-login">
+            <button className="social-btn" type="button">
+              <span>🟢</span> Google
+            </button>
+            <button className="social-btn" type="button">
+              <span>✈️</span> Telegram
+            </button>
+            <button className="social-btn" type="button">
+              <span>𝕏</span> Twitter
+            </button>
+            <button className="social-btn" type="button">
+              <span>👻</span> Phantom
+            </button>
+          </div>
         </div>
 
         {/* Footer */}
         <div className={styles["auth-footer"]}>
-          <p>
-            Don&apos;t have an account?{" "}
-            <Link href="/register">Sign Up</Link>
-          </p>
+          No account?&nbsp;
+          <Link href="/register">REGISTER HERE</Link>
         </div>
       </div>
     </div>

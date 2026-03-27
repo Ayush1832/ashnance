@@ -19,6 +19,7 @@ model User {
   passwordHash    String?   // null for OAuth/wallet-only users
   avatarUrl       String?
   country         String?
+  role            UserRole  @default(USER)
 
   // Auth
   authProvider    AuthProvider @default(EMAIL)
@@ -70,6 +71,11 @@ enum VipTier {
   SPARK
   ACTIVE_ASH
   HOLY_FIRE
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }
 
 // ---- WALLET ----

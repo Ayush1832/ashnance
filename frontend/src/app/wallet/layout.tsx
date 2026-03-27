@@ -2,6 +2,6 @@
 
 import AppShell from "@/components/AppShell";
 
-export default function BurnLayout({ children }: { children: React.ReactNode }) {
+export default function WalletLayout({ children }: { children: React.ReactNode }) {
   return <AppShell>{children}</AppShell>;
 }

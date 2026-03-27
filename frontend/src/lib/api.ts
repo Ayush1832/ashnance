@@ -101,67 +101,99 @@ class ApiClient {
   // ---- AUTH ----
   auth = {
     register: (body: { email: string; username: string; password?: string; referralCode?: string }) =>
-      this.request<any>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+      this.request<unknown>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
 
     login: (body: { email: string; password: string }) =>
-      this.request<any>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
+      this.request<unknown>("/auth/login", { method: "POST", body: JSON.stringify(body) }),
 
     profile: () =>
-      this.request<any>("/auth/profile"),
+      this.request<unknown>("/auth/profile"),
 
     logout: (refreshToken: string) =>
-      this.request<any>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }),
+      this.request<unknown>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }),
+
+    sendOtp: (email: string) =>
+      this.request<unknown>("/auth/send-otp", { method: "POST", body: JSON.stringify({ email }) }),
+
+    verifyOtp: (email: string, otp: string) =>
+      this.request<unknown>("/auth/verify-otp", { method: "POST", body: JSON.stringify({ email, otp }) }),
   };
 
   // ---- BURN ----
   burn = {
     execute: (amount: number, useBoost: boolean = false) =>
-      this.request<any>("/burn", { method: "POST", body: JSON.stringify({ amount, useBoost }) }),
+      this.request<unknown>("/burn", { method: "POST", body: JSON.stringify({ amount, useBoost }) }),
 
     history: (page: number = 1, limit: number = 20) =>
-      this.request<any>(`/burn/history?page=${page}&limit=${limit}`),
+      this.request<unknown>(`/burn/history?page=${page}&limit=${limit}`),
 
     stats: () =>
-      this.request<any>("/burn/stats"),
+      this.request<unknown>("/burn/stats"),
   };
 
   // ---- WALLET ----
   wallet = {
     balance: () =>
-      this.request<any>("/wallet"),
+      this.request<unknown>("/wallet"),
 
     deposit: (amount: number, txHash: string) =>
-      this.request<any>("/wallet/deposit", { method: "POST", body: JSON.stringify({ amount, txHash }) }),
+      this.request<unknown>("/wallet/deposit", { method: "POST", body: JSON.stringify({ amount, txHash }) }),
 
     withdraw: (amount: number, address: string, twoFaCode: string) =>
-      this.request<any>("/wallet/withdraw", { method: "POST", body: JSON.stringify({ amount, address, twoFaCode }) }),
+      this.request<unknown>("/wallet/withdraw", { method: "POST", body: JSON.stringify({ amount, address, twoFaCode }) }),
 
     transactions: (type?: string, page: number = 1, limit: number = 20) =>
-      this.request<any>(`/wallet/transactions?page=${page}&limit=${limit}${type ? `&type=${type}` : ""}`),
+      this.request<unknown>(`/wallet/transactions?page=${page}&limit=${limit}${type ? `&type=${type}` : ""}`),
   };
 
   // ---- LEADERBOARD ----
   leaderboard = {
-    winners: () => this.request<any>("/leaderboard/winners"),
-    burners: () => this.request<any>("/leaderboard/burners"),
-    referrers: () => this.request<any>("/leaderboard/referrers"),
-    ash: () => this.request<any>("/leaderboard/ash"),
+    winners: () => this.request<unknown>("/leaderboard/winners"),
+    burners: () => this.request<unknown>("/leaderboard/burners"),
+    referrers: () => this.request<unknown>("/leaderboard/referrers"),
+    ash: () => this.request<unknown>("/leaderboard/ash"),
   };
 
   // ---- 2FA ----
   twoFA = {
     generate: () =>
-      this.request<any>("/2fa/generate", { method: "POST" }),
+      this.request<unknown>("/2fa/generate", { method: "POST" }),
 
     enable: (token: string) =>
-      this.request<any>("/2fa/enable", { method: "POST", body: JSON.stringify({ token }) }),
+      this.request<unknown>("/2fa/enable", { method: "POST", body: JSON.stringify({ token }) }),
 
     disable: (token: string) =>
-      this.request<any>("/2fa/disable", { method: "POST", body: JSON.stringify({ token }) }),
+      this.request<unknown>("/2fa/disable", { method: "POST", body: JSON.stringify({ token }) }),
+  };
+
+  // ---- VIP ----
+  vip = {
+    status: () => this.request<unknown>("/vip/status"),
+
+    subscribe: (tier: string) =>
+      this.request<unknown>("/vip/subscribe", { method: "POST", body: JSON.stringify({ tier }) }),
+
+    cancel: () =>
+      this.request<unknown>("/vip/cancel", { method: "POST" }),
+  };
+
+  // ---- ADMIN ----
+  admin = {
+    stats: () => this.request<unknown>("/admin/stats"),
+    prizes: () => this.request<unknown>("/admin/prizes"),
+    updatePrize: (tier: string, data: any) =>
+      this.request<unknown>(`/admin/prizes/${tier}`, { method: "PUT", body: JSON.stringify(data) }),
+    config: () => this.request<unknown>("/admin/config"),
+    updateConfig: (key: string, value: string) =>
+      this.request<unknown>(`/admin/config/${key}`, { method: "PUT", body: JSON.stringify({ value }) }),
+    users: (page: number = 1) => this.request<unknown>(`/admin/users?page=${page}`),
+    updateRole: (userId: string, role: string) =>
+      this.request<unknown>(`/admin/users/${userId}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
+    pool: () => this.request<unknown>("/admin/pool"),
   };
 
   // ---- HEALTH ----
-  health = () => this.request<any>("/health");
+  health = () => this.request<unknown>("/health");
 }
 
 export const api = new ApiClient();

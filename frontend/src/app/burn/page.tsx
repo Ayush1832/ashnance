@@ -1,313 +1,327 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import Link from "next/link";
-import dashStyles from "../dashboard/dashboard.module.css";
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/api";
 import styles from "./burn.module.css";
 
-type BurnState = "idle" | "burning" | "result";
-type ResultType = "win" | "lose";
+// ---- Types ----
+type BurnPhase = "idle" | "burning" | "result";
 
 interface BurnResult {
-  type: ResultType;
-  prize?: string;
-  amount: string;
-  message: string;
+  won: boolean;
+  prizeAmount?: number;
+  prizeLabel?: string;
+  ashEarned: number;
+  message?: string;
 }
 
-const presets = [
-  { amount: 4.99, label: "Standard", weight: "1.0x Weight" },
-  { amount: 10, label: "Double Down", weight: "2.5x Weight" },
-  { amount: 50, label: "High Roller", weight: "15x Weight" },
+interface UserStats {
+  totalBurns: number;
+  totalWon: number;
+  ashBalance: number;
+  usdcBalance: number;
+}
+
+// ---- Presets ----
+const PRESETS = [
+  { label: "4.99 USDC",  amount: 4.99,  sub: "1.0x WEIGHT" },
+  { label: "10 USDC",    amount: 10,    sub: "2.5x WEIGHT" },
+  { label: "50 USDC",    amount: 50,    sub: "15x WEIGHT"  },
+  { label: "CUSTOM",     amount: 0,     sub: "YOU CHOOSE"  },
 ];
 
-const navItems = [
-  { icon: "📊", label: "Dashboard", href: "/dashboard" },
-  { icon: "🔥", label: "Burn Now", href: "/burn", active: true },
-  { icon: "💳", label: "Wallet", href: "/wallet" },
-  { icon: "👥", label: "Referrals", href: "/referrals" },
-  { icon: "🏆", label: "Leaderboard", href: "/leaderboard" },
-  { icon: "📜", label: "Transactions", href: "/transactions" },
+const BURN_MSGS = [
+  "THE FIRE REVEALS YOUR FATE...",
+  "FEEDING THE FLAMES...",
+  "THE ORACLE SPEAKS...",
+  "IGNITING THE CHAIN...",
 ];
 
-const burnMessages = [
-  "The fire reveals your fate...",
-  "Feeding the flames...",
-  "The VRF oracle speaks...",
-  "Igniting the blockchain...",
-];
+function calcWeight(amount: number): number {
+  if (amount < 4.99) return 0;
+  return Math.floor(amount / 4.99 * 10) / 10;
+}
 
-const winMessages = [
-  "The flames have blessed you! 🔥",
-  "Fortune favors the bold burner!",
-  "The ash reveals a prize! 🏆",
-];
-
-const loseMessages = [
-  "The flames consumed your USDC, but left you ASH tokens as a gift.",
-  "Not a prize this time, but the fire rewards patience with ASH.",
-  "Every burn makes you stronger. ASH earned for your next attempt.",
-];
+function calcWinChance(weight: number): number {
+  return Math.min(25, weight * 1.6);
+}
 
 export default function BurnPage() {
-  const [selectedPreset, setSelectedPreset] = useState(0);
-  const [customAmount, setCustomAmount] = useState("");
-  const [useCustom, setUseCustom] = useState(false);
-  const [burnState, setBurnState] = useState<BurnState>("idle");
-  const [result, setResult] = useState<BurnResult | null>(null);
-  const [burningMessage, setBurningMessage] = useState("");
+  const [presetIdx,    setPresetIdx]    = useState(0);
+  const [customAmt,    setCustomAmt]    = useState("");
+  const [useBoost,     setUseBoost]     = useState(false);
+  const [phase,        setPhase]        = useState<BurnPhase>("idle");
+  const [result,       setResult]       = useState<BurnResult | null>(null);
+  const [burnMsg,      setBurnMsg]      = useState("");
+  const [stats,        setStats]        = useState<UserStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
 
-  const currentAmount = useCustom
-    ? parseFloat(customAmount) || 0
-    : presets[selectedPreset].amount;
+  // Load user stats on mount
+  const loadStats = useCallback(async () => {
+    try {
+      setStatsLoading(true);
+      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      if (token) api.setToken(token);
 
-  const calculateWeight = useCallback((amount: number) => {
-    if (amount <= 0) return 0;
-    return Math.floor(amount / 4.99);
+      const [profileRes, walletRes] = await Promise.allSettled([
+        api.auth.profile(),
+        api.wallet.balance(),
+      ]);
+
+      let merged: Partial<UserStats> = {};
+      if (profileRes.status === "fulfilled") {
+        const d = (profileRes.value as { data?: UserStats }).data ?? (profileRes.value as UserStats);
+        merged = { ...merged, totalBurns: d.totalBurns, totalWon: d.totalWon };
+      }
+      if (walletRes.status === "fulfilled") {
+        const d = (walletRes.value as { data?: UserStats }).data ?? (walletRes.value as UserStats);
+        merged = { ...merged, usdcBalance: d.usdcBalance, ashBalance: d.ashBalance };
+      }
+      setStats(merged as UserStats);
+    } catch {
+      // stats are cosmetic — ignore errors
+    } finally {
+      setStatsLoading(false);
+    }
   }, []);
 
-  const weight = calculateWeight(currentAmount);
+  useEffect(() => { loadStats(); }, [loadStats]);
 
-  const handleBurn = () => {
-    if (currentAmount < 4.99) return;
+  // Derive current burn amount
+  const isCustom = presetIdx === 3;
+  const amount = isCustom ? (parseFloat(customAmt) || 0) : PRESETS[presetIdx].amount;
+  const weight = calcWeight(amount);
+  const winPct = calcWinChance(weight);
+  const fillPct = Math.min(100, weight * 6);
+  const canBurn = amount >= 4.99 && phase === "idle";
 
-    setBurnState("burning");
-    setBurningMessage(burnMessages[Math.floor(Math.random() * burnMessages.length)]);
+  async function handleBurn() {
+    if (!canBurn) return;
+    setError(null);
+    setPhase("burning");
+    setBurnMsg(BURN_MSGS[Math.floor(Math.random() * BURN_MSGS.length)]);
 
-    // Simulate VRF delay (2-4 seconds)
-    const delay = 2000 + Math.random() * 2000;
+    try {
+      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      if (token) api.setToken(token);
 
-    setTimeout(() => {
-      // Simulate a random result
+      // Call real API; fall back to simulated result on network error
+      const res = await api.burn.execute(amount, useBoost) as { data?: BurnResult } & BurnResult;
+      const data: BurnResult = res.data ?? res;
+      setResult(data);
+    } catch (e: unknown) {
+      // Simulated fallback so the UI is still demonstrable
       const roll = Math.random();
-      let burnResult: BurnResult;
-
-      if (roll < 0.01) {
-        burnResult = {
-          type: "win",
-          prize: "🏆 Jackpot",
-          amount: "2,500 USDC",
-          message: winMessages[Math.floor(Math.random() * winMessages.length)],
-        };
-      } else if (roll < 0.04) {
-        burnResult = {
-          type: "win",
-          prize: "🔥 Big Prize",
-          amount: "500 USDC",
-          message: winMessages[Math.floor(Math.random() * winMessages.length)],
-        };
+      let sim: BurnResult;
+      if (roll < 0.04) {
+        sim = { won: true, prizeAmount: 500,  prizeLabel: "BIG PRIZE",    ashEarned: 100, message: "THE ASH REVEALS A PRIZE!" };
       } else if (roll < 0.12) {
-        burnResult = {
-          type: "win",
-          prize: "✨ Medium Prize",
-          amount: "200 USDC",
-          message: winMessages[Math.floor(Math.random() * winMessages.length)],
-        };
+        sim = { won: true, prizeAmount: 200,  prizeLabel: "MEDIUM PRIZE", ashEarned: 50,  message: "FORTUNE FAVORS THE BOLD!" };
       } else if (roll < 0.20) {
-        burnResult = {
-          type: "win",
-          prize: "💫 Small Prize",
-          amount: "50 USDC",
-          message: winMessages[Math.floor(Math.random() * winMessages.length)],
-        };
+        sim = { won: true, prizeAmount: 50,   prizeLabel: "SMALL PRIZE",  ashEarned: 25,  message: "A SPARK OF LUCK!" };
       } else {
-        const ashEarned = 200 + Math.floor(Math.random() * 300);
-        burnResult = {
-          type: "lose",
-          amount: `${ashEarned} ASH`,
-          message: loseMessages[Math.floor(Math.random() * loseMessages.length)],
-        };
+        const ash = 200 + Math.floor(Math.random() * 300);
+        sim = { won: false, ashEarned: ash, message: "THE FIRE CONSUMED YOUR USDC BUT LEFT ASH TOKENS AS A GIFT." };
       }
+      const errMsg = e instanceof Error ? e.message : "";
+      if (errMsg) setError(`Note: using offline result (${errMsg})`);
+      setResult(sim);
+    } finally {
+      setPhase("result");
+      await loadStats();
+    }
+  }
 
-      setResult(burnResult);
-      setBurnState("result");
-    }, delay);
-  };
-
-  const resetBurn = () => {
-    setBurnState("idle");
+  function resetBurn() {
+    setPhase("idle");
     setResult(null);
-  };
+    setError(null);
+  }
 
   return (
-    <div className={styles["burn-page"]}>
-      {/* ====== SIDEBAR ====== */}
-      <aside className={styles["burn-sidebar"]}>
-        <div className={dashStyles["sidebar-header"]}>
-          <Link href="/" className={dashStyles["sidebar-logo"]}>
-            <div className={dashStyles["sidebar-logo-icon"]}>🔥</div>
-            <span>Ashnance</span>
-          </Link>
+    <>
+      {/* ===== DASH HEADER ===== */}
+      <div className="dash-header">
+        <div className="dash-title">BURN <span>NOW</span></div>
+        <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px" }}>
+          BALANCE: <span style={{ color: "var(--usdc-green)" }}>
+            ${(stats?.usdcBalance ?? 0).toFixed(2)} USDC
+          </span>
         </div>
+      </div>
 
-        <nav className={dashStyles["sidebar-nav"]}>
-          <div className={dashStyles["nav-section"]}>
-            <p className={dashStyles["nav-section-label"]}>Main</p>
-            {navItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className={`${dashStyles["nav-item"]} ${item.active ? dashStyles.active : ""}`}
-              >
-                <span className={dashStyles["nav-icon"]}>{item.icon}</span>
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </nav>
+      {error && (
+        <div className={styles.loadErr}>⚠ {error}</div>
+      )}
 
-        <div className={dashStyles["sidebar-footer"]}>
-          <button className={`${dashStyles["sidebar-cta"]} ${dashStyles.vip}`}>
-            👑 Holy Fire VIP
-          </button>
-        </div>
-      </aside>
+      <div className={styles.burnLayout}>
+        {/* ===== LEFT — MAIN BURN AREA ===== */}
+        <div>
+          {/* Amount Selection */}
+          <div className="panel-box">
+            <div className="panel-title">SELECT AMOUNT</div>
 
-      {/* ====== MAIN ====== */}
-      <main className={styles["burn-main"]}>
-        <div className={styles["burn-content"]}>
-          <h1 className={styles["burn-page-title"]}>
-            🔥 Burn Now
-          </h1>
-          <p className={styles["burn-page-subtitle"]}>
-            Choose your burn amount and test your luck. Every burn is verified on-chain via VRF.
-          </p>
-
-          {/* Burn Card */}
-          <div className={`glass-card ${styles["burn-card"]}`}>
-            {/* Amount Selection */}
-            <p className={styles["burn-section-label"]}>Select Amount</p>
-            <div className={styles["amount-presets"]}>
-              {presets.map((preset, i) => (
+            <div className={styles.amountGrid}>
+              {PRESETS.map((p, i) => (
                 <button
                   key={i}
-                  className={`${styles["preset-btn"]} ${!useCustom && selectedPreset === i ? styles.selected : ""}`}
-                  onClick={() => { setSelectedPreset(i); setUseCustom(false); }}
+                  className={`${styles.amountBtn}${presetIdx === i ? " " + styles.selected : ""}`}
+                  onClick={() => { setPresetIdx(i); if (i !== 3) setCustomAmt(""); }}
                 >
-                  <span className={styles["preset-amount"]}>${preset.amount}</span>
-                  <span className={styles["preset-label"]}>{preset.label}</span>
-                  <span className={styles["preset-weight"]}>{preset.weight}</span>
+                  <span className={styles.amountBig}>{p.label}</span>
+                  <span className={styles.amountSub}>{p.sub}</span>
                 </button>
               ))}
             </div>
 
-            {/* Custom Amount */}
-            <div className={styles["custom-amount"]}>
-              <label>Custom:</label>
-              <input
-                type="number"
-                className={styles["custom-input"]}
-                placeholder="Enter amount"
-                min="4.99"
-                step="0.01"
-                value={customAmount}
-                onChange={(e) => { setCustomAmount(e.target.value); setUseCustom(true); }}
-                onFocus={() => setUseCustom(true)}
-              />
-              <span>USDC</span>
-            </div>
+            {/* Custom input */}
+            {isCustom && (
+              <div className={styles.customRow}>
+                <label>AMOUNT</label>
+                <input
+                  type="number"
+                  min="4.99"
+                  step="0.01"
+                  placeholder="0.00"
+                  className={styles.customInput}
+                  value={customAmt}
+                  onChange={(e) => setCustomAmt(e.target.value)}
+                  autoFocus
+                />
+                <span className={styles.customUnit}>USDC</span>
+              </div>
+            )}
 
             {/* Luck Meter */}
-            <div className={styles["luck-meter-section"]}>
-              <p className={styles["burn-section-label"]}>Luck Meter</p>
-              <div className={styles["luck-meter-header"]}>
-                <span className={styles["luck-meter-label"]}>Win Probability</span>
-                <span className={styles["luck-meter-value"]}>
-                  {Math.min(20, weight * 1.5).toFixed(1)}%
-                </span>
+            <div className={styles.luckSection}>
+              <div className={styles.luckLabel}>
+                ⚡ LUCK MULTIPLIER (WEIGHT)
               </div>
-              <div className={styles["luck-meter-bar"]}>
-                <div
-                  className={styles["luck-meter-fill"]}
-                  style={{ width: `${Math.min(100, weight * 7.5)}%` }}
-                />
+              <div className={styles.luckBar}>
+                <div className={styles.luckFill} style={{ width: `${fillPct}%` }} />
               </div>
-              <div className={styles["luck-info"]}>
-                <span>Higher amounts = better odds</span>
-                <span>VRF verified ✓</span>
+              <div className={styles.luckMeta}>
+                <span style={{ color: "var(--fire-orange)" }}>{weight.toFixed(1)}x Weight</span>
+                {" → "}
+                <span>~{winPct.toFixed(1)}% Win Chance</span>
               </div>
             </div>
 
-            {/* Weight Breakdown */}
-            <p className={styles["burn-section-label"]}>Weight Breakdown</p>
-            <div className={styles["weight-breakdown"]}>
-              <div className={styles["weight-item"]}>
-                <span className={styles["weight-label"]}>Base Weight</span>
-                <span className={styles["weight-val"]}>{weight}</span>
-              </div>
-              <div className={styles["weight-item"]}>
-                <span className={styles["weight-label"]}>VIP Bonus</span>
-                <span className={styles["weight-val"]}>+0.0</span>
-              </div>
-              <div className={styles["weight-item"]}>
-                <span className={styles["weight-label"]}>ASH Boost</span>
-                <span className={styles["weight-val"]}>+0.0</span>
-              </div>
-              <div className={styles["weight-item"]}>
-                <span className={styles["weight-label"]}>Streak Bonus</span>
-                <span className={styles["weight-val"]}>+0.0</span>
-              </div>
-            </div>
-
-            <div className={styles["weight-total"]}>
-              <span className={styles["total-label"]}>Total Weight</span>
-              <span className={styles["total-val"]}>{weight}.0</span>
-            </div>
-
-            {/* Burn Button */}
-            <div className={styles["burn-btn-container"]}>
+            {/* Circular Burn Button */}
+            <div className={styles.burnBtnWrap}>
               <button
-                className={styles["burn-mega-btn"]}
+                className={styles.burnCircle}
                 onClick={handleBurn}
-                disabled={currentAmount < 4.99}
+                disabled={!canBurn}
               >
-                🔥 BURN {currentAmount >= 4.99 ? `$${currentAmount.toFixed(2)}` : ""} NOW
+                <span className={styles.burnCircleEmoji}>🔥</span>
+                <span className={styles.burnCircleLabel}>BURN</span>
+                {amount >= 4.99 && (
+                  <span className={styles.burnCircleAmt}>${amount.toFixed(2)}</span>
+                )}
               </button>
             </div>
 
-            <p className={styles["burn-disclaimer"]}>
-              Balance: $1,245.50 USDC • Min burn: $4.99 USDC
-            </p>
-          </div>
-        </div>
-      </main>
-
-      {/* ====== BURNING ANIMATION OVERLAY ====== */}
-      {burnState === "burning" && (
-        <div className={styles["burning-overlay"]}>
-          <div className={styles["burning-animation"]}>🔥</div>
-          <p className={styles["burning-text"]}>{burningMessage}</p>
-          <p className={styles["burning-sub"]}>
-            Verifying on Solana blockchain...
-          </p>
-        </div>
-      )}
-
-      {/* ====== RESULT OVERLAY ====== */}
-      {burnState === "result" && result && (
-        <div className={styles["result-overlay"]}>
-          <div className={`glass-card ${styles["result-card"]}`}>
-            <div className={styles["result-emoji"]}>
-              {result.type === "win" ? "🏆" : "🌫️"}
-            </div>
-            <h2 className={`${styles["result-title"]} ${styles[result.type]}`}>
-              {result.type === "win" ? `${result.prize}` : "Better Luck Next Time"}
-            </h2>
-            <div className={`${styles["result-amount"]} ${result.type === "win" ? styles["win-val"] : styles["ash-val"]}`}>
-              {result.type === "win" ? `+${result.amount}` : `+${result.amount}`}
-            </div>
-            <p className={styles["result-message"]}>{result.message}</p>
-            <div className={styles["result-actions"]}>
-              <button className="btn btn-primary btn-lg" onClick={resetBurn}>
-                🔥 Burn Again
-              </button>
-              <button className="btn btn-secondary btn-lg" onClick={resetBurn}>
-                Back to Dashboard
-              </button>
+            <div className={styles.disclaimer}>
+              MIN BURN: $4.99 USDC &nbsp;•&nbsp; VRF VERIFIED ON SOLANA
             </div>
           </div>
         </div>
+
+        {/* ===== RIGHT — SIDE STATS ===== */}
+        <div className={styles.sidePanel}>
+          <div className="panel-box">
+            <div className="panel-title">YOUR STATS</div>
+            {statsLoading ? (
+              <div style={{ color: "var(--text-dim)", fontSize: "10px", letterSpacing: "2px" }}>LOADING...</div>
+            ) : (
+              <>
+                <div className={styles.sideStat}>
+                  <span className={styles.sideStatLabel}>TOTAL BURNS</span>
+                  <span className={`${styles.sideStatVal} ${styles.sideStatFire}`}>{stats?.totalBurns ?? 0}</span>
+                </div>
+                <div className={styles.sideStat}>
+                  <span className={styles.sideStatLabel}>TOTAL WON</span>
+                  <span className={`${styles.sideStatVal} ${styles.sideStatGold}`}>${(stats?.totalWon ?? 0).toFixed(2)}</span>
+                </div>
+                <div className={styles.sideStat}>
+                  <span className={styles.sideStatLabel}>ASH EARNED</span>
+                  <span className={`${styles.sideStatVal} ${styles.sideStatAsh}`}>{(stats?.ashBalance ?? 0).toLocaleString()}</span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ASH Boost */}
+          <div className={styles.ashBoostPanel}>
+            <div className={styles.ashBoostTitle}>🔥 BOOST WITH ASH</div>
+            <div className={styles.ashBoostDesc}>
+              USE YOUR ASH TOKENS TO INCREASE YOUR WEIGHT MULTIPLIER AND BOOST YOUR WIN CHANCE.
+              COSTS 100 ASH PER BURN.
+            </div>
+            <div className={styles.ashBoostRow}>
+              <button
+                className={`${styles.ashToggle}${useBoost ? " " + styles.on : ""}`}
+                onClick={() => setUseBoost(!useBoost)}
+                aria-label="Toggle ASH boost"
+              />
+              <span className={styles.ashToggleLabel}>
+                ASH BOOST {useBoost ? "ON (+0.5x WEIGHT)" : "OFF"}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== BURNING OVERLAY ===== */}
+      {phase === "burning" && (
+        <div className={styles.burningOverlay}>
+          <div className={styles.burningEmoji}>🔥</div>
+          <div className={styles.burningText}>{burnMsg}</div>
+          <div className={styles.burningSub}>VERIFYING ON SOLANA BLOCKCHAIN...</div>
+        </div>
       )}
-    </div>
+
+      {/* ===== RESULT OVERLAY ===== */}
+      {phase === "result" && result && (
+        <div className={styles.resultOverlay}>
+          <div className={styles.resultCard}>
+            <div className={styles.resultEmoji}>
+              {result.won ? "🏆" : "💨"}
+            </div>
+
+            <div className={`${styles.resultTitle} ${result.won ? styles.resultTitleWin : styles.resultTitleLose}`}>
+              {result.won ? "WIN!" : "BURNED"}
+            </div>
+
+            {result.won && result.prizeAmount != null && (
+              <div className={`${styles.resultAmt} ${styles.resultAmtWin}`}>
+                +${result.prizeAmount.toFixed(2)} USDC
+              </div>
+            )}
+
+            {!result.won && (
+              <div className={`${styles.resultAmt} ${styles.resultAmtAsh}`}>
+                +{result.ashEarned} ASH
+              </div>
+            )}
+
+            {result.message && (
+              <div className={styles.resultMsg}>{result.message.toUpperCase()}</div>
+            )}
+
+            <div className={styles.resultActions}>
+              <button className="btn btn-fire" onClick={resetBurn}>
+                🔥 BURN AGAIN
+              </button>
+              <button className="btn btn-ghost" onClick={resetBurn}>
+                CLOSE
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

@@ -1,0 +1,120 @@
+.shareSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+/* Share Card */
+.shareCard {
+  width: 320px;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+.winCard {
+  background: linear-gradient(135deg, #1a1a2e, #16213e, #0f3460);
+  border: 2px solid rgba(255, 215, 0, 0.3);
+}
+.loseCard {
+  background: linear-gradient(135deg, #1a1a1a, #2d2d2d, #1a1a2e);
+  border: 2px solid rgba(139, 69, 19, 0.3);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+}
+.brandLogo {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--fs-body-sm);
+  color: var(--primary-container);
+}
+.cardBadge {
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.winCard .cardBadge {
+  background: rgba(255, 215, 0, 0.15);
+  color: #FFD700;
+}
+.loseCard .cardBadge {
+  background: rgba(139, 69, 19, 0.15);
+  color: #cd853f;
+}
+
+.cardBody {
+  text-align: center;
+  padding: var(--space-xl) var(--space-lg);
+}
+.playerName {
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: var(--space-sm);
+}
+.prizeAmount {
+  font-family: var(--font-display);
+  font-size: 2.5rem;
+  font-weight: 900;
+  color: #FFD700;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+  margin-bottom: var(--space-xs);
+}
+.ashAmount {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--primary-container);
+  margin-bottom: var(--space-xs);
+}
+.prizeLabel {
+  font-size: var(--fs-body-sm);
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: var(--space-lg);
+}
+.burnDetails {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-lg);
+  font-size: var(--fs-caption);
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.cardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-sm) var(--space-lg);
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Share Buttons */
+.shareButtons {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.shareBtn {
+  padding: 0.5rem 1.2rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+.shareBtn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
