@@ -61,7 +61,7 @@ export default function BurnPage() {
   const loadStats = useCallback(async () => {
     try {
       setStatsLoading(true);
-      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (token) api.setToken(token);
 
       const [profileRes, walletRes] = await Promise.allSettled([
@@ -103,7 +103,7 @@ export default function BurnPage() {
     setBurnMsg(BURN_MSGS[Math.floor(Math.random() * BURN_MSGS.length)]);
 
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (token) api.setToken(token);
 
       // Call real API; fall back to simulated result on network error

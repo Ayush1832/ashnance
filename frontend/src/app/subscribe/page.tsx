@@ -90,7 +90,7 @@ export default function SubscribePage() {
   const [msg, setMsg]             = useState("");
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     fetch(`${API}/api/vip/status`, { headers })
@@ -101,14 +101,14 @@ export default function SubscribePage() {
   }, []);
 
   function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
     router.push("/");
   }
 
   async function handleSubscribe() {
     setSubLoading(true);
     setMsg("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {

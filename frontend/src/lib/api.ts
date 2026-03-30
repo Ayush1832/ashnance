@@ -109,6 +109,12 @@ class ApiClient {
     profile: () =>
       this.request<unknown>("/auth/profile"),
 
+    updateProfile: (body: { username?: string; avatarUrl?: string; privacyMode?: boolean; country?: string }) =>
+      this.request<unknown>("/auth/profile", { method: "PUT", body: JSON.stringify(body) }),
+
+    changePassword: (currentPassword: string, newPassword: string) =>
+      this.request<unknown>("/auth/password", { method: "PUT", body: JSON.stringify({ currentPassword, newPassword }) }),
+
     logout: (refreshToken: string) =>
       this.request<unknown>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }) }),
 
@@ -144,6 +150,15 @@ class ApiClient {
 
     transactions: (type?: string, page: number = 1, limit: number = 20) =>
       this.request<unknown>(`/wallet/transactions?page=${page}&limit=${limit}${type ? `&type=${type}` : ""}`),
+
+    whitelist: () =>
+      this.request<unknown>("/wallet/whitelist"),
+
+    addWhitelist: (address: string, label?: string) =>
+      this.request<unknown>("/wallet/whitelist", { method: "POST", body: JSON.stringify({ address, label }) }),
+
+    removeWhitelist: (id: string) =>
+      this.request<unknown>(`/wallet/whitelist/${id}`, { method: "DELETE" }),
   };
 
   // ---- LEADERBOARD ----

@@ -74,4 +74,36 @@ router.get("/transactions", authenticate, async (req: AuthRequest, res: Response
   }
 });
 
+// GET /api/wallet/whitelist — Get whitelisted addresses
+router.get("/whitelist", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await WalletService.getWhitelistedAddresses(req.user!.userId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/wallet/whitelist — Add whitelist address
+router.post("/whitelist", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { address, label } = req.body;
+    if (!address) return next(new BadRequestError("Address is required"));
+    const result = await WalletService.addWhitelistedAddress(req.user!.userId, address, label);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/wallet/whitelist/:id — Remove whitelist address
+router.delete("/whitelist/:id", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    await WalletService.removeWhitelistedAddress(req.user!.userId, req.params.id);
+    res.json({ success: true, message: "Address removed" });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

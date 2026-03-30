@@ -80,7 +80,7 @@ export default function DashboardPage() {
       setLoading(true);
       setError(null);
 
-      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (token) api.setToken(token);
 
       const [profileRes, walletRes, txRes] = await Promise.allSettled([

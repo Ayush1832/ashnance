@@ -286,7 +286,7 @@ export default function WalletPage() {
   // Load wallet balance
   const loadWallet = useCallback(async () => {
     try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (token) api.setToken(token);
 
       const res = await api.wallet.balance() as { data?: WalletData } & WalletData;

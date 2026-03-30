@@ -60,7 +60,7 @@ export default function AdminPage() {
   const [editVals, setEditVals]       = useState<Partial<Prize>>({});
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -95,7 +95,7 @@ export default function AdminPage() {
 
   async function handleSavePool() {
     setSaveMsg("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
@@ -110,7 +110,7 @@ export default function AdminPage() {
   }
 
   async function handleSavePrize(i: number) {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const updated = { ...prizes[i], ...editVals };

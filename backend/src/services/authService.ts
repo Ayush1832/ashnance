@@ -3,11 +3,13 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
+import { BlockchainService } from "./blockchainService";
 import {
   ConflictError,
   UnauthorizedError,
   NotFoundError,
   AccountLockedError,
+  BadRequestError,
 } from "../utils/errors";
 
 export class AuthService {
@@ -48,8 +50,8 @@ export class AuthService {
       }
     }
 
-    // Generate unique deposit address (placeholder — in prod, use Solana keypair)
-    const depositAddress = `ash_${crypto.randomBytes(20).toString("hex")}`;
+    // Generate unique Solana deposit address
+    const depositAddress = await BlockchainService.generateDepositAddress();
 
     // Create user + wallet in transaction
     const user = await prisma.$transaction(async (tx: any) => {
@@ -262,6 +264,56 @@ export class AuthService {
       },
       createdAt: user.createdAt,
     };
+  }
+
+  /**
+   * Update user profile (username, avatarUrl, privacyMode, country)
+   */
+  static async updateProfile(
+    userId: string,
+    data: { username?: string; avatarUrl?: string; privacyMode?: boolean; country?: string }
+  ) {
+    if (data.username) {
+      const conflict = await prisma.user.findFirst({
+        where: { username: data.username, NOT: { id: userId } },
+      });
+      if (conflict) throw new ConflictError("Username already taken");
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(data.username !== undefined && { username: data.username }),
+        ...(data.avatarUrl !== undefined && { avatarUrl: data.avatarUrl }),
+        ...(data.privacyMode !== undefined && { privacyMode: data.privacyMode }),
+        ...(data.country !== undefined && { country: data.country }),
+      },
+      select: {
+        id: true, email: true, username: true, avatarUrl: true,
+        privacyMode: true, isVip: true, vipTier: true,
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Change password (requires current password verification)
+   */
+  static async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      throw new BadRequestError("No password set. Use OTP login.");
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isValid) throw new UnauthorizedError("Current password is incorrect");
+
+    const newHash = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newHash },
+    });
   }
 
   // ---- Helpers ----

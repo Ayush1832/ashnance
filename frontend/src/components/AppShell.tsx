@@ -26,7 +26,8 @@ export default function AppShell({ children, username = "BURNER", isVip = false 
 
   function handleLogout() {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("ash_token");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
     }
     router.push("/");
   }

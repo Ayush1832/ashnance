@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction, Router } from "express";
 import { AuthService } from "../services/authService";
-import { registerSchema, loginSchema, otpVerifySchema } from "../utils/validators";
+import { registerSchema, loginSchema, updateProfileSchema } from "../utils/validators";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { BadRequestError, UnauthorizedError } from "../utils/errors";
 import { EmailService } from "../services/emailService";
@@ -121,6 +121,37 @@ router.get("/profile", authenticate, async (req: AuthRequest, res: Response, nex
   try {
     const profile = await AuthService.getProfile(req.user!.userId);
     res.json({ success: true, data: profile });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT /api/auth/profile — Update profile (username, privacy, avatar)
+router.put("/profile", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const data = updateProfileSchema.parse(req.body);
+    const updated = await AuthService.updateProfile(req.user!.userId, data);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return next(new BadRequestError(error.errors[0].message));
+    }
+    next(error);
+  }
+});
+
+// PUT /api/auth/password — Change password
+router.put("/password", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      throw new BadRequestError("Both current and new password are required");
+    }
+    if (newPassword.length < 8) {
+      throw new BadRequestError("New password must be at least 8 characters");
+    }
+    await AuthService.changePassword(req.user!.userId, currentPassword, newPassword);
+    res.json({ success: true, message: "Password updated successfully" });
   } catch (error) {
     next(error);
   }

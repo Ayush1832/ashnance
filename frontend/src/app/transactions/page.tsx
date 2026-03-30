@@ -80,7 +80,7 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (!token) return;
     setLoading(true);
     const params = filter !== "ALL" ? `?type=${filter}` : "";
@@ -94,7 +94,7 @@ export default function TransactionsPage() {
   }, [filter]);
 
   function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
     router.push("/");
   }
 

@@ -62,7 +62,7 @@ export default function SettingsPage() {
   ]);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     if (!token) return;
     fetch(`${API}/api/auth/profile`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -77,13 +77,13 @@ export default function SettingsPage() {
   }, []);
 
   function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
     router.push("/");
   }
 
   async function handleSaveProfile() {
     setSaveMsg("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
@@ -100,7 +100,7 @@ export default function SettingsPage() {
   }
 
   async function handleEnable2FA() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
@@ -122,7 +122,7 @@ export default function SettingsPage() {
   }
 
   async function handleGenerate2FA() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
@@ -136,7 +136,7 @@ export default function SettingsPage() {
   async function handleChangePass() {
     setPassMsg("");
     if (newPass !== confirmPass) { setPassMsg("PASSWORDS DO NOT MATCH"); return; }
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {

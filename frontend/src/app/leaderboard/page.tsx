@@ -96,7 +96,7 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     setLoading(true);
-    const token = typeof window !== "undefined" ? localStorage.getItem("ash_token") : null;
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -117,7 +117,7 @@ export default function LeaderboardPage() {
   }, [activeTab]);
 
   function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("ash_token");
+    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
     router.push("/");
   }
 

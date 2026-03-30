@@ -75,9 +75,11 @@ export default function LoginPage() {
         body: JSON.stringify({ email, otp: otpCode, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Login failed");
-      if (data.token) {
-        localStorage.setItem("ash_token", data.token);
+      if (!res.ok) throw new Error(data.error || data.message || "Login failed");
+      const tokens = data.data;
+      if (tokens?.accessToken) {
+        localStorage.setItem("accessToken", tokens.accessToken);
+        localStorage.setItem("refreshToken", tokens.refreshToken || "");
       }
       window.location.href = "/dashboard";
     } catch (err: unknown) {

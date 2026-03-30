@@ -4,7 +4,9 @@ import {
   BadRequestError,
   NotFoundError,
   UnauthorizedError,
+  ConflictError,
 } from "../utils/errors";
+import { BlockchainService } from "./blockchainService";
 import speakeasy from "speakeasy";
 
 export class WalletService {
@@ -170,6 +172,51 @@ export class WalletService {
       transactionId: result.transaction.id,
       status: "PROCESSING",
     };
+  }
+
+  /**
+   * Get whitelisted withdrawal addresses
+   */
+  static async getWhitelistedAddresses(userId: string) {
+    return prisma.whitelistedAddress.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  /**
+   * Add a new whitelist address
+   */
+  static async addWhitelistedAddress(userId: string, address: string, label?: string) {
+    if (!BlockchainService.validateSolanaAddress(address)) {
+      throw new BadRequestError("Invalid Solana address");
+    }
+
+    const existing = await prisma.whitelistedAddress.findFirst({
+      where: { userId, address },
+    });
+    if (existing) throw new ConflictError("Address already whitelisted");
+
+    return prisma.whitelistedAddress.create({
+      data: {
+        userId,
+        address,
+        label: label || null,
+        isVerified: false, // requires admin approval in production
+      },
+    });
+  }
+
+  /**
+   * Remove a whitelist address
+   */
+  static async removeWhitelistedAddress(userId: string, addressId: string) {
+    const addr = await prisma.whitelistedAddress.findFirst({
+      where: { id: addressId, userId },
+    });
+    if (!addr) throw new NotFoundError("Address not found");
+
+    await prisma.whitelistedAddress.delete({ where: { id: addressId } });
   }
 
   /**
