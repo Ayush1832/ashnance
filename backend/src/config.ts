@@ -39,8 +39,9 @@ export const config = {
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
   },
 
-  // Frontend
+  // Frontend / Backend URLs
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
+  backendUrl:  process.env.BACKEND_URL  || "http://localhost:4000",
 
   // Redis
   redisUrl: process.env.REDIS_URL || "redis://localhost:6379",

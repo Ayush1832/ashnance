@@ -49,16 +49,18 @@ function txAmtClass(type: string) {
   return (type === "win" || type === "deposit" || type === "referral") ? "pos" : "neg";
 }
 
+const n = (v: unknown) => Number(v ?? 0);
+
 function fmtAmt(tx: Transaction): string {
   switch (tx.type) {
-    case "win":      return `+$${(tx.prizeAmount ?? 0).toFixed(2)} USDC`;
-    case "deposit":  return `+$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
-    case "burn":     return `-$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
-    case "withdraw": return `-$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
-    case "referral": return `+$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+    case "win":      return `+$${n(tx.prizeAmount).toFixed(2)} USDC`;
+    case "deposit":  return `+$${n(tx.amountUsdc).toFixed(2)} USDC`;
+    case "burn":     return `-$${n(tx.amountUsdc).toFixed(2)} USDC`;
+    case "withdraw": return `-$${n(tx.amountUsdc).toFixed(2)} USDC`;
+    case "referral": return `+$${n(tx.amountUsdc).toFixed(2)} USDC`;
     default:
       if (tx.amountAsh) return `+${tx.amountAsh} ASH`;
-      return `$${(tx.amountUsdc ?? 0).toFixed(2)} USDC`;
+      return `$${n(tx.amountUsdc).toFixed(2)} USDC`;
   }
 }
 
@@ -223,7 +225,7 @@ function WithdrawModal({
                 required
               />
               <div style={{ fontSize: "9px", color: "var(--text-dim)", marginTop: "4px", letterSpacing: "1px" }}>
-                AVAILABLE: ${usdcBalance.toFixed(2)} USDC &nbsp;•&nbsp; MIN: $10.00
+                AVAILABLE: ${Number(usdcBalance).toFixed(2)} USDC &nbsp;•&nbsp; MIN: $10.00
               </div>
             </div>
 
@@ -318,8 +320,8 @@ export default function WalletPage() {
   useEffect(() => { loadWallet(); }, [loadWallet]);
   useEffect(() => { loadTx(txFilter); }, [loadTx, txFilter]);
 
-  const usdc    = walletData?.usdcBalance    ?? 0;
-  const ash     = walletData?.ashBalance     ?? 0;
+  const usdc    = Number(walletData?.usdcBalance    ?? 0);
+  const ash     = Number(walletData?.ashBalance     ?? 0);
   const depAddr = walletData?.depositAddress ?? "";
 
   return (

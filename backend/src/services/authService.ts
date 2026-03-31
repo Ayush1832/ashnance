@@ -267,6 +267,69 @@ export class AuthService {
   }
 
   /**
+   * Find or create a user via Google OAuth
+   */
+  static async loginWithGoogle(data: {
+    googleId: string;
+    email: string;
+    name: string;
+    avatarUrl?: string;
+  }) {
+    // Check if user already exists by email
+    let user = await prisma.user.findUnique({ where: { email: data.email } });
+
+    if (user) {
+      // Update avatar if not set
+      if (!user.avatarUrl && data.avatarUrl) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { avatarUrl: data.avatarUrl },
+        });
+      }
+    } else {
+      // Create new user from Google account
+      const username = await AuthService.generateUniqueUsername(data.name);
+      const depositAddress = await BlockchainService.generateDepositAddress();
+
+      user = await prisma.$transaction(async (tx: any) => {
+        const newUser = await tx.user.create({
+          data: {
+            email:        data.email,
+            username,
+            avatarUrl:    data.avatarUrl,
+            authProvider: "GOOGLE",
+            referralCode: crypto.randomBytes(6).toString("hex"),
+          },
+        });
+        await tx.wallet.create({
+          data: { userId: newUser.id, depositAddress },
+        });
+        return newUser;
+      });
+    }
+
+    const tokens = AuthService.generateTokens(user.id, user.email);
+    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+    return tokens;
+  }
+
+  /**
+   * Generate a unique username from a display name
+   */
+  private static async generateUniqueUsername(name: string): Promise<string> {
+    // Sanitize: keep only alphanumeric + underscore, max 16 chars
+    const base = name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16) || "user";
+    let username = base;
+    let attempt = 0;
+    while (true) {
+      const exists = await prisma.user.findUnique({ where: { username } });
+      if (!exists) return username;
+      attempt++;
+      username = `${base}${attempt}`;
+    }
+  }
+
+  /**
    * Update user profile (username, avatarUrl, privacyMode, country)
    */
   static async updateProfile(

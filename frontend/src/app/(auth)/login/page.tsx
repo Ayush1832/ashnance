@@ -218,7 +218,11 @@ export default function LoginPage() {
 
           {/* Social buttons 2x2 */}
           <div className="social-login">
-            <button className="social-btn" type="button">
+            <button
+              className="social-btn"
+              type="button"
+              onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
+            >
               <span>🟢</span> Google
             </button>
             <button className="social-btn" type="button">

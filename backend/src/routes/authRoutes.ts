@@ -4,6 +4,7 @@ import { registerSchema, loginSchema, updateProfileSchema } from "../utils/valid
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { BadRequestError, UnauthorizedError } from "../utils/errors";
 import { EmailService } from "../services/emailService";
+import { config } from "../config";
 
 const router = Router();
 
@@ -152,6 +153,91 @@ router.put("/password", authenticate, async (req: AuthRequest, res: Response, ne
     }
     await AuthService.changePassword(req.user!.userId, currentPassword, newPassword);
     res.json({ success: true, message: "Password updated successfully" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================
+// GOOGLE OAUTH
+// ============================================================
+
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
+
+// GET /api/auth/google — redirect to Google consent screen
+router.get("/google", (_req: Request, res: Response) => {
+  const params = new URLSearchParams({
+    client_id:     config.google.clientId,
+    redirect_uri:  `${process.env.BACKEND_URL || "http://localhost:4000"}/api/auth/google/callback`,
+    response_type: "code",
+    scope:         "openid email profile",
+    access_type:   "offline",
+    prompt:        "select_account",
+  });
+  res.redirect(`${GOOGLE_AUTH_URL}?${params.toString()}`);
+});
+
+// GET /api/auth/google/callback — exchange code, issue JWT, redirect to frontend
+router.get("/google/callback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { code, error } = req.query;
+
+    if (error || !code) {
+      return res.redirect(`${config.frontendUrl}/login?error=google_cancelled`);
+    }
+
+    // 1. Exchange code for Google tokens
+    const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code:          code as string,
+        client_id:     config.google.clientId,
+        client_secret: config.google.clientSecret,
+        redirect_uri:  `${process.env.BACKEND_URL || "http://localhost:4000"}/api/auth/google/callback`,
+        grant_type:    "authorization_code",
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      throw new UnauthorizedError("Failed to exchange Google auth code");
+    }
+
+    const tokenData = await tokenRes.json() as { access_token: string };
+
+    // 2. Get Google user info
+    const userRes = await fetch(GOOGLE_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    if (!userRes.ok) {
+      throw new UnauthorizedError("Failed to get Google user info");
+    }
+
+    const googleUser = await userRes.json() as {
+      id: string;
+      email: string;
+      name: string;
+      picture?: string;
+    };
+
+    // 3. Find or create user
+    const result = await AuthService.loginWithGoogle({
+      googleId:  googleUser.id,
+      email:     googleUser.email,
+      name:      googleUser.name,
+      avatarUrl: googleUser.picture,
+    });
+
+    // 4. Redirect to frontend with tokens in query params
+    //    (frontend reads them from URL and stores in localStorage)
+    const params = new URLSearchParams({
+      accessToken:  result.accessToken,
+      refreshToken: result.refreshToken,
+    });
+    res.redirect(`${config.frontendUrl}/auth/callback?${params.toString()}`);
   } catch (error) {
     next(error);
   }

@@ -112,10 +112,10 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const usdcBalance = wallet?.usdcBalance ?? 0;
-  const ashBalance  = wallet?.ashBalance  ?? profile?.ashBalance ?? 0;
-  const totalBurns  = profile?.totalBurns ?? 0;
-  const totalWon    = profile?.totalWon   ?? 0;
+  const usdcBalance = Number(wallet?.usdcBalance ?? 0);
+  const ashBalance  = Number(wallet?.ashBalance  ?? profile?.ashBalance ?? 0);
+  const totalBurns  = Number(profile?.totalBurns ?? 0);
+  const totalWon    = Number(profile?.totalWon   ?? 0);
   const username    = profile?.username   ?? "BURNER";
   const isVip       = profile?.isVip      ?? false;
 
@@ -205,13 +205,13 @@ export default function DashboardPage() {
               <div className="tx-list">
                 {txList.map((tx) => {
                   const amt = tx.type === "win"
-                    ? `+${tx.prizeAmount?.toFixed(2) ?? "0.00"} USDC`
+                    ? `+${Number(tx.prizeAmount ?? 0).toFixed(2)} USDC`
                     : tx.type === "deposit"
-                    ? `+${tx.amountUsdc?.toFixed(2) ?? "0.00"} USDC`
+                    ? `+${Number(tx.amountUsdc ?? 0).toFixed(2)} USDC`
                     : tx.type === "burn"
-                    ? `-${tx.amountUsdc?.toFixed(2) ?? "0.00"} USDC`
+                    ? `-${Number(tx.amountUsdc ?? 0).toFixed(2)} USDC`
                     : tx.amountUsdc != null
-                    ? `${tx.amountUsdc >= 0 ? "+" : ""}${tx.amountUsdc.toFixed(2)} USDC`
+                    ? `${Number(tx.amountUsdc) >= 0 ? "+" : ""}${Number(tx.amountUsdc).toFixed(2)} USDC`
                     : `${tx.amountAsh ?? 0} ASH`;
 
                   const cls = txAmountClass(tx.type);

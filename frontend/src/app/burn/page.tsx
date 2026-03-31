@@ -72,11 +72,11 @@ export default function BurnPage() {
       let merged: Partial<UserStats> = {};
       if (profileRes.status === "fulfilled") {
         const d = (profileRes.value as { data?: UserStats }).data ?? (profileRes.value as UserStats);
-        merged = { ...merged, totalBurns: d.totalBurns, totalWon: d.totalWon };
+        merged = { ...merged, totalBurns: Number(d.totalBurns ?? 0), totalWon: Number(d.totalWon ?? 0) };
       }
       if (walletRes.status === "fulfilled") {
         const d = (walletRes.value as { data?: UserStats }).data ?? (walletRes.value as UserStats);
-        merged = { ...merged, usdcBalance: d.usdcBalance, ashBalance: d.ashBalance };
+        merged = { ...merged, usdcBalance: Number(d.usdcBalance ?? 0), ashBalance: Number(d.ashBalance ?? 0) };
       }
       setStats(merged as UserStats);
     } catch {
@@ -146,7 +146,7 @@ export default function BurnPage() {
         <div className="dash-title">BURN <span>NOW</span></div>
         <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px" }}>
           BALANCE: <span style={{ color: "var(--usdc-green)" }}>
-            ${(stats?.usdcBalance ?? 0).toFixed(2)} USDC
+            ${Number(stats?.usdcBalance ?? 0).toFixed(2)} USDC
           </span>
         </div>
       </div>
@@ -243,7 +243,7 @@ export default function BurnPage() {
                 </div>
                 <div className={styles.sideStat}>
                   <span className={styles.sideStatLabel}>TOTAL WON</span>
-                  <span className={`${styles.sideStatVal} ${styles.sideStatGold}`}>${(stats?.totalWon ?? 0).toFixed(2)}</span>
+                  <span className={`${styles.sideStatVal} ${styles.sideStatGold}`}>${Number(stats?.totalWon ?? 0).toFixed(2)}</span>
                 </div>
                 <div className={styles.sideStat}>
                   <span className={styles.sideStatLabel}>ASH EARNED</span>
@@ -297,7 +297,7 @@ export default function BurnPage() {
 
             {result.won && result.prizeAmount != null && (
               <div className={`${styles.resultAmt} ${styles.resultAmtWin}`}>
-                +${result.prizeAmount.toFixed(2)} USDC
+                +${Number(result.prizeAmount).toFixed(2)} USDC
               </div>
             )}
 

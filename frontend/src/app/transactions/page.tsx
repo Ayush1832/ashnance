@@ -249,8 +249,8 @@ export default function TransactionsPage() {
           <div style={{ marginTop: "16px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
             {[
               { label: "TOTAL TXS",   value: String(filtered.length),                                      cls: "" },
-              { label: "TOTAL IN",    value: `+$${filtered.filter((t) => t.amount > 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0).toFixed(2)}`, cls: "usdc" },
-              { label: "TOTAL OUT",   value: `-$${Math.abs(filtered.filter((t) => t.amount < 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0)).toFixed(2)}`, cls: "fire" },
+              { label: "TOTAL IN",    value: `+$${filtered.filter((t) => Number(t.amount) > 0 && t.currency === "USDC").reduce((s, t) => s + Number(t.amount), 0).toFixed(2)}`, cls: "usdc" },
+              { label: "TOTAL OUT",   value: `-$${Math.abs(filtered.filter((t) => Number(t.amount) < 0 && t.currency === "USDC").reduce((s, t) => s + Number(t.amount), 0)).toFixed(2)}`, cls: "fire" },
             ].map((s) => (
               <div key={s.label} style={{
                 background: "var(--panel)",
