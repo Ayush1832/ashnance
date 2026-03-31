@@ -91,7 +91,7 @@ export class BlockchainService {
    *
    * Returns a unique Solana address (public key string) for each call.
    */
-  static generateDepositAddress(): string {
+  static async generateDepositAddress(): Promise<string> {
     try {
       const master = getMasterKeypair();
       const counter = _addressCounter++;
