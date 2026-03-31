@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function AuthCallbackPage() {
+function AuthCallback() {
   const router      = useRouter();
   const params      = useSearchParams();
   const [msg, setMsg] = useState("SIGNING YOU IN...");
@@ -43,5 +43,26 @@ export default function AuthCallbackPage() {
       <div style={{ fontSize: "48px" }}>🔥</div>
       {msg}
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        minHeight: "100vh",
+        background: "#080808",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "#FF4D00",
+        fontSize: "24px",
+        letterSpacing: "4px",
+      }}>
+        🔥 LOADING...
+      </div>
+    }>
+      <AuthCallback />
+    </Suspense>
   );
 }
