@@ -308,6 +308,7 @@ export class AuthService {
       });
     }
 
+    if (!user) throw new Error("Failed to create user");
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
     return tokens;

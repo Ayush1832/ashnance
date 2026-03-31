@@ -99,7 +99,7 @@ router.post("/whitelist", authenticate, async (req: AuthRequest, res: Response, 
 // DELETE /api/wallet/whitelist/:id — Remove whitelist address
 router.delete("/whitelist/:id", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    await WalletService.removeWhitelistedAddress(req.user!.userId, req.params.id);
+    await WalletService.removeWhitelistedAddress(req.user!.userId, req.params.id as string);
     res.json({ success: true, message: "Address removed" });
   } catch (error) {
     next(error);
