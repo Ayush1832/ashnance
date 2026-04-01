@@ -14,6 +14,7 @@ import walletRoutes from "./routes/walletRoutes";
 import miscRoutes from "./routes/miscRoutes";
 import vipRoutes from "./routes/vipRoutes";
 import adminRoutes from "./routes/adminRoutes";
+import stakingRoutes from "./routes/stakingRoutes";
 
 // ============================================================
 // Express App
@@ -67,6 +68,7 @@ app.use("/api/wallet", walletRoutes);
 app.use("/api", miscRoutes);
 app.use("/api/vip", vipRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/staking", stakingRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler);

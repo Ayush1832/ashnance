@@ -13,6 +13,9 @@ import {
   Connection,
   Keypair,
   PublicKey,
+  Transaction,
+  TransactionInstruction,
+  SystemProgram,
   clusterApiUrl,
 } from "@solana/web3.js";
 import * as crypto from "crypto";
@@ -338,6 +341,95 @@ export class BlockchainService {
       console.log(`[BlockchainService] Stopped monitoring: ${address}`);
     }
     _monitorHandles.clear();
+  }
+
+  // ----------------------------------------------------------
+  // sendUsdcTransfer
+  // ----------------------------------------------------------
+  /**
+   * Sends USDC from the platform master wallet to `toAddress`.
+   * Creates the recipient's associated token account if it does not exist.
+   * Returns the transaction signature (hash).
+   */
+  static async sendUsdcTransfer(
+    toAddress: string,
+    amountUsdc: number
+  ): Promise<string> {
+    const connection = getConnection();
+    const master = getMasterKeypair();
+    const mint = new PublicKey(USDC_MINT);
+    const fromOwner = master.publicKey;
+    const toOwner = new PublicKey(toAddress);
+
+    // Derive associated token account addresses (off-chain, no RPC needed)
+    const [fromAta] = PublicKey.findProgramAddressSync(
+      [fromOwner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+    const [toAta] = PublicKey.findProgramAddressSync(
+      [toOwner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+      ASSOCIATED_TOKEN_PROGRAM_ID
+    );
+
+    const instructions: TransactionInstruction[] = [];
+
+    // Create destination ATA if it doesn't exist
+    const toAtaInfo = await connection.getAccountInfo(toAta);
+    if (!toAtaInfo) {
+      instructions.push(
+        new TransactionInstruction({
+          programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+          keys: [
+            { pubkey: fromOwner,                                          isSigner: true,  isWritable: true  },
+            { pubkey: toAta,                                              isSigner: false, isWritable: true  },
+            { pubkey: toOwner,                                            isSigner: false, isWritable: false },
+            { pubkey: mint,                                               isSigner: false, isWritable: false },
+            { pubkey: SystemProgram.programId,                            isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID,                                   isSigner: false, isWritable: false },
+            { pubkey: new PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false },
+          ],
+          data: Buffer.alloc(0),
+        })
+      );
+    }
+
+    // SPL Token Transfer instruction (instruction index 3)
+    const rawAmount = BigInt(Math.round(amountUsdc * 1_000_000)); // USDC has 6 decimals
+    const transferData = Buffer.alloc(9);
+    transferData.writeUInt8(3, 0);
+    transferData.writeBigUInt64LE(rawAmount, 1);
+
+    instructions.push(
+      new TransactionInstruction({
+        programId: TOKEN_PROGRAM_ID,
+        keys: [
+          { pubkey: fromAta,    isSigner: false, isWritable: true  },
+          { pubkey: toAta,      isSigner: false, isWritable: true  },
+          { pubkey: fromOwner,  isSigner: true,  isWritable: false },
+        ],
+        data: transferData,
+      })
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: fromOwner });
+    tx.add(...instructions);
+    tx.sign(master);
+
+    const txHash = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    });
+
+    // Wait for confirmation
+    const latestBlockhash = await connection.getLatestBlockhash();
+    await connection.confirmTransaction(
+      { signature: txHash, ...latestBlockhash },
+      "confirmed"
+    );
+
+    console.log(`[BlockchainService] USDC transfer confirmed — ${amountUsdc} USDC to ${toAddress}, tx: ${txHash}`);
+    return txHash;
   }
 
   // ----------------------------------------------------------

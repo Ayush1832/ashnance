@@ -207,6 +207,19 @@ class ApiClient {
     pool: () => this.request<unknown>("/admin/pool"),
   };
 
+  // ---- STAKING ----
+  staking = {
+    pools: () => this.request<unknown>("/staking/pools"),
+    positions: () => this.request<unknown>("/staking/positions"),
+    summary: () => this.request<unknown>("/staking/summary"),
+    stake: (poolId: string, amount: number) =>
+      this.request<unknown>("/staking/stake", { method: "POST", body: JSON.stringify({ poolId, amount }) }),
+    claim: (positionId: string) =>
+      this.request<unknown>(`/staking/claim/${positionId}`, { method: "POST" }),
+    unstake: (positionId: string) =>
+      this.request<unknown>(`/staking/unstake/${positionId}`, { method: "POST" }),
+  };
+
   // ---- HEALTH ----
   health = () => this.request<unknown>("/health");
 }

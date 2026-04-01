@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { icon: "👑", label: "VIP",         href: "/subscribe"    },
   { icon: "📋", label: "HISTORY",     href: "/transactions" },
   { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard"  },
+  { icon: "💎", label: "STAKING",     href: "/staking"      },
   { icon: "⚙️", label: "SETTINGS",   href: "/settings"     },
 ];
 

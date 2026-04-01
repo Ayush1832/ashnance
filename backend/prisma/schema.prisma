@@ -52,6 +52,7 @@ model User {
   referralsFrom   Referral[]   @relation("RefereeReferrals")
   refreshTokens   RefreshToken[]
   whitelistAddrs  WhitelistedAddress[]
+  stakingPositions StakingPosition[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -260,4 +261,66 @@ model RewardPool {
   updatedAt     DateTime @updatedAt
 
   @@map("reward_pool")
+}
+
+// ---- STAKING ----
+model StakingPool {
+  id            String    @id @default(uuid())
+  name          String    @unique
+  apy           Decimal   @db.Decimal(5, 2)   // e.g. 12.50 = 12.5% APY
+  lockDays      Int                            // lock period in days
+  minStake      Decimal   @db.Decimal(18, 2)  // min ASH to stake
+  isActive      Boolean   @default(true)
+  description   String?
+
+  positions     StakingPosition[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("staking_pools")
+}
+
+model StakingPosition {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id])
+  poolId        String
+  pool          StakingPool @relation(fields: [poolId], references: [id])
+
+  amount        Decimal     @db.Decimal(18, 2)   // ASH staked
+  rewardsEarned Decimal     @default(0) @db.Decimal(18, 2)
+  rewardsClaimed Decimal    @default(0) @db.Decimal(18, 2)
+
+  status        StakeStatus @default(ACTIVE)
+  lockedUntil   DateTime
+  lastRewardAt  DateTime    @default(now())
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([userId, status])
+  @@map("staking_positions")
+}
+
+enum StakeStatus {
+  ACTIVE
+  UNLOCKED
+  WITHDRAWN
+}
+
+// ---- AUDIT LOG ----
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  action        String
+  entity        String?
+  entityId      String?
+  details       Json?
+  ipAddress     String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("audit_logs")
 }

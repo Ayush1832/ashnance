@@ -55,6 +55,22 @@ async function main() {
     console.log("✅ Reward pool created");
   }
 
+  // ==== Staking Pools ====
+  const stakingPools = [
+    { name: "EMBER POOL",   apy: 8.00,  lockDays: 7,  minStake: 100,  description: "Short-term staking with 7-day lock" },
+    { name: "FLAME POOL",   apy: 15.00, lockDays: 30, minStake: 500,  description: "Medium-term staking with 30-day lock" },
+    { name: "INFERNO POOL", apy: 30.00, lockDays: 90, minStake: 1000, description: "Long-term staking with 90-day lock and highest APY" },
+  ];
+
+  for (const sp of stakingPools) {
+    await prisma.stakingPool.upsert({
+      where: { name: sp.name },
+      update: {},
+      create: { ...sp, isActive: true },
+    });
+  }
+  console.log("✅ Staking pools seeded");
+
   console.log("\n🔥 Seeding complete!");
 }
 

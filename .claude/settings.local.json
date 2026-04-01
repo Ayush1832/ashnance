@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls -la \"/c/Users/LENOVO/Desktop/ashnance/frontend/src/app/\"*)"
+      "Bash(ls -la \"/c/Users/LENOVO/Desktop/ashnance/frontend/src/app/\"*)",
+      "Bash(grep -r \"export.*class\\\\|export.*function\" /c/Users/LENOVO/Desktop/ashnance/backend/src/services/*.ts)",
+      "Bash(grep -n \"TODO\\\\|FIXME\\\\|not implemented\\\\|fake\\\\|mock\\\\|skip\" /c/Users/LENOVO/Desktop/ashnance/backend/src/services/*.ts)"
     ]
   }
 }

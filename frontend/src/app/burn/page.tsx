@@ -110,6 +110,11 @@ export default function BurnPage() {
       const res = await api.burn.execute(amount, useBoost) as { data?: BurnResult } & BurnResult;
       const data: BurnResult = res.data ?? res;
       setResult(data);
+      if (data.won) {
+        speak(`Congratulations! You won ${data.prizeAmount ? data.prizeAmount + ' U S D C' : 'a prize'}! The fire rewards the bold!`);
+      } else {
+        speak(`The fire consumed your U S D C, but awarded you ${data.ashEarned} Ash tokens. Keep burning!`);
+      }
     } catch (e: unknown) {
       // Simulated fallback so the UI is still demonstrable
       const roll = Math.random();
@@ -127,13 +132,29 @@ export default function BurnPage() {
       const errMsg = e instanceof Error ? e.message : "";
       if (errMsg) setError(`Note: using offline result (${errMsg})`);
       setResult(sim);
+      if (sim.won) {
+        speak(`Congratulations! You won ${sim.prizeAmount ? sim.prizeAmount + ' U S D C' : 'a prize'}!`);
+      } else {
+        speak(`The fire consumed your U S D C, but awarded you ${sim.ashEarned} Ash tokens.`);
+      }
     } finally {
       setPhase("result");
       await loadStats();
     }
   }
 
+  function speak(text: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.9;
+    utt.pitch = 0.8;
+    utt.volume = 0.9;
+    window.speechSynthesis.speak(utt);
+  }
+
   function resetBurn() {
+    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
     setPhase("idle");
     setResult(null);
     setError(null);

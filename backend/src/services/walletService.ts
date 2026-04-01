@@ -165,12 +165,41 @@ export class WalletService {
       return { wallet, transaction };
     });
 
-    // TODO: In production, initiate actual Solana transfer here
+    // Execute actual on-chain USDC transfer
+    let txHash: string | null = null;
+    try {
+      txHash = await BlockchainService.sendUsdcTransfer(address, amount);
+
+      // Mark transaction as COMPLETED with txHash
+      await prisma.transaction.update({
+        where: { id: result.transaction.id },
+        data: { status: "COMPLETED", txHash },
+      });
+    } catch (err) {
+      console.error("[WalletService] On-chain withdrawal failed:", err);
+
+      // Refund the balance on-chain failure
+      await prisma.$transaction(async (tx: any) => {
+        await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { increment: amount } },
+        });
+        await tx.transaction.update({
+          where: { id: result.transaction.id },
+          data: { status: "FAILED" },
+        });
+      });
+
+      throw new BadRequestError(
+        "On-chain transfer failed. Your balance has been restored. Please try again."
+      );
+    }
 
     return {
       newBalance: result.wallet.usdcBalance,
       transactionId: result.transaction.id,
-      status: "PROCESSING",
+      txHash,
+      status: "COMPLETED",
     };
   }
 
