@@ -14,54 +14,53 @@ interface WalletData {
 
 interface Transaction {
   id: string;
-  type: string;
-  amountUsdc?: number;
-  amountAsh?: number;
-  prizeAmount?: number;
+  type: string;       // uppercase from backend: DEPOSIT, BURN, WIN, WITHDRAWAL, REFERRAL_REWARD
+  amount: number;
+  currency: string;   // USDC or ASH
   status: string;
   createdAt: string;
-  toAddress?: string;
+  metadata?: { ashEarned?: number };
 }
 
 type ModalType = "deposit" | "withdraw" | null;
-type TxFilter = "all" | "deposit" | "burn" | "win" | "withdraw" | "referral";
+type TxFilter = "all" | "DEPOSIT" | "BURN" | "WIN" | "WITHDRAWAL" | "REFERRAL_REWARD";
 
 const TX_FILTERS: { key: TxFilter; label: string }[] = [
-  { key: "all",      label: "ALL"       },
-  { key: "deposit",  label: "DEPOSITS"  },
-  { key: "burn",     label: "BURNS"     },
-  { key: "win",      label: "WINS"      },
-  { key: "withdraw", label: "WITHDRAWS" },
-  { key: "referral", label: "REFERRALS" },
+  { key: "all",             label: "ALL"       },
+  { key: "DEPOSIT",         label: "DEPOSITS"  },
+  { key: "BURN",            label: "BURNS"     },
+  { key: "WIN",             label: "WINS"      },
+  { key: "WITHDRAWAL",      label: "WITHDRAWS" },
+  { key: "REFERRAL_REWARD", label: "REFERRALS" },
 ];
 
 function txIcon(type: string) {
   switch (type) {
-    case "burn":     return "🔥";
-    case "win":      return "🏆";
-    case "deposit":  return "💳";
-    case "withdraw": return "💸";
-    case "referral": return "👥";
-    default:         return "📋";
+    case "BURN":            return "🔥";
+    case "WIN":             return "🏆";
+    case "DEPOSIT":         return "💳";
+    case "WITHDRAWAL":      return "💸";
+    case "REFERRAL_REWARD": return "👥";
+    default:                return "📋";
   }
 }
 
 function txAmtClass(type: string) {
-  return (type === "win" || type === "deposit" || type === "referral") ? "pos" : "neg";
+  return (type === "WIN" || type === "DEPOSIT" || type === "REFERRAL_REWARD") ? "pos" : "neg";
 }
 
 const n = (v: unknown) => Number(v ?? 0);
 
 function fmtAmt(tx: Transaction): string {
+  const amt = n(tx.amount).toFixed(2);
+  const isAsh = tx.currency === "ASH";
   switch (tx.type) {
-    case "win":      return `+$${n(tx.prizeAmount).toFixed(2)} USDC`;
-    case "deposit":  return `+$${n(tx.amountUsdc).toFixed(2)} USDC`;
-    case "burn":     return `-$${n(tx.amountUsdc).toFixed(2)} USDC`;
-    case "withdraw": return `-$${n(tx.amountUsdc).toFixed(2)} USDC`;
-    case "referral": return `+$${n(tx.amountUsdc).toFixed(2)} USDC`;
-    default:
-      if (tx.amountAsh) return `+${tx.amountAsh} ASH`;
-      return `$${n(tx.amountUsdc).toFixed(2)} USDC`;
+    case "WIN":             return `+$${amt} USDC`;
+    case "DEPOSIT":         return `+$${amt} USDC`;
+    case "BURN":            return isAsh ? `+${n(tx.amount).toLocaleString()} ASH` : `-$${amt} USDC`;
+    case "WITHDRAWAL":      return `-$${amt} USDC`;
+    case "REFERRAL_REWARD": return `+$${amt} USDC`;
+    default:                return isAsh ? `${n(tx.amount).toLocaleString()} ASH` : `$${amt} USDC`;
   }
 }
 
@@ -435,7 +434,7 @@ export default function WalletPage() {
   const loadTx = useCallback(async (filter: TxFilter) => {
     try {
       setTxLoading(true);
-      const type = filter === "all" ? undefined : filter;
+      const type = filter === "all" ? undefined : filter; // already uppercase
       const res  = await api.wallet.transactions(type, 1, 20) as { data?: { transactions: Transaction[] } } & { transactions?: Transaction[] };
       const arr  = res.data?.transactions ?? res.transactions ?? (Array.isArray(res) ? res : []);
       setTxList(arr);
@@ -539,7 +538,7 @@ export default function WalletPage() {
                   <div key={tx.id} className="tx-item">
                     <div className="tx-icon">{txIcon(tx.type)}</div>
                     <div className="tx-details">
-                      <div className="tx-type">{tx.type.toUpperCase()}</div>
+                      <div className="tx-type">{tx.type === "REFERRAL_REWARD" ? "REFERRAL" : tx.type}</div>
                       <div className="tx-date">{fmtDate(tx.createdAt)}</div>
                     </div>
                     <div className="tx-amount">
