@@ -74,13 +74,13 @@ export default function BurnPage() {
 
       let merged: Partial<UserStats> = {};
       if (profileRes.status === "fulfilled") {
-        const d =
-          (profileRes.value as { data?: UserStats }).data ??
-          (profileRes.value as UserStats);
+        type ProfileShape = { data?: { stats?: { totalBurns?: number; totalWon?: number } }; stats?: { totalBurns?: number; totalWon?: number } };
+        const raw = profileRes.value as ProfileShape;
+        const stats = raw.data?.stats ?? raw.stats;
         merged = {
           ...merged,
-          totalBurns: Number(d.totalBurns ?? 0),
-          totalWon: Number(d.totalWon ?? 0),
+          totalBurns: Number(stats?.totalBurns ?? 0),
+          totalWon: Number(stats?.totalWon ?? 0),
         };
       }
       if (walletRes.status === "fulfilled") {

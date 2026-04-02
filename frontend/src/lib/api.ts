@@ -4,7 +4,7 @@
 // Centralized API client for all backend communication.
 // Usage: import { api } from "@/lib/api"; api.auth.login({ email, password });
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000") + "/api";
 
 class ApiClient {
   private accessToken: string | null = null;

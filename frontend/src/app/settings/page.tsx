@@ -68,7 +68,8 @@ export default function SettingsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then((data) => {
+      .then((res) => {
+        const data = res?.data ?? res;
         if (data?.username)   setUsername(data.username);
         if (data?.email)      setEmail(data.email);
         if (data?.twoFaEnabled !== undefined) setTwoFaEnabled(data.twoFaEnabled);
@@ -140,8 +141,8 @@ export default function SettingsPage() {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
     try {
-      const res = await fetch(`${API}/api/auth/change-password`, {
-        method: "POST",
+      const res = await fetch(`${API}/api/auth/password`, {
+        method: "PUT",
         headers,
         body: JSON.stringify({ currentPassword: currentPass, newPassword: newPass }),
       });
