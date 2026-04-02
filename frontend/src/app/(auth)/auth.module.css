@@ -180,6 +180,71 @@
   color: var(--text);
 }
 
+/* ---- BRANDED SOCIAL BUTTONS ---- */
+.social-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.social-btn-branded {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 11px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.75);
+  font-family: var(--font-body);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.social-btn-branded span {
+  font-weight: 500;
+}
+
+.social-btn-branded::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+
+.social-btn-branded:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.social-btn-branded:hover::before {
+  opacity: 1;
+}
+
+.social-btn-branded:active {
+  transform: translateY(0);
+}
+
+.phantom-btn {
+  border-color: rgba(171, 159, 242, 0.35);
+  background: rgba(171, 159, 242, 0.08);
+}
+
+.phantom-btn:hover {
+  border-color: rgba(171, 159, 242, 0.7) !important;
+  box-shadow: 0 4px 20px rgba(171, 159, 242, 0.2) !important;
+}
+
 /* ---- FOOTER ---- */
 .auth-footer {
   margin-top: 20px;
