@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "./page.module.css";
 
@@ -17,6 +19,13 @@ const tickerData = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) router.replace("/dashboard");
+  }, [router]);
+
   return (
     <>
       <div className="fire-bg" />
