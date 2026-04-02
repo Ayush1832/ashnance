@@ -174,6 +174,15 @@ export class BurnService {
         data: { totalBalance: { increment: rewardPoolAmount } },
       });
 
+      // Update profit pool
+      const profitPoolAmount = amountUsdc * config.game.profitPoolSplit;
+      await tx.profitPool.updateMany({
+        data: {
+          balance: { increment: profitPoolAmount },
+          totalDeposited: { increment: profitPoolAmount },
+        },
+      });
+
       // 4. Create burn record
       const burnRecord = await tx.burn.create({
         data: {

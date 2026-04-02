@@ -241,6 +241,23 @@ class ApiClient {
       this.request<unknown>(`/staking/unstake/${positionId}`, { method: "POST" }),
   };
 
+  // ---- OWNER ----
+  owner = {
+    me: () => this.request<unknown>("/owner/me"),
+    stats: () => this.request<unknown>("/owner/stats"),
+    profitPool: () => this.request<unknown>("/owner/profit-pool"),
+    pendingWithdrawal: () => this.request<unknown>("/owner/withdrawal/pending"),
+    initiateWithdrawal: () =>
+      this.request<unknown>("/owner/withdrawal/initiate", { method: "POST" }),
+    approveWithdrawal: (id: string) =>
+      this.request<unknown>(`/owner/withdrawal/approve/${id}`, { method: "POST" }),
+    cancelWithdrawal: (id: string) =>
+      this.request<unknown>(`/owner/withdrawal/cancel/${id}`, { method: "POST" }),
+    getBurnConfig: () => this.request<unknown>("/owner/burn-config"),
+    saveBurnConfig: (config: Record<string, number>) =>
+      this.request<unknown>("/owner/burn-config", { method: "PUT", body: JSON.stringify(config) }),
+  };
+
   // ---- HEALTH ----
   health = () => this.request<unknown>("/health");
 }

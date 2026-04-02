@@ -309,6 +309,35 @@ enum StakeStatus {
   WITHDRAWN
 }
 
+// ---- PROFIT POOL ----
+model ProfitPool {
+  id             String   @id @default(cuid())
+  balance        Decimal  @default(0) @db.Decimal(18, 6)
+  totalDeposited Decimal  @default(0) @db.Decimal(18, 6)
+  totalWithdrawn Decimal  @default(0) @db.Decimal(18, 6)
+  updatedAt      DateTime @updatedAt
+  @@map("profit_pool")
+}
+
+// ---- OWNER WITHDRAWAL REQUESTS ----
+model OwnerWithdrawalRequest {
+  id             String                @id @default(cuid())
+  amount         Decimal               @db.Decimal(18, 6)
+  initiatorEmail String
+  approverEmail  String?
+  status         OwnerWithdrawalStatus @default(PENDING)
+  owner1Wallet   String
+  owner2Wallet   String
+  owner1Amount   Decimal               @db.Decimal(18, 6)
+  owner2Amount   Decimal               @db.Decimal(18, 6)
+  txHash1        String?
+  txHash2        String?
+  createdAt      DateTime              @default(now())
+  approvedAt     DateTime?
+  executedAt     DateTime?
+  @@map("owner_withdrawal_requests")
+}
+
 // ---- AUDIT LOG ----
 model AuditLog {
   id            String   @id @default(uuid())
@@ -323,4 +352,10 @@ model AuditLog {
 
   @@index([userId, createdAt])
   @@map("audit_logs")
+}
+
+enum OwnerWithdrawalStatus {
+  PENDING
+  EXECUTED
+  CANCELLED
 }

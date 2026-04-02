@@ -64,6 +64,11 @@ export const config = {
     boostDurationMs: 3600000, // 1 hour
   },
 
+  // Owner admin panel
+  ownerEmails: (process.env.OWNER_EMAILS || "").split(",").map((e) => e.trim()).filter(Boolean),
+  owner1Wallet: process.env.OWNER_1_WALLET || "",
+  owner2Wallet: process.env.OWNER_2_WALLET || "",
+
   // Weight bonuses
   weight: {
     sparkBonus: 0.10,

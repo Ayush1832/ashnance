@@ -15,6 +15,7 @@ import miscRoutes from "./routes/miscRoutes";
 import vipRoutes from "./routes/vipRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import stakingRoutes from "./routes/stakingRoutes";
+import ownerRoutes from "./routes/ownerRoutes";
 import { startAllDepositMonitors } from "./services/depositMonitorService";
 
 // ============================================================
@@ -77,6 +78,7 @@ app.use("/api", miscRoutes);
 app.use("/api/vip", vipRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/staking", stakingRoutes);
+app.use("/api/owner", ownerRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler);

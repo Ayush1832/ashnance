@@ -1,0 +1,426 @@
+.layout {
+  display: flex;
+  min-height: 100vh;
+  background: #050505;
+  font-family: var(--font-display, monospace);
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: #0a0a0a;
+  border-right: 1px solid rgba(255,77,0,0.15);
+  display: flex;
+  flex-direction: column;
+  padding: 28px 0;
+}
+
+.sidebarLogo {
+  font-size: 18px;
+  letter-spacing: 6px;
+  color: #FF4D00;
+  padding: 0 24px 4px;
+}
+
+.sidebarLogoSub {
+  font-size: 8px;
+  color: #444;
+  letter-spacing: 3px;
+  padding: 0 24px 28px;
+  border-bottom: 1px solid rgba(255,77,0,0.1);
+  margin-bottom: 12px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: #555;
+  cursor: pointer;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: color 0.15s, background 0.15s;
+}
+
+.navItem:hover { color: #FF4D00; background: rgba(255,77,0,0.05); }
+
+.navItemActive {
+  color: #FF4D00;
+  background: rgba(255,77,0,0.08);
+  border-left: 2px solid #FF4D00;
+}
+
+.sidebarFooter {
+  margin-top: auto;
+  padding: 16px 24px;
+  border-top: 1px solid rgba(255,77,0,0.1);
+}
+
+.ownerBadge {
+  font-size: 8px;
+  color: #FFB800;
+  letter-spacing: 2px;
+  margin-bottom: 10px;
+}
+
+.logoutBtn {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: #555;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  width: 100%;
+}
+.logoutBtn:hover { color: #ff6b6b; border-color: rgba(255,107,107,0.3); }
+
+/* ── MAIN CONTENT ── */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 36px;
+}
+
+.pageTitle {
+  font-size: 28px;
+  letter-spacing: 6px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.pageSub {
+  font-size: 9px;
+  color: #444;
+  letter-spacing: 3px;
+  margin-bottom: 32px;
+}
+
+/* ── STAT CARDS ── */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.statCard {
+  background: #0f0f0f;
+  border: 1px solid rgba(255,77,0,0.15);
+  border-radius: 6px;
+  padding: 20px 20px 16px;
+}
+
+.statLabel {
+  font-size: 8px;
+  color: #555;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+}
+
+.statValue {
+  font-size: 26px;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.statValueGreen { color: #27AE60; }
+.statValueGold  { color: #FFB800; }
+.statValueFire  { color: #FF4D00; }
+
+/* ── PANEL BOX ── */
+.panel {
+  background: #0f0f0f;
+  border: 1px solid rgba(255,77,0,0.15);
+  border-radius: 6px;
+  padding: 28px;
+  margin-bottom: 24px;
+}
+
+.panelTitle {
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: #FF4D00;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255,77,0,0.1);
+}
+
+/* ── PROFIT POOL ── */
+.poolBalance {
+  font-size: 48px;
+  letter-spacing: 2px;
+  color: #27AE60;
+  margin-bottom: 4px;
+}
+
+.poolSub {
+  font-size: 9px;
+  color: #555;
+  letter-spacing: 2px;
+  margin-bottom: 28px;
+}
+
+.ownerSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.splitCard {
+  background: #0a0a0a;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.splitLabel {
+  font-size: 8px;
+  color: #444;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+}
+
+.splitPct {
+  font-size: 20px;
+  color: #FF4D00;
+  margin-bottom: 4px;
+}
+
+.splitAmt {
+  font-size: 14px;
+  color: #27AE60;
+  margin-bottom: 6px;
+}
+
+.splitWallet {
+  font-size: 8px;
+  color: #333;
+  letter-spacing: 1px;
+  word-break: break-all;
+}
+
+.btnFire {
+  background: linear-gradient(135deg, #FF4D00, #ff6b00);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 3px;
+  padding: 13px 28px;
+  cursor: pointer;
+  margin-right: 12px;
+}
+.btnFire:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btnGhost {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  color: #777;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 3px;
+  padding: 13px 28px;
+  cursor: pointer;
+}
+
+.btnDanger {
+  background: transparent;
+  border: 1px solid rgba(255,50,50,0.3);
+  border-radius: 4px;
+  color: #ff6b6b;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 3px;
+  padding: 13px 28px;
+  cursor: pointer;
+}
+
+/* Pending request banner */
+.pendingBanner {
+  background: rgba(255,184,0,0.08);
+  border: 1px solid rgba(255,184,0,0.25);
+  border-radius: 6px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.pendingTitle {
+  font-size: 11px;
+  color: #FFB800;
+  letter-spacing: 3px;
+  margin-bottom: 8px;
+}
+
+.pendingInfo {
+  font-size: 10px;
+  color: #888;
+  letter-spacing: 1px;
+  line-height: 1.8;
+}
+
+/* ── BURN CONFIG ── */
+.configGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.configGroup {
+  background: #0a0a0a;
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.configGroupTitle {
+  font-size: 9px;
+  color: #FF4D00;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+
+.sliderRow {
+  margin-bottom: 18px;
+}
+
+.sliderLabel {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #888;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.sliderValue {
+  color: #FF4D00;
+  font-size: 11px;
+}
+
+.slider {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  background: rgba(255,77,0,0.2);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #FF4D00;
+  cursor: pointer;
+}
+
+/* Expected Value Calculator */
+.evCalc {
+  background: rgba(255,184,0,0.05);
+  border: 1px solid rgba(255,184,0,0.15);
+  border-radius: 6px;
+  padding: 20px;
+  margin-top: 24px;
+}
+
+.evTitle {
+  font-size: 10px;
+  color: #FFB800;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+}
+
+.evGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.evItem {
+  text-align: center;
+}
+
+.evLabel {
+  font-size: 8px;
+  color: #555;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.evVal {
+  font-size: 18px;
+  color: #FFB800;
+}
+
+/* ── WITHDRAW HISTORY ── */
+.txTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.txTable th {
+  color: #444;
+  text-align: left;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  font-weight: normal;
+}
+
+.txTable td {
+  color: #888;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.statusPending  { color: #FFB800; }
+.statusExecuted { color: #27AE60; }
+.statusCancelled { color: #ff6b6b; }
+
+/* ── ACCESS DENIED ── */
+.denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #050505;
+  color: #ff6b6b;
+  font-family: var(--font-display, monospace);
+  text-align: center;
+  gap: 12px;
+}
+
+.deniedIcon { font-size: 64px; }
+.deniedTitle { font-size: 20px; letter-spacing: 4px; }
+.deniedSub { font-size: 10px; color: #444; letter-spacing: 2px; }
+
+/* Save feedback */
+.saveMsg {
+  font-size: 10px;
+  color: #27AE60;
+  letter-spacing: 2px;
+  margin-left: 16px;
+}
+
+.errorMsg {
+  font-size: 10px;
+  color: #ff6b6b;
+  letter-spacing: 2px;
+  margin-top: 12px;
+}
