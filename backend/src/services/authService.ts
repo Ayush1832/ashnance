@@ -6,6 +6,7 @@ import { PublicKey } from "@solana/web3.js";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
 import { BlockchainService } from "./blockchainService";
+import { watchDepositAddress } from "./depositMonitorService";
 import {
   ConflictError,
   UnauthorizedError,
@@ -89,6 +90,9 @@ export class AuthService {
 
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    // Start on-chain deposit monitor for this new wallet
+    watchDepositAddress(user.id, depositAddress);
 
     return {
       user: {
@@ -323,6 +327,7 @@ export class AuthService {
   }) {
     // Check if user already exists by email
     let user = await prisma.user.findUnique({ where: { email: data.email } });
+    let newDepositAddress: string | undefined;
 
     if (user) {
       // Update avatar if not set
@@ -335,7 +340,7 @@ export class AuthService {
     } else {
       // Create new user from Google account
       const username = await AuthService.generateUniqueUsername(data.name);
-      const depositAddress = await BlockchainService.generateDepositAddress();
+      newDepositAddress = await BlockchainService.generateDepositAddress();
 
       user = await prisma.$transaction(async (tx: any) => {
         const newUser = await tx.user.create({
@@ -348,7 +353,7 @@ export class AuthService {
           },
         });
         await tx.wallet.create({
-          data: { userId: newUser.id, depositAddress },
+          data: { userId: newUser.id, depositAddress: newDepositAddress },
         });
         return newUser;
       });
@@ -357,6 +362,10 @@ export class AuthService {
     if (!user) throw new Error("Failed to create user");
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    // Start deposit monitor for newly created Google users
+    if (newDepositAddress) watchDepositAddress(user.id, newDepositAddress);
+
     return tokens;
   }
 
@@ -390,11 +399,11 @@ export class AuthService {
 
     // Find or create user by solana address
     let user = await prisma.user.findUnique({ where: { solanaAddress: data.publicKey } });
+    let newDepositAddress: string | undefined;
 
     if (!user) {
-      // Check if there's an existing email user we can link to (edge case — skip for now)
       const username = await AuthService.generateUniqueUsername("phantom" + data.publicKey.slice(0, 6));
-      const depositAddress = await BlockchainService.generateDepositAddress();
+      newDepositAddress = await BlockchainService.generateDepositAddress();
 
       user = await prisma.$transaction(async (tx: any) => {
         const newUser = await tx.user.create({
@@ -407,7 +416,7 @@ export class AuthService {
           },
         });
         await tx.wallet.create({
-          data: { userId: newUser.id, depositAddress },
+          data: { userId: newUser.id, depositAddress: newDepositAddress },
         });
         return newUser;
       });
@@ -416,6 +425,10 @@ export class AuthService {
     if (!user) throw new Error("Failed to create user");
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    // Start deposit monitor for newly created wallet users
+    if (newDepositAddress) watchDepositAddress(user.id, newDepositAddress);
+
     return tokens;
   }
 
