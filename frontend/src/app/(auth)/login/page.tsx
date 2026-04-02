@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import styles from "../auth.module.css";
+import { api } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -84,6 +85,33 @@ export default function LoginPage() {
       window.location.href = "/dashboard";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhantomLogin = async () => {
+    setError("");
+    try {
+      const phantom = (window as any).solana;
+      if (!phantom?.isPhantom) {
+        window.open("https://phantom.app/", "_blank");
+        return;
+      }
+      await phantom.connect();
+      const publicKey: string = phantom.publicKey.toBase58();
+      const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
+      const encoded = new TextEncoder().encode(message);
+      const { signature } = await phantom.signMessage(encoded, "utf8");
+      const sigArray = Array.from(signature as Uint8Array);
+      setLoading(true);
+      const res = await api.auth.wallet(publicKey, sigArray, message) as { data: { accessToken: string; refreshToken: string } };
+      localStorage.setItem("accessToken", res.data.accessToken);
+      localStorage.setItem("refreshToken", res.data.refreshToken || "");
+      localStorage.setItem("walletAddress", publicKey);
+      window.location.href = "/dashboard";
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Wallet connection failed");
     } finally {
       setLoading(false);
     }
@@ -231,7 +259,7 @@ export default function LoginPage() {
             <button className="social-btn" type="button">
               <span>𝕏</span> Twitter
             </button>
-            <button className="social-btn" type="button">
+            <button className="social-btn" type="button" onClick={handlePhantomLogin}>
               <span>👻</span> Phantom
             </button>
           </div>

@@ -26,6 +26,7 @@
     "nodemailer": "^6.10.0",
     "socket.io": "^4.8.1",
     "speakeasy": "^2.0.0",
+    "tweetnacl": "^1.0.3",
     "zod": "^3.24.3"
   },
   "devDependencies": {

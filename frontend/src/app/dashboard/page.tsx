@@ -69,11 +69,13 @@ function formatDate(iso: string) {
 }
 
 export default function DashboardPage() {
-  const [profile,  setProfile]  = useState<Profile | null>(null);
-  const [wallet,   setWallet]   = useState<WalletData | null>(null);
-  const [txList,   setTxList]   = useState<Transaction[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
+  const [profile,        setProfile]        = useState<Profile | null>(null);
+  const [wallet,         setWallet]         = useState<WalletData | null>(null);
+  const [txList,         setTxList]         = useState<Transaction[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState<string | null>(null);
+  const [onchainBalance, setOnchainBalance] = useState<number | null>(null);
+  const [walletAddress,  setWalletAddress]  = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +103,16 @@ export default function DashboardPage() {
         const d = txRes.value as { data: { transactions: Transaction[] } };
         const arr = d.data?.transactions ?? (d as unknown as Transaction[]);
         setTxList(Array.isArray(arr) ? arr.slice(0, 5) : []);
+      }
+
+      // Load on-chain balance if wallet is connected
+      const addr = typeof window !== "undefined" ? localStorage.getItem("walletAddress") : null;
+      if (addr) {
+        setWalletAddress(addr);
+        try {
+          const ob = await api.wallet.onchain(addr) as { data: { usdcBalance: number } };
+          setOnchainBalance(Number(ob.data?.usdcBalance ?? 0));
+        } catch { /* non-critical */ }
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load dashboard";
@@ -179,6 +191,45 @@ export default function DashboardPage() {
             <div className="stat-value gold">${totalWon.toFixed(2)}</div>
             <div className="stat-sub">LIFETIME WINNINGS</div>
           </div>
+        </div>
+      )}
+
+      {/* ===== CONNECTED WALLET BANNER ===== */}
+      {walletAddress && (
+        <div style={{
+          background: "rgba(255,183,0,0.06)",
+          border: "1px solid rgba(255,183,0,0.25)",
+          borderRadius: "4px",
+          padding: "10px 16px",
+          marginBottom: "16px",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          fontSize: "10px",
+          letterSpacing: "2px",
+        }}>
+          <span style={{ color: "var(--text-dim)" }}>
+            👻 PHANTOM&nbsp;
+            <span style={{ color: "#FFB800" }}>
+              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+            </span>
+          </span>
+          {onchainBalance !== null && (
+            <span style={{ color: "var(--text-dim)" }}>
+              ON-CHAIN:&nbsp;
+              <span style={{ color: "#4ade80" }}>${onchainBalance.toFixed(2)} USDC</span>
+            </span>
+          )}
+          <button
+            style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: "10px", letterSpacing: "2px" }}
+            onClick={() => {
+              localStorage.removeItem("walletAddress");
+              setWalletAddress(null);
+              setOnchainBalance(null);
+            }}
+          >
+            DISCONNECT ✕
+          </button>
         </div>
       )}
 

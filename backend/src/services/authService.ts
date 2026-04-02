@@ -1,6 +1,8 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import nacl from "tweetnacl";
+import { PublicKey } from "@solana/web3.js";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
 import { BlockchainService } from "./blockchainService";
@@ -299,6 +301,65 @@ export class AuthService {
             avatarUrl:    data.avatarUrl,
             authProvider: "GOOGLE",
             referralCode: crypto.randomBytes(6).toString("hex"),
+          },
+        });
+        await tx.wallet.create({
+          data: { userId: newUser.id, depositAddress },
+        });
+        return newUser;
+      });
+    }
+
+    if (!user) throw new Error("Failed to create user");
+    const tokens = AuthService.generateTokens(user.id, user.email);
+    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+    return tokens;
+  }
+
+  /**
+   * Verify a Phantom wallet signature and find/create user
+   */
+  static async loginWithWallet(data: {
+    publicKey: string;
+    signature: number[];
+    message: string;
+  }) {
+    // Validate public key format
+    let pubKey: PublicKey;
+    try {
+      pubKey = new PublicKey(data.publicKey);
+    } catch {
+      throw new BadRequestError("Invalid Solana public key");
+    }
+
+    // Verify timestamp in message to prevent replay attacks (5 min window)
+    const match = data.message.match(/timestamp:(\d+)/);
+    if (!match) throw new BadRequestError("Invalid sign-in message format");
+    const ts = parseInt(match[1]);
+    if (Date.now() - ts > 5 * 60 * 1000) throw new UnauthorizedError("Sign-in message expired. Please try again.");
+
+    // Verify signature using nacl
+    const msgBytes = new TextEncoder().encode(data.message);
+    const sigBytes = new Uint8Array(data.signature);
+    const isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    if (!isValid) throw new UnauthorizedError("Invalid wallet signature");
+
+    // Find or create user by solana address
+    let user = await prisma.user.findUnique({ where: { solanaAddress: data.publicKey } });
+
+    if (!user) {
+      // Check if there's an existing email user we can link to (edge case — skip for now)
+      const username = await AuthService.generateUniqueUsername("phantom" + data.publicKey.slice(0, 6));
+      const depositAddress = await BlockchainService.generateDepositAddress();
+
+      user = await prisma.$transaction(async (tx: any) => {
+        const newUser = await tx.user.create({
+          data: {
+            email:         `${data.publicKey.toLowerCase()}@wallet.ashnance`,
+            username,
+            solanaAddress: data.publicKey,
+            authProvider:  "WALLET",
+            referralCode:  crypto.randomBytes(6).toString("hex"),
           },
         });
         await tx.wallet.create({

@@ -159,6 +159,24 @@ router.put("/password", authenticate, async (req: AuthRequest, res: Response, ne
 });
 
 // ============================================================
+// WALLET AUTH (Phantom / Solflare)
+// ============================================================
+
+// POST /api/auth/wallet — verify wallet signature, return JWT
+router.post("/wallet", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { publicKey, signature, message } = req.body;
+    if (!publicKey || !signature || !message) {
+      throw new BadRequestError("publicKey, signature, and message are required");
+    }
+    const result = await AuthService.loginWithWallet({ publicKey, signature, message });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ============================================================
 // GOOGLE OAUTH
 // ============================================================
 

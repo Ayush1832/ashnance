@@ -123,6 +123,9 @@ class ApiClient {
 
     verifyOtp: (email: string, otp: string) =>
       this.request<unknown>("/auth/verify-otp", { method: "POST", body: JSON.stringify({ email, otp }) }),
+
+    wallet: (publicKey: string, signature: number[], message: string) =>
+      this.request<unknown>("/auth/wallet", { method: "POST", body: JSON.stringify({ publicKey, signature, message }) }),
   };
 
   // ---- BURN ----
@@ -150,6 +153,9 @@ class ApiClient {
 
     transactions: (type?: string, page: number = 1, limit: number = 20) =>
       this.request<unknown>(`/wallet/transactions?page=${page}&limit=${limit}${type ? `&type=${type}` : ""}`),
+
+    onchain: (address: string) =>
+      this.request<unknown>(`/wallet/onchain/${address}`),
 
     whitelist: () =>
       this.request<unknown>("/wallet/whitelist"),

@@ -3,6 +3,7 @@ import { WalletService } from "../services/walletService";
 import { depositSchema, withdrawSchema } from "../utils/validators";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { BadRequestError } from "../utils/errors";
+import { BlockchainService } from "../services/blockchainService";
 
 const router = Router();
 
@@ -101,6 +102,20 @@ router.delete("/whitelist/:id", authenticate, async (req: AuthRequest, res: Resp
   try {
     await WalletService.removeWhitelistedAddress(req.user!.userId, req.params.id as string);
     res.json({ success: true, message: "Address removed" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/wallet/onchain/:address — Get on-chain USDC balance for any Solana address
+router.get("/onchain/:address", async (req, res: Response, next: NextFunction) => {
+  try {
+    const address = req.params.address as string;
+    if (!BlockchainService.validateSolanaAddress(address)) {
+      return next(new BadRequestError("Invalid Solana address"));
+    }
+    const usdcBalance = await BlockchainService.getUsdcBalance(address);
+    res.json({ success: true, data: { address, usdcBalance } });
   } catch (error) {
     next(error);
   }
