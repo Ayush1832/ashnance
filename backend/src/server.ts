@@ -23,6 +23,9 @@ import { startAllDepositMonitors } from "./services/depositMonitorService";
 const app = express();
 const httpServer = createServer(app);
 
+// Trust Nginx reverse proxy so express-rate-limit reads the correct client IP
+app.set("trust proxy", 1);
+
 // ---- Global Middleware ----
 app.use(cors({
   origin: (origin, callback) => {
