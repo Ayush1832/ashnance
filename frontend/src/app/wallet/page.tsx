@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import styles from "./wallet.module.css";
@@ -410,6 +410,8 @@ export default function WalletPage() {
   const [error,       setError]       = useState<string | null>(null);
   const [modal,       setModal]       = useState<ModalType>(null);
   const [txFilter,    setTxFilter]    = useState<TxFilter>("all");
+  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const balanceRef   = useRef<number>(0);
 
   // Load wallet balance
   const loadWallet = useCallback(async () => {
@@ -443,6 +445,33 @@ export default function WalletPage() {
       setTxLoading(false);
     }
   }, []);
+
+  // Poll balance after deposit until it increases (max 90 seconds)
+  const startDepositPolling = useCallback(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    balanceRef.current = Number(walletData?.usdcBalance ?? 0);
+    let attempts = 0;
+    pollRef.current = setInterval(async () => {
+      attempts++;
+      try {
+        const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+        if (!token) return;
+        api.setToken(token);
+        const res = await api.wallet.balance() as { data?: WalletData } & WalletData;
+        const data = res.data ?? res;
+        const newBal = Number(data.usdcBalance ?? 0);
+        setWalletData(data);
+        if (newBal > balanceRef.current || attempts >= 18) {
+          clearInterval(pollRef.current!);
+          pollRef.current = null;
+          if (newBal > balanceRef.current) loadTx(txFilter);
+        }
+      } catch { /* ignore poll errors */ }
+    }, 5000);
+  }, [walletData, loadTx, txFilter]);
+
+  // Cleanup poll on unmount
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   useEffect(() => { loadWallet(); }, [loadWallet]);
   useEffect(() => { loadTx(txFilter); }, [loadTx, txFilter]);
@@ -530,7 +559,7 @@ export default function WalletPage() {
         <DepositModal
           address={depAddr}
           onClose={() => setModal(null)}
-          onSuccess={() => { setModal(null); loadWallet(); }}
+          onSuccess={() => { setModal(null); startDepositPolling(); }}
         />
       )}
       {modal === "withdraw" && (
