@@ -73,7 +73,7 @@
 - Central large Burn button with fire glow animation
 - Amount selector (4.99 / 10 / 50 / Custom)
 - Luck Meter (visual probability bar)
-- Result overlay (full-screen for wins, subtle for losses)
+- Result overlay (full-screen for wins, subtle for losses) 
 
 ### Admin Panel
 - Clean data-dense design
