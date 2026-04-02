@@ -82,7 +82,7 @@ export default function LoginPage() {
         localStorage.setItem("accessToken", tokens.accessToken);
         localStorage.setItem("refreshToken", tokens.refreshToken || "");
       }
-      window.location.href = "/dashboard";
+      window.location.href = "/connect-wallet";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -92,26 +92,28 @@ export default function LoginPage() {
 
   const handlePhantomLogin = async () => {
     setError("");
+    setLoading(true);
     try {
-      const phantom = (window as any).solana;
-      if (!phantom?.isPhantom) {
+      const provider = (window as any).phantom?.solana ?? (window as any).solana;
+      if (!provider?.isPhantom) {
         window.open("https://phantom.app/", "_blank");
+        setError("Phantom not detected. Install it and refresh this page.");
         return;
       }
-      await phantom.connect();
-      const publicKey: string = phantom.publicKey.toBase58();
+      await provider.connect();
+      const publicKey: string = provider.publicKey.toBase58();
       const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
       const encoded = new TextEncoder().encode(message);
-      const { signature } = await phantom.signMessage(encoded, "utf8");
+      const { signature } = await provider.signMessage(encoded, "utf8");
       const sigArray = Array.from(signature as Uint8Array);
-      setLoading(true);
       const res = await api.auth.wallet(publicKey, sigArray, message) as { data: { accessToken: string; refreshToken: string } };
       localStorage.setItem("accessToken", res.data.accessToken);
       localStorage.setItem("refreshToken", res.data.refreshToken || "");
       localStorage.setItem("walletAddress", publicKey);
       window.location.href = "/dashboard";
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Wallet connection failed");
+      const msg = err instanceof Error ? err.message : "Wallet connection failed";
+      setError(msg.includes("rejected") ? "Signature rejected in Phantom. Please approve to continue." : msg);
     } finally {
       setLoading(false);
     }

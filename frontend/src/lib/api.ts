@@ -126,6 +126,9 @@ class ApiClient {
 
     wallet: (publicKey: string, signature: number[], message: string) =>
       this.request<unknown>("/auth/wallet", { method: "POST", body: JSON.stringify({ publicKey, signature, message }) }),
+
+    linkWallet: (publicKey: string, signature: number[], message: string) =>
+      this.request<unknown>("/auth/link-wallet", { method: "POST", body: JSON.stringify({ publicKey, signature, message }) }),
   };
 
   // ---- BURN ----

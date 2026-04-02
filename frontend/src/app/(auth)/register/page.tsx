@@ -85,7 +85,7 @@ export default function RegisterPage() {
         localStorage.setItem("accessToken", tokens.accessToken);
         localStorage.setItem("refreshToken", tokens.refreshToken || "");
       }
-      window.location.href = "/dashboard";
+      window.location.href = "/connect-wallet";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed");
     } finally {

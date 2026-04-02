@@ -162,7 +162,7 @@ router.put("/password", authenticate, async (req: AuthRequest, res: Response, ne
 // WALLET AUTH (Phantom / Solflare)
 // ============================================================
 
-// POST /api/auth/wallet — verify wallet signature, return JWT
+// POST /api/auth/wallet — verify wallet signature, return JWT (standalone wallet login)
 router.post("/wallet", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { publicKey, signature, message } = req.body;
@@ -170,6 +170,20 @@ router.post("/wallet", async (req: Request, res: Response, next: NextFunction) =
       throw new BadRequestError("publicKey, signature, and message are required");
     }
     const result = await AuthService.loginWithWallet({ publicKey, signature, message });
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/auth/link-wallet — link wallet to existing logged-in account
+router.post("/link-wallet", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { publicKey, signature, message } = req.body;
+    if (!publicKey || !signature || !message) {
+      throw new BadRequestError("publicKey, signature, and message are required");
+    }
+    const result = await AuthService.linkWallet(req.user!.userId, { publicKey, signature, message });
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

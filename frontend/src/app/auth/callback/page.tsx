@@ -23,7 +23,7 @@ function AuthCallback() {
     localStorage.setItem("refreshToken", refreshToken || "");
 
     setMsg("WELCOME! REDIRECTING...");
-    router.replace("/dashboard");
+    router.replace("/connect-wallet");
   }, [params, router]);
 
   return (

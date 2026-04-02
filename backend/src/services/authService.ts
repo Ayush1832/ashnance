@@ -247,6 +247,7 @@ export class AuthService {
       email: user.email,
       username: user.username,
       avatarUrl: user.avatarUrl,
+      solanaAddress: user.solanaAddress,
       isVip: user.isVip,
       vipTier: user.vipTier,
       vipExpiresAt: user.vipExpiresAt,
@@ -266,6 +267,49 @@ export class AuthService {
       },
       createdAt: user.createdAt,
     };
+  }
+
+  /**
+   * Link a Solana wallet to an existing user account (post-login)
+   */
+  static async linkWallet(userId: string, data: {
+    publicKey: string;
+    signature: number[];
+    message: string;
+  }) {
+    // Validate key
+    let pubKey: PublicKey;
+    try {
+      pubKey = new PublicKey(data.publicKey);
+    } catch {
+      throw new BadRequestError("Invalid Solana public key");
+    }
+
+    // Replay attack prevention (5 min window)
+    const match = data.message.match(/timestamp:(\d+)/);
+    if (!match) throw new BadRequestError("Invalid message format");
+    if (Date.now() - parseInt(match[1]) > 5 * 60 * 1000) {
+      throw new UnauthorizedError("Message expired. Please try again.");
+    }
+
+    // Verify signature
+    const msgBytes = new TextEncoder().encode(data.message);
+    const sigBytes = new Uint8Array(data.signature);
+    const isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    if (!isValid) throw new UnauthorizedError("Invalid wallet signature");
+
+    // Check if address already linked to another account
+    const existing = await prisma.user.findUnique({ where: { solanaAddress: data.publicKey } });
+    if (existing && existing.id !== userId) {
+      throw new ConflictError("This wallet is already linked to another account");
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { solanaAddress: data.publicKey },
+    });
+
+    return { solanaAddress: data.publicKey };
   }
 
   /**
