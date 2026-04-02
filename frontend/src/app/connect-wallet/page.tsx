@@ -23,8 +23,10 @@ export default function ConnectWalletPage() {
         localStorage.setItem("walletAddress", profile.solanaAddress);
         router.replace("/dashboard");
       }
+      // No solanaAddress → stay on this page, show the connect button
     }).catch(() => {
-      router.replace("/login");
+      // Profile fetch failed (network/token issue) — stay on page, don't kick to login
+      // User can still attempt to connect their wallet
     });
   }, [router]);
 
