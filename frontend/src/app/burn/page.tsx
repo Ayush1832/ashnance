@@ -113,7 +113,8 @@ export default function BurnPage() {
   const weight = calcWeight(amount);
   const winPct = calcWinChance(weight);
   const fillPct = Math.min(100, weight * 6);
-  const canBurn = amount >= 4.99 && phase === "idle";
+  const usdcBalance = stats?.usdcBalance ?? 0;
+  const canBurn = amount >= 4.99 && phase === "idle" && usdcBalance >= amount;
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -144,57 +145,13 @@ export default function BurnPage() {
         );
       }
     } catch (e: unknown) {
-      // Simulated fallback so the UI is still demonstrable
-      const roll = Math.random();
-      let sim: BurnResult;
-      if (roll < 0.04) {
-        sim = {
-          won: true,
-          prizeAmount: 500,
-          prizeLabel: "BIG PRIZE",
-          ashEarned: 100,
-          message: "THE ASH REVEALS A PRIZE!",
-        };
-      } else if (roll < 0.12) {
-        sim = {
-          won: true,
-          prizeAmount: 200,
-          prizeLabel: "MEDIUM PRIZE",
-          ashEarned: 50,
-          message: "FORTUNE FAVORS THE BOLD!",
-        };
-      } else if (roll < 0.2) {
-        sim = {
-          won: true,
-          prizeAmount: 50,
-          prizeLabel: "SMALL PRIZE",
-          ashEarned: 25,
-          message: "A SPARK OF LUCK!",
-        };
-      } else {
-        const ash = 200 + Math.floor(Math.random() * 300);
-        sim = {
-          won: false,
-          ashEarned: ash,
-          message: "THE FIRE CONSUMED YOUR USDC BUT LEFT ASH TOKENS AS A GIFT.",
-        };
-      }
-      const errMsg = e instanceof Error ? e.message : "";
-      if (errMsg) setError(`Note: using offline result (${errMsg})`);
-      setResult(sim);
-      if (sim.won) {
-        speak(
-          `Congratulations! You won ${sim.prizeAmount ? sim.prizeAmount + " U S D C" : "a prize"}!`,
-        );
-      } else {
-        speak(
-          `The fire consumed your U S D C, but awarded you ${sim.ashEarned} Ash tokens.`,
-        );
-      }
-    } finally {
-      setPhase("result");
-      await loadStats();
+      const msg = e instanceof Error ? e.message : "Burn failed. Please try again.";
+      setError(msg.toUpperCase());
+      setPhase("idle");
+      return;
     }
+    setPhase("result");
+    await loadStats();
   }
 
   function speak(text: string) {
@@ -313,6 +270,11 @@ export default function BurnPage() {
                   </span>
                 )}
               </button>
+              {amount >= 4.99 && usdcBalance < amount && phase === "idle" && (
+                <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
+                  INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
+                </div>
+              )}
             </div>
 
             <div className={styles.disclaimer}>
