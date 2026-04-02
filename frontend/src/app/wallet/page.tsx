@@ -159,7 +159,7 @@ function DepositModal({
             { pubkey: tokenProg,  isSigner: false, isWritable: false },
             { pubkey: sysvarRent, isSigner: false, isWritable: false },
           ],
-          data: new Uint8Array(0),
+          data: new Uint8Array(0) as unknown as Buffer,
         }));
       }
 
@@ -177,7 +177,7 @@ function DepositModal({
           { pubkey: toAta,   isSigner: false, isWritable: true  },
           { pubkey: sender,  isSigner: true,  isWritable: false },
         ],
-        data: transferData,
+        data: transferData as unknown as Buffer,
       }));
 
       const { blockhash } = await connection.getLatestBlockhash("confirmed");
