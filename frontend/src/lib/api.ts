@@ -69,7 +69,19 @@ class ApiClient {
     return data;
   }
 
-  private async refreshToken(): Promise<boolean> {
+  // Shared promise so concurrent 401s share one refresh call instead of racing
+  private refreshPromise: Promise<boolean> | null = null;
+
+  private refreshToken(): Promise<boolean> {
+    if (!this.refreshPromise) {
+      this.refreshPromise = this._executeRefresh().finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+    return this.refreshPromise;
+  }
+
+  private async _executeRefresh(): Promise<boolean> {
     try {
       const refreshToken = typeof window !== "undefined"
         ? localStorage.getItem("refreshToken")

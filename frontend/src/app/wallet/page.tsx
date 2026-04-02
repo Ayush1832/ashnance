@@ -78,9 +78,11 @@ const SOLANA_RPC       = "https://api.devnet.solana.com";
 function DepositModal({
   address,
   onClose,
+  onSuccess,
 }: {
   address: string;
   onClose: () => void;
+  onSuccess: () => void;
 }) {
   const [copied,     setCopied]     = useState(false);
   const [sendAmount, setSendAmount] = useState("");
@@ -153,9 +155,11 @@ function DepositModal({
       setSendStatus("AWAITING PHANTOM APPROVAL...");
       const { signature } = await provider.signAndSendTransaction(tx);
 
+      console.log("[Phantom deposit] tx signature:", signature);
       setSendStatus(`✓ SENT ${amt} USDC — CREDITING IN ~1 MIN`);
       setSendAmount("");
-      console.log("[Phantom deposit] tx signature:", signature);
+      // Close modal and refresh balance after a short delay
+      setTimeout(() => onSuccess(), 2000);
     } catch (e: unknown) {
       console.error("[Phantom deposit error]", e);
       let msg = "Transaction failed";
@@ -419,10 +423,6 @@ export default function WalletPage() {
       setWalletData(data);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load wallet";
-      if (msg.toLowerCase().includes("unauthorized")) {
-        router.replace("/login");
-        return;
-      }
       setError(msg);
     } finally {
       setLoading(false);
@@ -527,7 +527,11 @@ export default function WalletPage() {
 
       {/* ===== MODALS ===== */}
       {modal === "deposit" && (
-        <DepositModal address={depAddr} onClose={() => setModal(null)} />
+        <DepositModal
+          address={depAddr}
+          onClose={() => setModal(null)}
+          onSuccess={() => { setModal(null); loadWallet(); }}
+        />
       )}
       {modal === "withdraw" && (
         <WithdrawModal usdcBalance={usdc} onClose={() => { setModal(null); loadWallet(); }} />
