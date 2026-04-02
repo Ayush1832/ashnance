@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import styles from "./wallet.module.css";
 
@@ -71,6 +72,13 @@ function fmtDate(iso: string) {
 }
 
 // ---- DEPOSIT MODAL ----
+const DEVNET_USDC_MINT  = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
+const TOKEN_PROGRAM     = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const ASSOC_TOKEN_PROG  = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bFT";
+const SYSVAR_RENT_ADDR  = "SysvarRent111111111111111111111111111111111";
+const SYSTEM_PROG_ADDR  = "11111111111111111111111111111111";
+const SOLANA_RPC        = "https://api.devnet.solana.com";
+
 function DepositModal({
   address,
   onClose,
@@ -78,13 +86,120 @@ function DepositModal({
   address: string;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied,     setCopied]     = useState(false);
+  const [sendAmount, setSendAmount] = useState("");
+  const [sending,    setSending]    = useState(false);
+  const [sendStatus, setSendStatus] = useState<string | null>(null);
+  const [sendError,  setSendError]  = useState<string | null>(null);
 
   function copyAddress() {
     navigator.clipboard.writeText(address).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  }
+
+  async function handlePhantomSend() {
+    setSendError(null);
+    setSendStatus(null);
+
+    const amt = parseFloat(sendAmount);
+    if (!amt || amt < 1)  { setSendError("ENTER AN AMOUNT (MIN 1 USDC)"); return; }
+    if (!address)          { setSendError("DEPOSIT ADDRESS NOT LOADED YET"); return; }
+
+    setSending(true);
+    try {
+      const provider = (window as any).phantom?.solana ?? (window as any).solana;
+      if (!provider?.isPhantom) {
+        window.open("https://phantom.app/", "_blank");
+        setSendError("PHANTOM NOT DETECTED. INSTALL IT AND REFRESH.");
+        setSending(false);
+        return;
+      }
+
+      await provider.connect();
+      const sender = provider.publicKey;
+
+      setSendStatus("BUILDING TRANSACTION...");
+
+      // Dynamic import avoids SSR issues
+      const { Connection, PublicKey, Transaction, TransactionInstruction } =
+        await import("@solana/web3.js");
+
+      const usdcMint    = new PublicKey(DEVNET_USDC_MINT);
+      const tokenProg   = new PublicKey(TOKEN_PROGRAM);
+      const assocProg   = new PublicKey(ASSOC_TOKEN_PROG);
+      const sysvarRent  = new PublicKey(SYSVAR_RENT_ADDR);
+      const sysProg     = new PublicKey(SYSTEM_PROG_ADDR);
+      const depositAddr = new PublicKey(address);
+
+      const [fromAta] = PublicKey.findProgramAddressSync(
+        [sender.toBuffer(), tokenProg.toBuffer(), usdcMint.toBuffer()],
+        assocProg
+      );
+      const [toAta] = PublicKey.findProgramAddressSync(
+        [depositAddr.toBuffer(), tokenProg.toBuffer(), usdcMint.toBuffer()],
+        assocProg
+      );
+
+      const connection = new Connection(SOLANA_RPC, "confirmed");
+      const instructions: InstanceType<typeof TransactionInstruction>[] = [];
+
+      // Create destination ATA if it doesn't exist yet
+      const toAtaInfo = await connection.getAccountInfo(toAta);
+      if (!toAtaInfo) {
+        instructions.push(new TransactionInstruction({
+          programId: assocProg,
+          keys: [
+            { pubkey: sender,     isSigner: true,  isWritable: true  },
+            { pubkey: toAta,      isSigner: false, isWritable: true  },
+            { pubkey: depositAddr, isSigner: false, isWritable: false },
+            { pubkey: usdcMint,   isSigner: false, isWritable: false },
+            { pubkey: sysProg,    isSigner: false, isWritable: false },
+            { pubkey: tokenProg,  isSigner: false, isWritable: false },
+            { pubkey: sysvarRent, isSigner: false, isWritable: false },
+          ],
+          data: new Uint8Array(0),
+        }));
+      }
+
+      // SPL Transfer instruction (index 3), amount in micro-USDC (6 decimals)
+      const rawAmt = BigInt(Math.round(amt * 1_000_000));
+      const transferData = new Uint8Array(9);
+      transferData[0] = 3;
+      let val = rawAmt;
+      for (let i = 1; i <= 8; i++) { transferData[i] = Number(val & 0xffn); val >>= 8n; }
+
+      instructions.push(new TransactionInstruction({
+        programId: tokenProg,
+        keys: [
+          { pubkey: fromAta, isSigner: false, isWritable: true  },
+          { pubkey: toAta,   isSigner: false, isWritable: true  },
+          { pubkey: sender,  isSigner: true,  isWritable: false },
+        ],
+        data: transferData,
+      }));
+
+      const { blockhash } = await connection.getLatestBlockhash("confirmed");
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sender });
+      tx.add(...instructions);
+
+      setSendStatus("AWAITING PHANTOM APPROVAL...");
+      const { signature } = await provider.signAndSendTransaction(tx);
+
+      setSendStatus(`✓ SENT ${amt} USDC — CREDITING IN ~1 MIN`);
+      setSendAmount("");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Transaction failed";
+      setSendError(
+        msg.toLowerCase().includes("rejected")
+          ? "REJECTED IN PHANTOM. PLEASE APPROVE TO SEND."
+          : msg.toUpperCase()
+      );
+      setSendStatus(null);
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -106,19 +221,52 @@ function DepositModal({
           </div>
 
           <div className={styles.noticeBox}>
-            <strong>⚠ SOLANA NETWORK ONLY.</strong><br />
+            <strong>⚠ SOLANA DEVNET ONLY.</strong><br />
             SEND USDC (SPL TOKEN) ONLY. MINIMUM: 1 USDC.
             DEPOSITS REFLECT WITHIN 1–2 MINUTES.
           </div>
 
-          <button className={`${styles.walletConnectBtn}`} style={{ marginTop: "20px" }}>
-            <span style={{ fontSize: "20px" }}>👻</span>
-            CONNECT PHANTOM WALLET
-          </button>
-          <button className={styles.walletConnectBtn}>
-            <span style={{ fontSize: "20px" }}>☀️</span>
-            CONNECT SOLFLARE
-          </button>
+          {/* One-click Phantom send */}
+          <div style={{ marginTop: "20px" }}>
+            <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "10px" }}>
+              — OR SEND DIRECTLY VIA PHANTOM —
+            </div>
+            <input
+              type="number"
+              min="1"
+              step="0.01"
+              placeholder="AMOUNT IN USDC"
+              value={sendAmount}
+              onChange={(e) => setSendAmount(e.target.value)}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                background: "#111", border: "1px solid rgba(255,77,0,0.3)",
+                borderRadius: "4px", padding: "10px 12px", color: "#fff",
+                fontFamily: "var(--font-display, monospace)", fontSize: "12px",
+                letterSpacing: "1px", marginBottom: "10px",
+              }}
+            />
+            <button
+              className={styles.walletConnectBtn}
+              onClick={handlePhantomSend}
+              disabled={sending || !address}
+              style={{ opacity: sending || !address ? 0.5 : 1, cursor: sending || !address ? "not-allowed" : "pointer" }}
+            >
+              <span style={{ fontSize: "20px" }}>👻</span>
+              {sending ? (sendStatus ?? "PROCESSING...") : "SEND VIA PHANTOM"}
+            </button>
+
+            {sendStatus && !sending && (
+              <div style={{ fontSize: "10px", color: "#4ade80", letterSpacing: "1px", marginTop: "8px", textAlign: "center" }}>
+                {sendStatus}
+              </div>
+            )}
+            {sendError && (
+              <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px", textAlign: "center" }}>
+                ⚠ {sendError}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -277,6 +425,7 @@ function WithdrawModal({
 
 // ---- MAIN PAGE ----
 export default function WalletPage() {
+  const router = useRouter();
   const [walletData,  setWalletData]  = useState<WalletData | null>(null);
   const [txList,      setTxList]      = useState<Transaction[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -289,18 +438,23 @@ export default function WalletPage() {
   const loadWallet = useCallback(async () => {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      if (token) api.setToken(token);
+      if (!token) { router.replace("/login"); return; }
+      api.setToken(token);
 
       const res = await api.wallet.balance() as { data?: WalletData } & WalletData;
       const data = res.data ?? res;
       setWalletData(data);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to load wallet";
+      if (msg.toLowerCase().includes("unauthorized")) {
+        router.replace("/login");
+        return;
+      }
       setError(msg);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   // Load tx history
   const loadTx = useCallback(async (filter: TxFilter) => {
