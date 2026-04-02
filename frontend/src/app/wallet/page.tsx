@@ -72,12 +72,8 @@ function fmtDate(iso: string) {
 }
 
 // ---- DEPOSIT MODAL ----
-const DEVNET_USDC_MINT  = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
-const TOKEN_PROGRAM     = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
-const ASSOC_TOKEN_PROG  = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bFT";
-const SYSVAR_RENT_ADDR  = "SysvarRent111111111111111111111111111111111";
-const SYSTEM_PROG_ADDR  = "11111111111111111111111111111111";
-const SOLANA_RPC        = "https://api.devnet.solana.com";
+const DEVNET_USDC_MINT = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
+const SOLANA_RPC       = "https://api.devnet.solana.com";
 
 function DepositModal({
   address,
@@ -122,63 +118,33 @@ function DepositModal({
 
       setSendStatus("BUILDING TRANSACTION...");
 
-      // Dynamic import avoids SSR issues
-      const { Connection, PublicKey, Transaction, TransactionInstruction } =
-        await import("@solana/web3.js");
+      const { Connection, PublicKey, Transaction } = await import("@solana/web3.js");
+      const {
+        getAssociatedTokenAddressSync,
+        createAssociatedTokenAccountInstruction,
+        createTransferInstruction,
+      } = await import("@solana/spl-token");
 
       const usdcMint    = new PublicKey(DEVNET_USDC_MINT);
-      const tokenProg   = new PublicKey(TOKEN_PROGRAM);
-      const assocProg   = new PublicKey(ASSOC_TOKEN_PROG);
-      const sysvarRent  = new PublicKey(SYSVAR_RENT_ADDR);
-      const sysProg     = new PublicKey(SYSTEM_PROG_ADDR);
       const depositAddr = new PublicKey(address);
 
-      const [fromAta] = PublicKey.findProgramAddressSync(
-        [sender.toBuffer(), tokenProg.toBuffer(), usdcMint.toBuffer()],
-        assocProg
-      );
-      const [toAta] = PublicKey.findProgramAddressSync(
-        [depositAddr.toBuffer(), tokenProg.toBuffer(), usdcMint.toBuffer()],
-        assocProg
-      );
+      const fromAta = getAssociatedTokenAddressSync(usdcMint, sender);
+      const toAta   = getAssociatedTokenAddressSync(usdcMint, depositAddr);
 
-      const connection = new Connection(SOLANA_RPC, "confirmed");
-      const instructions: InstanceType<typeof TransactionInstruction>[] = [];
+      const connection  = new Connection(SOLANA_RPC, "confirmed");
+      const instructions = [];
 
       // Create destination ATA if it doesn't exist yet
       const toAtaInfo = await connection.getAccountInfo(toAta);
       if (!toAtaInfo) {
-        instructions.push(new TransactionInstruction({
-          programId: assocProg,
-          keys: [
-            { pubkey: sender,     isSigner: true,  isWritable: true  },
-            { pubkey: toAta,      isSigner: false, isWritable: true  },
-            { pubkey: depositAddr, isSigner: false, isWritable: false },
-            { pubkey: usdcMint,   isSigner: false, isWritable: false },
-            { pubkey: sysProg,    isSigner: false, isWritable: false },
-            { pubkey: tokenProg,  isSigner: false, isWritable: false },
-            { pubkey: sysvarRent, isSigner: false, isWritable: false },
-          ],
-          data: new Uint8Array(0) as unknown as Buffer,
-        }));
+        instructions.push(
+          createAssociatedTokenAccountInstruction(sender, toAta, depositAddr, usdcMint)
+        );
       }
 
-      // SPL Transfer instruction (index 3), amount in micro-USDC (6 decimals)
-      const rawAmt = BigInt(Math.round(amt * 1_000_000));
-      const transferData = new Uint8Array(9);
-      transferData[0] = 3;
-      let val = rawAmt;
-      for (let i = 1; i <= 8; i++) { transferData[i] = Number(val & 0xffn); val >>= 8n; }
-
-      instructions.push(new TransactionInstruction({
-        programId: tokenProg,
-        keys: [
-          { pubkey: fromAta, isSigner: false, isWritable: true  },
-          { pubkey: toAta,   isSigner: false, isWritable: true  },
-          { pubkey: sender,  isSigner: true,  isWritable: false },
-        ],
-        data: transferData as unknown as Buffer,
-      }));
+      instructions.push(
+        createTransferInstruction(fromAta, toAta, sender, Math.round(amt * 1_000_000))
+      );
 
       const { blockhash } = await connection.getLatestBlockhash("confirmed");
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sender });
@@ -189,11 +155,18 @@ function DepositModal({
 
       setSendStatus(`✓ SENT ${amt} USDC — CREDITING IN ~1 MIN`);
       setSendAmount("");
+      console.log("[Phantom deposit] tx signature:", signature);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Transaction failed";
+      console.error("[Phantom deposit error]", e);
+      let msg = "Transaction failed";
+      if (e instanceof Error) {
+        msg = e.message;
+      } else if (typeof e === "object" && e !== null && "message" in e) {
+        msg = String((e as { message: unknown }).message);
+      }
       setSendError(
         msg.toLowerCase().includes("rejected")
-          ? "REJECTED IN PHANTOM. PLEASE APPROVE TO SEND."
+          ? "REJECTED IN PHANTOM. TRY AGAIN."
           : msg.toUpperCase()
       );
       setSendStatus(null);
