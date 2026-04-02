@@ -6,9 +6,6 @@
   "github": {
     "silent": true
   },
-  "images": {
-    "dangerouslyAllowSVG": true
-  },
   "headers": [
     {
       "source": "/(.*)",
