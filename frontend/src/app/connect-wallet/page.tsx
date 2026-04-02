@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 
 export default function ConnectWalletPage() {
   const router = useRouter();
+  const [ready,   setReady]   = useState(false);
   const [status,  setStatus]  = useState<"idle" | "connecting" | "signing" | "success" | "error">("idle");
   const [error,   setError]   = useState("");
   const [address, setAddress] = useState("");
@@ -19,16 +20,17 @@ export default function ConnectWalletPage() {
     api.auth.profile().then((res: any) => {
       const profile = res.data ?? res;
       if (profile.solanaAddress) {
-        // Already linked — save locally and go to dashboard
         localStorage.setItem("walletAddress", profile.solanaAddress);
         router.replace("/dashboard");
+      } else {
+        setReady(true);
       }
-      // No solanaAddress → stay on this page, show the connect button
     }).catch(() => {
-      // Profile fetch failed (network/token issue) — stay on page, don't kick to login
-      // User can still attempt to connect their wallet
+      setReady(true);
     });
   }, [router]);
+
+  if (!ready) return null;
 
   async function handleConnect() {
     setError("");
