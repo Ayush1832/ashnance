@@ -23,16 +23,10 @@ const app = express();
 const httpServer = createServer(app);
 
 // ---- Global Middleware ----
-const allowedOrigins = config.frontendUrl
-  .split(",")
-  .map((o) => o.trim())
-  .filter(Boolean);
-
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (config.corsOrigins.includes(origin)) return callback(null, true);
     callback(new Error(`CORS: origin ${origin} not allowed`));
   },
   credentials: true,

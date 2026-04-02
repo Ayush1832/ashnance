@@ -40,7 +40,10 @@ export const config = {
   },
 
   // Frontend / Backend URLs
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:3000",
+  // frontendUrl = single URL used for redirects (OAuth callbacks etc.)
+  frontendUrl: (process.env.FRONTEND_URL || "http://localhost:3000").split(",")[0].trim(),
+  // corsOrigins = all allowed origins for CORS (comma-separated)
+  corsOrigins: (process.env.FRONTEND_URL || "http://localhost:3000").split(",").map(o => o.trim()).filter(Boolean),
   backendUrl:  process.env.BACKEND_URL  || "http://localhost:4000",
 
   // Redis
