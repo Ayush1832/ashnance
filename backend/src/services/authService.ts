@@ -53,13 +53,15 @@ export class AuthService {
       }
     }
 
-    // Generate unique Solana deposit address
-    const depositAddress = await BlockchainService.generateDepositAddress();
+    // Pre-generate user ID so we can derive a deterministic deposit address
+    const userId = crypto.randomUUID();
+    const depositAddress = await BlockchainService.generateDepositAddress(userId);
 
     // Create user + wallet in transaction
     const user = await prisma.$transaction(async (tx: any) => {
       const newUser = await tx.user.create({
         data: {
+          id: userId,
           email: data.email,
           username: data.username,
           passwordHash,
@@ -340,11 +342,13 @@ export class AuthService {
     } else {
       // Create new user from Google account
       const username = await AuthService.generateUniqueUsername(data.name);
-      newDepositAddress = await BlockchainService.generateDepositAddress();
+      const googleUserId = crypto.randomUUID();
+      newDepositAddress = await BlockchainService.generateDepositAddress(googleUserId);
 
       user = await prisma.$transaction(async (tx: any) => {
         const newUser = await tx.user.create({
           data: {
+            id:           googleUserId,
             email:        data.email,
             username,
             avatarUrl:    data.avatarUrl,
@@ -403,11 +407,13 @@ export class AuthService {
 
     if (!user) {
       const username = await AuthService.generateUniqueUsername("phantom" + data.publicKey.slice(0, 6));
-      newDepositAddress = await BlockchainService.generateDepositAddress();
+      const walletUserId = crypto.randomUUID();
+      newDepositAddress = await BlockchainService.generateDepositAddress(walletUserId);
 
       user = await prisma.$transaction(async (tx: any) => {
         const newUser = await tx.user.create({
           data: {
+            id:            walletUserId,
             email:         `${data.publicKey.toLowerCase()}@wallet.ashnance`,
             username,
             solanaAddress: data.publicKey,

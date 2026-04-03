@@ -2,22 +2,26 @@
 // Ashnance Backend — Blockchain Service
 // ============================================================
 // Handles all Solana blockchain interactions:
-//   - Generating unique deposit addresses
+//   - Generating unique deposit addresses (deterministic, recoverable)
 //   - Monitoring deposit addresses for incoming USDC (SPL token)
+//   - Sweeping deposited USDC to master wallet
 //   - Processing confirmed deposits
 //   - Validating Solana addresses
 //   - VRF simulation for fair randomness
-//   - Tracking transaction hashes for withdrawals
+//   - Sending USDC transfers for prizes/withdrawals
 
 import {
   Connection,
   Keypair,
   PublicKey,
   Transaction,
-  TransactionInstruction,
-  SystemProgram,
   clusterApiUrl,
 } from "@solana/web3.js";
+import {
+  getAssociatedTokenAddressSync,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+} from "@solana/spl-token";
 import * as crypto from "crypto";
 
 // ---- Constants ----
@@ -28,16 +32,6 @@ export const USDC_MINT_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 /** USDC SPL token mint on Solana devnet */
 export const USDC_MINT_DEVNET = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 
-/** Token program ID */
-const TOKEN_PROGRAM_ID = new PublicKey(
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-);
-
-/** Associated Token Program ID */
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1bFT"
-);
-
 const RPC_URL =
   process.env.SOLANA_RPC_URL || clusterApiUrl("devnet");
 
@@ -45,9 +39,6 @@ const RPC_URL =
 const USDC_MINT =
   process.env.USDC_MINT ||
   (process.env.NODE_ENV === "production" ? USDC_MINT_MAINNET : USDC_MINT_DEVNET);
-
-// ---- Address derivation counter (in-memory; replace with DB for production) ----
-let _addressCounter = 0;
 
 // ---- Active polling handles (address -> NodeJS.Timeout) ----
 const _monitorHandles = new Map<string, ReturnType<typeof setInterval>>();
@@ -75,7 +66,6 @@ function getMasterKeypair(): Keypair {
       );
     }
   }
-
   // Deterministic fallback for development (do NOT use in production)
   const seed = Buffer.alloc(32);
   seed.write("ashnance-dev-master-seed-v1", "utf8");
@@ -91,44 +81,52 @@ export class BlockchainService {
   // generateDepositAddress
   // ----------------------------------------------------------
   /**
-   * Derives a unique Solana public key from the master keypair using
-   * a sequential counter mixed with crypto entropy.
-   *
-   * Returns a unique Solana address (public key string) for each call.
+   * Deterministically derives a unique Solana deposit address for a userId.
+   * The private key is RECOVERABLE via getDepositKeypair(userId).
+   * This is required so deposited USDC can be swept to the master wallet.
    */
-  static async generateDepositAddress(): Promise<string> {
-    try {
-      const master = getMasterKeypair();
-      const counter = _addressCounter++;
+  static async generateDepositAddress(userId: string): Promise<string> {
+    const keypair = BlockchainService.getDepositKeypair(userId);
+    return keypair.publicKey.toBase58();
+  }
 
-      // Mix master seed + counter + random entropy
-      const hashInput = Buffer.concat([
-        master.secretKey.slice(0, 32),
-        Buffer.from(counter.toString()),
-        crypto.randomBytes(4),
-      ]);
+  // ----------------------------------------------------------
+  // getDepositKeypair
+  // ----------------------------------------------------------
+  /**
+   * Re-derives the Keypair for a userId's deposit address.
+   * Used for sweeping deposited USDC to the master wallet.
+   */
+  static getDepositKeypair(userId: string): Keypair {
+    const master = getMasterKeypair();
+    const derivedSeed = crypto
+      .createHash("sha256")
+      .update(
+        Buffer.concat([
+          master.secretKey.slice(0, 32),
+          Buffer.from(`deposit-${userId}`, "utf8"),
+        ])
+      )
+      .digest()
+      .slice(0, 32);
+    return Keypair.fromSeed(Uint8Array.from(derivedSeed));
+  }
 
-      const derivedSeed = crypto
-        .createHash("sha256")
-        .update(hashInput)
-        .digest()
-        .slice(0, 32);
-
-      const derived = Keypair.fromSeed(Uint8Array.from(derivedSeed));
-      return derived.publicKey.toBase58();
-    } catch (err) {
-      console.error("[BlockchainService] generateDepositAddress error:", err);
-      // Last-resort fallback: generate a fresh random keypair
-      return Keypair.generate().publicKey.toBase58();
-    }
+  // ----------------------------------------------------------
+  // getMasterWalletAddress
+  // ----------------------------------------------------------
+  /**
+   * Returns the master wallet public key (the platform's main wallet).
+   * This is where all deposited USDC is swept, and from where prizes
+   * and withdrawals are paid.
+   */
+  static getMasterWalletAddress(): string {
+    return getMasterKeypair().publicKey.toBase58();
   }
 
   // ----------------------------------------------------------
   // validateSolanaAddress
   // ----------------------------------------------------------
-  /**
-   * Returns true if `address` is a valid base58-encoded Solana public key.
-   */
   static validateSolanaAddress(address: string): boolean {
     try {
       new PublicKey(address);
@@ -143,39 +141,25 @@ export class BlockchainService {
   // ----------------------------------------------------------
   /**
    * Produces a deterministic-but-unpredictable float in [0, 1) for a
-   * given seed string, using crypto.randomBytes mixed with the seed for
-   * better entropy than Math.random().
-   *
+   * given seed string, using crypto.randomBytes mixed with the seed.
    * In production this should be replaced by Switchboard or Pyth VRF.
    */
   static simulateVRF(seed: string): number {
     try {
       const entropy = crypto.randomBytes(32);
-      const hashInput = Buffer.concat([
-        Buffer.from(seed, "utf8"),
-        entropy,
-      ]);
-
-      const hash = crypto.createHash("sha256").update(hashInput).digest();
-
-      // Read first 4 bytes as an unsigned 32-bit integer and normalise to [0, 1)
-      const uint32 = hash.readUInt32BE(0);
-      return uint32 / 0x1_0000_0000; // divide by 2^32
-    } catch (err) {
-      console.error("[BlockchainService] simulateVRF error:", err);
-      // Fallback — still better than a raw Math.random() call
-      const fallback = crypto.randomBytes(4).readUInt32BE(0);
-      return fallback / 0x1_0000_0000;
+      const hash = crypto
+        .createHash("sha256")
+        .update(Buffer.concat([Buffer.from(seed, "utf8"), entropy]))
+        .digest();
+      return hash.readUInt32BE(0) / 0x1_0000_0000;
+    } catch {
+      return crypto.randomBytes(4).readUInt32BE(0) / 0x1_0000_0000;
     }
   }
 
   // ----------------------------------------------------------
   // getUsdcBalance
   // ----------------------------------------------------------
-  /**
-   * Returns the USDC (SPL token) balance of `ownerAddress` in human-
-   * readable USDC units (i.e. divided by 10^6).
-   */
   static async getUsdcBalance(ownerAddress: string): Promise<number> {
     try {
       const connection = getConnection();
@@ -201,16 +185,91 @@ export class BlockchainService {
   }
 
   // ----------------------------------------------------------
+  // sweepDepositToMaster
+  // ----------------------------------------------------------
+  /**
+   * Transfers all USDC from a user's deposit address to the master wallet.
+   * Called after a deposit is detected and credited in the DB.
+   * Returns the transaction signature, or null if balance is zero.
+   */
+  static async sweepDepositToMaster(
+    userId: string,
+    depositAddress: string
+  ): Promise<string | null> {
+    try {
+      const connection = getConnection();
+      const depositKeypair = BlockchainService.getDepositKeypair(userId);
+      const master = getMasterKeypair();
+      const mint = new PublicKey(USDC_MINT);
+
+      // Verify keypair matches stored address
+      if (depositKeypair.publicKey.toBase58() !== depositAddress) {
+        console.warn(
+          `[BlockchainService] sweepDepositToMaster — derived address mismatch for user ${userId}`
+        );
+        return null;
+      }
+
+      const balance = await BlockchainService.getUsdcBalance(depositAddress);
+      if (balance <= 0) return null;
+
+      const fromAta = getAssociatedTokenAddressSync(mint, depositKeypair.publicKey);
+      const toAta   = getAssociatedTokenAddressSync(mint, master.publicKey);
+
+      const instructions = [];
+
+      // Create master ATA if it doesn't exist yet
+      const toAtaInfo = await connection.getAccountInfo(toAta);
+      if (!toAtaInfo) {
+        instructions.push(
+          createAssociatedTokenAccountInstruction(
+            depositKeypair.publicKey,
+            toAta,
+            master.publicKey,
+            mint
+          )
+        );
+      }
+
+      const rawAmount = BigInt(Math.round(balance * 1_000_000));
+      instructions.push(
+        createTransferInstruction(fromAta, toAta, depositKeypair.publicKey, rawAmount)
+      );
+
+      const { blockhash } = await connection.getLatestBlockhash("confirmed");
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: depositKeypair.publicKey });
+      tx.add(...instructions);
+      tx.sign(depositKeypair);
+
+      const txHash = await connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+
+      const latestBlockhash = await connection.getLatestBlockhash();
+      await connection.confirmTransaction(
+        { signature: txHash, ...latestBlockhash },
+        "confirmed"
+      );
+
+      console.log(
+        `[BlockchainService] Swept ${balance} USDC from ${depositAddress} → master wallet, tx: ${txHash}`
+      );
+      return txHash;
+    } catch (err) {
+      // Sweep failure is non-fatal — the DB has already been credited
+      console.error("[BlockchainService] sweepDepositToMaster error:", err);
+      return null;
+    }
+  }
+
+  // ----------------------------------------------------------
   // monitorDeposit
   // ----------------------------------------------------------
   /**
    * Polls `address` every 15 seconds for new USDC token transfers.
    * When a new incoming transfer is detected the `callback` is invoked
    * with (amount, txHash).
-   *
-   * Polling is used here for simplicity / dev compatibility.
-   * In production, replace with WebSocket subscriptions or a webhook
-   * from a Helius / QuickNode account.
    */
   static monitorDeposit(
     address: string,
@@ -221,16 +280,13 @@ export class BlockchainService {
       return;
     }
 
-    // Stop any existing monitor for this address
     BlockchainService.stopMonitor(address);
 
     const connection = getConnection();
     const owner = new PublicKey(address);
     const mint = new PublicKey(USDC_MINT);
 
-    /** Signatures we have already processed */
     const seenSignatures = new Set<string>();
-
     let firstPoll = true;
 
     const poll = async () => {
@@ -253,7 +309,6 @@ export class BlockchainService {
         );
 
         if (firstPoll) {
-          // Seed the seen set so we don't replay historical transactions
           for (const sig of signatures) {
             seenSignatures.add(sig.signature);
           }
@@ -265,31 +320,24 @@ export class BlockchainService {
           if (seenSignatures.has(sigInfo.signature)) continue;
           seenSignatures.add(sigInfo.signature);
 
-          // Parse the transaction to extract the transferred amount
           const tx = await connection.getParsedTransaction(sigInfo.signature, {
             maxSupportedTransactionVersion: 0,
           });
 
           if (!tx || !tx.meta) continue;
 
-          // Look for postTokenBalance entries for our address
           const postBalances = tx.meta.postTokenBalances ?? [];
-          const preBalances = tx.meta.preTokenBalances ?? [];
+          const preBalances  = tx.meta.preTokenBalances  ?? [];
 
           for (const post of postBalances) {
-            if (
-              post.owner !== address ||
-              post.mint !== USDC_MINT
-            ) {
-              continue;
-            }
+            if (post.owner !== address || post.mint !== USDC_MINT) continue;
 
             const pre = preBalances.find(
               (p) => p.accountIndex === post.accountIndex
             );
 
             const postAmount = post.uiTokenAmount.uiAmount ?? 0;
-            const preAmount = pre?.uiTokenAmount.uiAmount ?? 0;
+            const preAmount  = pre?.uiTokenAmount.uiAmount ?? 0;
             const delta = postAmount - preAmount;
 
             if (delta > 0) {
@@ -307,36 +355,22 @@ export class BlockchainService {
 
     const handle = setInterval(poll, 15_000);
     _monitorHandles.set(address, handle);
-
-    // Run an initial poll immediately (async — intentionally not awaited)
     poll();
 
-    console.log(
-      `[BlockchainService] Started monitoring deposit address: ${address}`
-    );
+    console.log(`[BlockchainService] Started monitoring deposit address: ${address}`);
   }
 
   // ----------------------------------------------------------
-  // stopMonitor
+  // stopMonitor / stopAllMonitors
   // ----------------------------------------------------------
-  /**
-   * Stops the polling loop for `address` if one is active.
-   */
   static stopMonitor(address: string): void {
     const handle = _monitorHandles.get(address);
     if (handle !== undefined) {
       clearInterval(handle);
       _monitorHandles.delete(address);
-      console.log(`[BlockchainService] Stopped monitoring: ${address}`);
     }
   }
 
-  // ----------------------------------------------------------
-  // stopAllMonitors
-  // ----------------------------------------------------------
-  /**
-   * Stops all active deposit monitors.  Call on graceful shutdown.
-   */
   static stopAllMonitors(): void {
     for (const [address, handle] of _monitorHandles.entries()) {
       clearInterval(handle);
@@ -351,7 +385,10 @@ export class BlockchainService {
   /**
    * Sends USDC from the platform master wallet to `toAddress`.
    * Creates the recipient's associated token account if it does not exist.
-   * Returns the transaction signature (hash).
+   * Returns the transaction signature.
+   *
+   * PREREQUISITE: The master wallet must hold enough USDC (auto-funded
+   * by sweepDepositToMaster after each user deposit).
    */
   static async sendUsdcTransfer(
     toAddress: string,
@@ -360,61 +397,33 @@ export class BlockchainService {
     const connection = getConnection();
     const master = getMasterKeypair();
     const mint = new PublicKey(USDC_MINT);
-    const fromOwner = master.publicKey;
     const toOwner = new PublicKey(toAddress);
 
-    // Derive associated token account addresses (off-chain, no RPC needed)
-    const [fromAta] = PublicKey.findProgramAddressSync(
-      [fromOwner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    );
-    const [toAta] = PublicKey.findProgramAddressSync(
-      [toOwner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    );
+    const fromAta = getAssociatedTokenAddressSync(mint, master.publicKey);
+    const toAta   = getAssociatedTokenAddressSync(mint, toOwner);
 
-    const instructions: TransactionInstruction[] = [];
+    const instructions = [];
 
     // Create destination ATA if it doesn't exist
     const toAtaInfo = await connection.getAccountInfo(toAta);
     if (!toAtaInfo) {
       instructions.push(
-        new TransactionInstruction({
-          programId: ASSOCIATED_TOKEN_PROGRAM_ID,
-          keys: [
-            { pubkey: fromOwner,                                          isSigner: true,  isWritable: true  },
-            { pubkey: toAta,                                              isSigner: false, isWritable: true  },
-            { pubkey: toOwner,                                            isSigner: false, isWritable: false },
-            { pubkey: mint,                                               isSigner: false, isWritable: false },
-            { pubkey: SystemProgram.programId,                            isSigner: false, isWritable: false },
-            { pubkey: TOKEN_PROGRAM_ID,                                   isSigner: false, isWritable: false },
-            { pubkey: new PublicKey("SysvarRent111111111111111111111111111111111"), isSigner: false, isWritable: false },
-          ],
-          data: Buffer.alloc(0),
-        })
+        createAssociatedTokenAccountInstruction(
+          master.publicKey,
+          toAta,
+          toOwner,
+          mint
+        )
       );
     }
 
-    // SPL Token Transfer instruction (instruction index 3)
-    const rawAmount = BigInt(Math.round(amountUsdc * 1_000_000)); // USDC has 6 decimals
-    const transferData = Buffer.alloc(9);
-    transferData.writeUInt8(3, 0);
-    transferData.writeBigUInt64LE(rawAmount, 1);
-
+    const rawAmount = BigInt(Math.round(amountUsdc * 1_000_000));
     instructions.push(
-      new TransactionInstruction({
-        programId: TOKEN_PROGRAM_ID,
-        keys: [
-          { pubkey: fromAta,    isSigner: false, isWritable: true  },
-          { pubkey: toAta,      isSigner: false, isWritable: true  },
-          { pubkey: fromOwner,  isSigner: true,  isWritable: false },
-        ],
-        data: transferData,
-      })
+      createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
     );
 
     const { blockhash } = await connection.getLatestBlockhash("confirmed");
-    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: fromOwner });
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
     tx.add(...instructions);
     tx.sign(master);
 
@@ -423,39 +432,55 @@ export class BlockchainService {
       preflightCommitment: "confirmed",
     });
 
-    // Wait for confirmation
     const latestBlockhash = await connection.getLatestBlockhash();
     await connection.confirmTransaction(
       { signature: txHash, ...latestBlockhash },
       "confirmed"
     );
 
-    console.log(`[BlockchainService] USDC transfer confirmed — ${amountUsdc} USDC to ${toAddress}, tx: ${txHash}`);
+    console.log(
+      `[BlockchainService] USDC transfer confirmed — ${amountUsdc} USDC to ${toAddress}, tx: ${txHash}`
+    );
     return txHash;
   }
 
   // ----------------------------------------------------------
   // getTransactionStatus
   // ----------------------------------------------------------
-  /**
-   * Returns the confirmation status of a transaction hash, or null if
-   * it cannot be found.
-   */
   static async getTransactionStatus(
     txHash: string
   ): Promise<"confirmed" | "finalized" | "pending" | null> {
     try {
       const connection = getConnection();
       const status = await connection.getSignatureStatus(txHash);
-
       if (!status.value) return null;
-
       const confirmation = status.value.confirmationStatus;
       if (confirmation === "finalized") return "finalized";
       if (confirmation === "confirmed") return "confirmed";
       return "pending";
+    } catch {
+      return null;
+    }
+  }
+
+  // ----------------------------------------------------------
+  // requestDevnetAirdrop  (devnet only — for setup/testing)
+  // ----------------------------------------------------------
+  /**
+   * Requests a SOL airdrop for the master wallet on devnet.
+   * Required so the master wallet can pay transaction fees.
+   */
+  static async requestDevnetAirdrop(lamports: number = 2_000_000_000): Promise<string | null> {
+    if (process.env.NODE_ENV === "production") return null;
+    try {
+      const connection = getConnection();
+      const master = getMasterKeypair();
+      const sig = await connection.requestAirdrop(master.publicKey, lamports);
+      await connection.confirmTransaction(sig, "confirmed");
+      console.log(`[BlockchainService] Airdropped ${lamports / 1e9} SOL to master wallet`);
+      return sig;
     } catch (err) {
-      console.error("[BlockchainService] getTransactionStatus error:", err);
+      console.error("[BlockchainService] Airdrop failed:", err);
       return null;
     }
   }

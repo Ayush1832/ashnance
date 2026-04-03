@@ -22,9 +22,17 @@ export function watchDepositAddress(userId: string, depositAddress: string): voi
         console.log(
           `[DepositMonitor] Credited ${amount} USDC → user ${userId} (tx: ${txHash.slice(0, 16)}...)`
         );
+        // Sweep the deposited USDC from the deposit address to the master wallet
+        // so the master wallet has funds to pay prizes and withdrawals
+        BlockchainService.sweepDepositToMaster(userId, depositAddress).then((sweepTx) => {
+          if (sweepTx) {
+            console.log(`[DepositMonitor] Swept ${amount} USDC to master wallet (tx: ${sweepTx.slice(0, 16)}...)`);
+          }
+        }).catch((err) => {
+          console.error(`[DepositMonitor] Sweep failed for ${depositAddress}:`, err);
+        });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        // Idempotency — already processed transactions are expected, not errors
         if (msg.includes("already processed")) return;
         console.error(
           `[DepositMonitor] Failed to process deposit for ${depositAddress}:`,
