@@ -410,175 +410,179 @@ export default function OwnerPage() {
         {section === "burn" && (
           <>
             <div className={styles.pageTitle}>BURN CONFIG</div>
-            <div className={styles.pageSub}>ADJUST BURN MECHANICS IN REAL TIME</div>
+            <div className={styles.pageSub}>CHANGE HOW BURNS WORK — TAKES EFFECT IMMEDIATELY AFTER SAVE</div>
 
             {cfgLoading ? (
               <div style={{ color: "#444", fontSize: "10px", letterSpacing: "2px" }}>LOADING...</div>
             ) : (
               <>
-                <div className={styles.configGrid}>
-                  {/* Prize Probabilities */}
-                  <div className={styles.configGroup}>
-                    <div className={styles.configGroupTitle}>PRIZE PROBABILITIES</div>
-
+                {/* PRIZE SECTION */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>💎 PRIZES</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
                     {[
-                      { key: "jackpot_prob", label: "JACKPOT PROB", min: 0.001, max: 0.05, step: 0.001, fmt: (v: number) => (v*100).toFixed(1)+"%" },
-                      { key: "big_prob",     label: "BIG PRIZE CUMULATIVE",  min: 0.01, max: 0.10, step: 0.005, fmt: (v: number) => (v*100).toFixed(1)+"%" },
-                      { key: "medium_prob",  label: "MEDIUM CUMULATIVE", min: 0.05, max: 0.30, step: 0.01,  fmt: (v: number) => (v*100).toFixed(1)+"%" },
-                    ].map(({ key, label, min, max, step, fmt }) => (
-                      <div className={styles.sliderRow} key={key}>
-                        <div className={styles.sliderLabel}>
-                          <span>{label}</span>
-                          <span className={styles.sliderValue}>{fmt(cfg[key as keyof BurnConfig])}</span>
+                      { key: "jackpot_amount", label: "💎 Jackpot Prize", unit: "USDC", hint: "Amount winner receives for jackpot" },
+                      { key: "jackpot_prob",   label: "💎 Jackpot Chance", unit: "%",   hint: "e.g. 1 = 1% chance", multiplier: 100, decimals: 2 },
+                      { key: "big_amount",     label: "🔥 Big Prize",      unit: "USDC", hint: "Amount for big prize" },
+                      { key: "big_prob",       label: "🔥 Big Chance",     unit: "%",   hint: "Cumulative e.g. 5 = 5%", multiplier: 100, decimals: 2 },
+                      { key: "medium_amount",  label: "✨ Medium Prize",   unit: "USDC", hint: "Amount for medium prize" },
+                      { key: "medium_prob",    label: "✨ Medium Chance",  unit: "%",   hint: "Cumulative e.g. 20 = 20%", multiplier: 100, decimals: 1 },
+                      { key: "small_amount",   label: "⚡ Small Prize",    unit: "USDC", hint: "Amount for small prize" },
+                    ].map(({ key, label, unit, hint, multiplier = 1, decimals = 0 }) => {
+                      const raw = cfg[key as keyof BurnConfig];
+                      const display = raw * multiplier;
+                      return (
+                        <div key={key}>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                            {label}
+                            <span style={{ color: "#333", marginLeft: "8px" }}>{hint}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <input
+                              type="number"
+                              step={decimals > 0 ? 0.01 : 1}
+                              min={0}
+                              value={parseFloat(display.toFixed(decimals))}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value) / multiplier;
+                                if (!isNaN(v)) updateCfg(key as keyof BurnConfig, v);
+                              }}
+                              style={{
+                                flex: 1, background: "#0a0a0a",
+                                border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                                color: "#fff", padding: "10px 12px",
+                                fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
+                              }}
+                            />
+                            <span style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", minWidth: "32px" }}>{unit}</span>
+                          </div>
                         </div>
-                        <input
-                          type="range"
-                          className={styles.slider}
-                          min={min} max={max} step={step}
-                          value={cfg[key as keyof BurnConfig]}
-                          onChange={(e) => updateCfg(key as keyof BurnConfig, parseFloat(e.target.value))}
-                        />
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                          <span>{(min*100).toFixed(1)}%</span><span>{(max*100).toFixed(1)}%</span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ASH REWARDS */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>🪙 ASH REWARDS (given when user loses)</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    {[
+                      { key: "ash_reward_min", label: "Min ASH per loss", hint: "Minimum ASH tokens awarded" },
+                      { key: "ash_reward_max", label: "Max ASH per loss", hint: "Maximum ASH tokens awarded" },
+                    ].map(({ key, label, hint }) => (
+                      <div key={key}>
+                        <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                          {label}
+                          <span style={{ color: "#333", marginLeft: "8px" }}>{hint}</span>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <input
+                            type="number" step={10} min={0}
+                            value={cfg[key as keyof BurnConfig]}
+                            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg(key as keyof BurnConfig, v); }}
+                            style={{
+                              flex: 1, background: "#0a0a0a",
+                              border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                              color: "#fff", padding: "10px 12px",
+                              fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
+                            }}
+                          />
+                          <span style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", minWidth: "32px" }}>ASH</span>
                         </div>
                       </div>
                     ))}
                   </div>
+                </div>
 
-                  {/* Prize Amounts */}
-                  <div className={styles.configGroup}>
-                    <div className={styles.configGroupTitle}>PRIZE AMOUNTS (USDC)</div>
-
-                    {[
-                      { key: "jackpot_amount", label: "JACKPOT", min: 500,  max: 10000, step: 100 },
-                      { key: "big_amount",     label: "BIG",     min: 100,  max: 2000,  step: 50  },
-                      { key: "medium_amount",  label: "MEDIUM",  min: 50,   max: 500,   step: 25  },
-                      { key: "small_amount",   label: "SMALL",   min: 10,   max: 200,   step: 5   },
-                    ].map(({ key, label, min, max, step }) => (
-                      <div className={styles.sliderRow} key={key}>
-                        <div className={styles.sliderLabel}>
-                          <span>{label}</span>
-                          <span className={styles.sliderValue}>${cfg[key as keyof BurnConfig]}</span>
-                        </div>
-                        <input
-                          type="range"
-                          className={styles.slider}
-                          min={min} max={max} step={step}
-                          value={cfg[key as keyof BurnConfig]}
-                          onChange={(e) => updateCfg(key as keyof BurnConfig, parseFloat(e.target.value))}
-                        />
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                          <span>${min}</span><span>${max}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* ASH Rewards */}
-                  <div className={styles.configGroup}>
-                    <div className={styles.configGroupTitle}>ASH REWARDS ON LOSS</div>
-
-                    {[
-                      { key: "ash_reward_min", label: "MIN ASH", min: 50,   max: 1000, step: 10 },
-                      { key: "ash_reward_max", label: "MAX ASH", min: 100,  max: 2000, step: 10 },
-                    ].map(({ key, label, min, max, step }) => (
-                      <div className={styles.sliderRow} key={key}>
-                        <div className={styles.sliderLabel}>
-                          <span>{label}</span>
-                          <span className={styles.sliderValue}>{cfg[key as keyof BurnConfig]} ASH</span>
-                        </div>
-                        <input
-                          type="range"
-                          className={styles.slider}
-                          min={min} max={max} step={step}
-                          value={cfg[key as keyof BurnConfig]}
-                          onChange={(e) => updateCfg(key as keyof BurnConfig, parseFloat(e.target.value))}
-                        />
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                          <span>{min}</span><span>{max}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Game Balance */}
-                  <div className={styles.configGroup}>
-                    <div className={styles.configGroupTitle}>GAME BALANCE</div>
-
-                    <div className={styles.sliderRow}>
-                      <div className={styles.sliderLabel}>
-                        <span>CONSTANT FACTOR (difficulty)</span>
-                        <span className={styles.sliderValue}>{cfg.constant_factor}</span>
+                {/* GAME BALANCE */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>⚖️ GAME BALANCE</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Win Difficulty (Constant Factor)
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Higher = harder to win. Default 100</span>
                       </div>
                       <input
-                        type="range" className={styles.slider}
-                        min={10} max={500} step={5}
+                        type="number" step={5} min={1}
                         value={cfg.constant_factor}
-                        onChange={(e) => updateCfg("constant_factor", parseFloat(e.target.value))}
-                      />
-                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                        <span>10 (easy)</span><span>500 (hard)</span>
-                      </div>
-                    </div>
-
-                    <div className={styles.sliderRow}>
-                      <div className={styles.sliderLabel}>
-                        <span>REWARD POOL SPLIT</span>
-                        <span className={styles.sliderValue}>{fmtPct(cfg.reward_pool_split)}</span>
-                      </div>
-                      <input
-                        type="range" className={styles.slider}
-                        min={0.1} max={0.9} step={0.05}
-                        value={cfg.reward_pool_split}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value);
-                          updateCfg("reward_pool_split", v);
-                          updateCfg("profit_pool_split", parseFloat((1 - v).toFixed(2)));
+                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg("constant_factor", v); }}
+                        style={{
+                          width: "100%", boxSizing: "border-box", background: "#0a0a0a",
+                          border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                          color: "#fff", padding: "10px 12px",
+                          fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
                         }}
                       />
-                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                        <span>10% prizes</span><span>90% prizes</span>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Reward Pool % (from each burn)
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Rest goes to profit pool. e.g. 50 = 50%</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={5} min={10} max={90}
+                          value={Math.round(cfg.reward_pool_split * 100)}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value) / 100;
+                            if (!isNaN(v) && v >= 0.1 && v <= 0.9) {
+                              updateCfg("reward_pool_split", v);
+                              updateCfg("profit_pool_split", parseFloat((1 - v).toFixed(2)));
+                            }
+                          }}
+                          style={{
+                            flex: 1, background: "#0a0a0a",
+                            border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                            color: "#fff", padding: "10px 12px",
+                            fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
+                          }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "32px" }}>%</span>
+                      </div>
+                      <div style={{ fontSize: "8px", color: "#444", marginTop: "4px", letterSpacing: "1px" }}>
+                        Profit pool gets: {Math.round(cfg.profit_pool_split * 100)}%
                       </div>
                     </div>
-
-                    <div style={{ fontSize:"9px", color:"#444", letterSpacing:"1px", marginTop:"8px" }}>
-                      PROFIT SPLIT: {fmtPct(cfg.profit_pool_split)} (auto-calculated)
-                    </div>
-
-                    <div className={styles.sliderRow} style={{ marginTop:"16px" }}>
-                      <div className={styles.sliderLabel}>
-                        <span>REFERRAL COMMISSION</span>
-                        <span className={styles.sliderValue}>{fmtPct(cfg.referral_commission)}</span>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Referral Commission %
+                        <span style={{ color: "#333", marginLeft: "8px" }}>% of burn paid to referrer. e.g. 10 = 10%</span>
                       </div>
-                      <input
-                        type="range" className={styles.slider}
-                        min={0.01} max={0.20} step={0.01}
-                        value={cfg.referral_commission}
-                        onChange={(e) => updateCfg("referral_commission", parseFloat(e.target.value))}
-                      />
-                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:"8px", color:"#333" }}>
-                        <span>1%</span><span>20%</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={1} min={0} max={20}
+                          value={Math.round(cfg.referral_commission * 100)}
+                          onChange={(e) => { const v = parseFloat(e.target.value) / 100; if (!isNaN(v)) updateCfg("referral_commission", v); }}
+                          style={{
+                            flex: 1, background: "#0a0a0a",
+                            border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                            color: "#fff", padding: "10px 12px",
+                            fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
+                          }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "32px" }}>%</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* EV Calculator */}
+                {/* EV Preview */}
                 <div className={styles.evCalc}>
-                  <div className={styles.evTitle}>EXPECTED VALUE CALCULATOR (per $4.99 burn)</div>
+                  <div className={styles.evTitle}>LIVE PREVIEW — for a $4.99 burn at default weight (1.0x)</div>
                   <div className={styles.evGrid}>
                     <div className={styles.evItem}>
                       <div className={styles.evLabel}>WIN PROBABILITY</div>
                       <div className={styles.evVal}>{ev.winProb.toFixed(3)}%</div>
                     </div>
                     <div className={styles.evItem}>
-                      <div className={styles.evLabel}>EXPECTED USDC</div>
+                      <div className={styles.evLabel}>EXPECTED USDC VALUE</div>
                       <div className={styles.evVal} style={{ color: ev.evUsdc >= 0 ? "#27AE60" : "#ff6b6b" }}>
                         ${fmt2(ev.evUsdc)}
                       </div>
                     </div>
                     <div className={styles.evItem}>
-                      <div className={styles.evLabel}>EXPECTED ASH</div>
+                      <div className={styles.evLabel}>EXPECTED ASH (on loss)</div>
                       <div className={styles.evVal}>{ev.evAsh.toFixed(0)}</div>
                     </div>
                   </div>

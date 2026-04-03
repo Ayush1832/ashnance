@@ -56,7 +56,7 @@ router.post("/withdrawal/initiate", async (req: AuthRequest, res: Response, next
 // POST /api/owner/withdrawal/approve/:id
 router.post("/withdrawal/approve/:id", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const result = await OwnerService.approveWithdrawal(req.user!.email, req.params.id);
+    const result = await OwnerService.approveWithdrawal(req.user!.email, req.params.id as string);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
@@ -64,7 +64,7 @@ router.post("/withdrawal/approve/:id", async (req: AuthRequest, res: Response, n
 // POST /api/owner/withdrawal/cancel/:id
 router.post("/withdrawal/cancel/:id", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const result = await OwnerService.cancelWithdrawal(req.user!.email, req.params.id);
+    const result = await OwnerService.cancelWithdrawal(req.user!.email, req.params.id as string);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
