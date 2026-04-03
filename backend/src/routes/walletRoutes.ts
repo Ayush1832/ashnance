@@ -17,21 +17,28 @@ router.get("/", authenticate, async (req: AuthRequest, res: Response, next: Next
   }
 });
 
-// POST /api/wallet/deposit — Process deposit
+// GET /api/wallet/platform-info — Returns master wallet address (public, no auth needed)
+router.get("/platform-info", (_req, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      masterWallet: BlockchainService.getMasterWalletAddress(),
+      usdcMint: process.env.USDC_MINT || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr",
+      network: process.env.NODE_ENV === "production" ? "mainnet-beta" : "devnet",
+    },
+  });
+});
+
+// POST /api/wallet/deposit — Verify on-chain tx and credit balance
 router.post("/deposit", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const data = depositSchema.parse(req.body);
-    const result = await WalletService.processDeposit(
-      req.user!.userId,
-      data.amount,
-      data.txHash
-    );
-
+    const { txHash } = req.body;
+    if (!txHash || typeof txHash !== "string") {
+      return next(new BadRequestError("txHash is required"));
+    }
+    const result = await WalletService.verifyAndProcessDeposit(req.user!.userId, txHash);
     res.json({ success: true, data: result });
   } catch (error: any) {
-    if (error.name === "ZodError") {
-      return next(new BadRequestError(error.errors[0].message));
-    }
     next(error);
   }
 });

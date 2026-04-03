@@ -160,14 +160,17 @@ class ApiClient {
     balance: () =>
       this.request<unknown>("/wallet"),
 
-    deposit: (amount: number, txHash: string) =>
-      this.request<unknown>("/wallet/deposit", { method: "POST", body: JSON.stringify({ amount, txHash }) }),
+    deposit: (txHash: string) =>
+      this.request<unknown>("/wallet/deposit", { method: "POST", body: JSON.stringify({ txHash }) }),
 
     withdraw: (amount: number, address: string, twoFaCode: string) =>
       this.request<unknown>("/wallet/withdraw", { method: "POST", body: JSON.stringify({ amount, address, twoFaCode }) }),
 
     transactions: (type?: string, page: number = 1, limit: number = 20) =>
       this.request<unknown>(`/wallet/transactions?page=${page}&limit=${limit}${type ? `&type=${type}` : ""}`),
+
+    platformInfo: () =>
+      this.request<unknown>("/wallet/platform-info"),
 
     onchain: (address: string) =>
       this.request<unknown>(`/wallet/onchain/${address}`),

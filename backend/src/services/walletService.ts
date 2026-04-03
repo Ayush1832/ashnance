@@ -25,29 +25,33 @@ export class WalletService {
   }
 
   /**
-   * Process deposit (after on-chain confirmation)
+   * Verify a deposit transaction on-chain and credit the user's balance.
+   * The user must have sent USDC directly to the platform master wallet.
    */
-  static async processDeposit(
-    userId: string,
-    amount: number,
-    txHash: string
-  ) {
-    if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
-
-    // Check if tx already processed
+  static async verifyAndProcessDeposit(userId: string, txHash: string) {
+    // Idempotency — prevent double-credit
     const existingTx = await prisma.transaction.findFirst({
       where: { txHash, type: "DEPOSIT" },
     });
     if (existingTx) throw new BadRequestError("Transaction already processed");
 
+    // Verify on-chain
+    const verified = await BlockchainService.verifyDepositTransaction(txHash);
+    if (!verified) {
+      throw new BadRequestError(
+        "Could not verify transaction. Make sure you sent USDC to the platform wallet on Solana devnet and the transaction is confirmed."
+      );
+    }
+
+    const { amount } = verified;
+    if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
+
     const result = await prisma.$transaction(async (tx: any) => {
-      // Credit wallet
       const wallet = await tx.wallet.update({
         where: { userId },
         data: { usdcBalance: { increment: amount } },
       });
 
-      // Log transaction
       const transaction = await tx.transaction.create({
         data: {
           userId,
@@ -56,7 +60,7 @@ export class WalletService {
           currency: "USDC",
           status: "COMPLETED",
           txHash,
-          description: `Deposited ${amount} USDC`,
+          description: `Deposited ${amount} USDC via wallet`,
         },
       });
 
@@ -64,9 +68,40 @@ export class WalletService {
     });
 
     return {
+      amount,
       newBalance: result.wallet.usdcBalance,
       transactionId: result.transaction.id,
     };
+  }
+
+  /**
+   * @deprecated Legacy deposit used by deposit-address monitor.
+   * Use verifyAndProcessDeposit for new direct deposits.
+   */
+  static async processDeposit(userId: string, amount: number, txHash: string) {
+    if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
+
+    const existingTx = await prisma.transaction.findFirst({
+      where: { txHash, type: "DEPOSIT" },
+    });
+    if (existingTx) throw new BadRequestError("Transaction already processed");
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      const wallet = await tx.wallet.update({
+        where: { userId },
+        data: { usdcBalance: { increment: amount } },
+      });
+      const transaction = await tx.transaction.create({
+        data: {
+          userId, type: "DEPOSIT", amount, currency: "USDC",
+          status: "COMPLETED", txHash,
+          description: `Deposited ${amount} USDC`,
+        },
+      });
+      return { wallet, transaction };
+    });
+
+    return { newBalance: result.wallet.usdcBalance, transactionId: result.transaction.id };
   }
 
   /**

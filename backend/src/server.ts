@@ -16,7 +16,6 @@ import vipRoutes from "./routes/vipRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import stakingRoutes from "./routes/stakingRoutes";
 import ownerRoutes from "./routes/ownerRoutes";
-import { startAllDepositMonitors } from "./services/depositMonitorService";
 
 // ============================================================
 // Express App
@@ -98,8 +97,6 @@ httpServer.listen(config.port, () => {
   ║  Frontend: ${config.frontendUrl.padEnd(27)}║
   ╚═══════════════════════════════════════╝
   `);
-  // Start on-chain deposit monitors for all existing wallets
-  startAllDepositMonitors();
 });
 
 export { app, httpServer };

@@ -9,7 +9,6 @@ import styles from "./wallet.module.css";
 interface WalletData {
   usdcBalance: number;
   ashBalance: number;
-  depositAddress: string;
 }
 
 interface Transaction {
@@ -71,53 +70,36 @@ function fmtDate(iso: string) {
 }
 
 // ---- DEPOSIT MODAL ----
-const DEVNET_USDC_MINT = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
-const SOLANA_RPC       = "https://api.devnet.solana.com";
-
-function DepositModal({
-  address,
-  onClose,
-  onSuccess,
-}: {
-  address: string;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [copied,     setCopied]     = useState(false);
-  const [sendAmount, setSendAmount] = useState("");
+function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
+  const [amount,     setAmount]     = useState("");
+  const [status,     setStatus]     = useState<string | null>(null);
+  const [error,      setError]      = useState<string | null>(null);
   const [sending,    setSending]    = useState(false);
-  const [sendStatus, setSendStatus] = useState<string | null>(null);
-  const [sendError,  setSendError]  = useState<string | null>(null);
+  const [wallets,    setWallets]    = useState<import("@/lib/wallets").WalletProvider[]>([]);
+  const [masterWallet, setMasterWallet] = useState<string>("");
 
-  function copyAddress() {
-    navigator.clipboard.writeText(address).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  useEffect(() => {
+    import("@/lib/wallets").then(({ detectWallets }) => setWallets(detectWallets()));
+    api.wallet.platformInfo().then((res: any) => {
+      const d = res.data ?? res;
+      if (d.masterWallet) setMasterWallet(d.masterWallet);
+    }).catch(() => {});
+  }, []);
 
-  async function handlePhantomSend() {
-    setSendError(null);
-    setSendStatus(null);
-
-    const amt = parseFloat(sendAmount);
-    if (!amt || amt < 1)  { setSendError("ENTER AN AMOUNT (MIN 1 USDC)"); return; }
-    if (!address)          { setSendError("DEPOSIT ADDRESS NOT LOADED YET"); return; }
+  async function handleDeposit(walletProvider: any, walletName: string) {
+    setError(null);
+    const amt = parseFloat(amount);
+    if (!amt || amt < 1) { setError("MINIMUM DEPOSIT IS 1 USDC"); return; }
+    if (!masterWallet)   { setError("COULD NOT LOAD PLATFORM WALLET. REFRESH AND TRY AGAIN."); return; }
 
     setSending(true);
     try {
-      const provider = (window as any).phantom?.solana ?? (window as any).solana;
-      if (!provider?.isPhantom) {
-        window.open("https://phantom.app/", "_blank");
-        setSendError("PHANTOM NOT DETECTED. INSTALL IT AND REFRESH.");
-        setSending(false);
-        return;
-      }
+      setStatus(`CONNECTING ${walletName.toUpperCase()}...`);
+      await walletProvider.connect();
+      const sender = walletProvider.publicKey;
+      if (!sender) throw new Error("Could not get public key from wallet");
 
-      await provider.connect();
-      const sender = provider.publicKey;
-
-      setSendStatus("BUILDING TRANSACTION...");
+      setStatus("BUILDING TRANSACTION...");
 
       const { Connection, PublicKey, Transaction } = await import("@solana/web3.js");
       const {
@@ -126,123 +108,141 @@ function DepositModal({
         createTransferInstruction,
       } = await import("@solana/spl-token");
 
-      const usdcMint    = new PublicKey(DEVNET_USDC_MINT);
-      const depositAddr = new PublicKey(address);
-
-      const fromAta = getAssociatedTokenAddressSync(usdcMint, sender);
-      const toAta   = getAssociatedTokenAddressSync(usdcMint, depositAddr);
+      const SOLANA_RPC  = process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.devnet.solana.com";
+      const USDC_MINT   = process.env.NEXT_PUBLIC_USDC_MINT  || "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 
       const connection  = new Connection(SOLANA_RPC, "confirmed");
-      const instructions = [];
+      const usdcMint    = new PublicKey(USDC_MINT);
+      const masterPubkey = new PublicKey(masterWallet);
 
-      // Create destination ATA if it doesn't exist yet
+      const fromAta = getAssociatedTokenAddressSync(usdcMint, sender);
+      const toAta   = getAssociatedTokenAddressSync(usdcMint, masterPubkey);
+
+      const instructions = [];
       const toAtaInfo = await connection.getAccountInfo(toAta);
       if (!toAtaInfo) {
         instructions.push(
-          createAssociatedTokenAccountInstruction(sender, toAta, depositAddr, usdcMint)
+          createAssociatedTokenAccountInstruction(sender, toAta, masterPubkey, usdcMint)
         );
       }
-
       instructions.push(
-        createTransferInstruction(fromAta, toAta, sender, Math.round(amt * 1_000_000))
+        createTransferInstruction(fromAta, toAta, sender, BigInt(Math.round(amt * 1_000_000)))
       );
 
       const { blockhash } = await connection.getLatestBlockhash("confirmed");
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: sender });
       tx.add(...instructions);
 
-      setSendStatus("AWAITING PHANTOM APPROVAL...");
-      const { signature } = await provider.signAndSendTransaction(tx);
+      setStatus(`APPROVE IN ${walletName.toUpperCase()}...`);
+      const { signature } = await walletProvider.signAndSendTransaction(tx);
 
-      console.log("[Phantom deposit] tx signature:", signature);
-      setSendStatus(`✓ SENT ${amt} USDC — CREDITING IN ~1 MIN`);
-      setSendAmount("");
-      // Close modal and refresh balance after a short delay
-      setTimeout(() => onSuccess(), 2000);
+      setStatus("CONFIRMING ON CHAIN...");
+      const latestBlockhash = await connection.getLatestBlockhash();
+      await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
+
+      setStatus("VERIFYING DEPOSIT...");
+      const token = localStorage.getItem("accessToken");
+      if (token) api.setToken(token);
+      await api.wallet.deposit(signature); // amount verified server-side from chain
+
+      setStatus(`✓ ${amt} USDC DEPOSITED SUCCESSFULLY`);
+      setTimeout(() => onSuccess(), 1500);
     } catch (e: unknown) {
-      console.error("[Phantom deposit error]", e);
-      let msg = "Transaction failed";
-      if (e instanceof Error) {
-        msg = e.message;
-      } else if (typeof e === "object" && e !== null && "message" in e) {
-        msg = String((e as { message: unknown }).message);
-      }
-      setSendError(
-        msg.toLowerCase().includes("rejected")
-          ? "REJECTED IN PHANTOM. TRY AGAIN."
-          : msg.toUpperCase()
-      );
-      setSendStatus(null);
+      const msg = e instanceof Error ? e.message : "Transaction failed";
+      setError(msg.toLowerCase().includes("rejected") ? "TRANSACTION REJECTED IN WALLET." : msg.toUpperCase());
+      setStatus(null);
     } finally {
       setSending(false);
     }
   }
 
+  const installedWallets = wallets.filter((w) => w.installed);
+  const otherWallets     = wallets.filter((w) => !w.installed);
+
   return (
     <div className={styles.modalOverlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
-          <span className={styles.modalTitle}>DEPOSIT</span>
+          <span className={styles.modalTitle}>DEPOSIT USDC</span>
           <button className={styles.modalClose} onClick={onClose}>✕</button>
         </div>
         <div className={styles.modalBody}>
-          <div className="form-group">
-            <label>YOUR SOLANA USDC DEPOSIT ADDRESS</label>
-            <div className="copy-box">
-              <span className="addr">{address || "LOADING..."}</span>
-              <button className="copy-btn" onClick={copyAddress}>
-                {copied ? "COPIED!" : "COPY"}
-              </button>
-            </div>
-          </div>
-
           <div className={styles.noticeBox}>
-            <strong>⚠ SOLANA DEVNET ONLY.</strong><br />
-            SEND USDC (SPL TOKEN) ONLY. MINIMUM: 1 USDC.
-            DEPOSITS REFLECT WITHIN 1–2 MINUTES.
+            ⚡ SEND USDC DIRECTLY FROM YOUR WALLET. NO ADDRESS COPYING NEEDED.
+            MINIMUM: 1 USDC. DEVNET ONLY.
           </div>
 
-          {/* One-click Phantom send */}
-          <div style={{ marginTop: "20px" }}>
-            <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "10px" }}>
-              — OR SEND DIRECTLY VIA PHANTOM —
-            </div>
+          {/* Amount input */}
+          <div className="form-group" style={{ marginTop: "16px" }}>
+            <label>AMOUNT (USDC)</label>
             <input
-              type="number"
-              min="1"
-              step="0.01"
-              placeholder="AMOUNT IN USDC"
-              value={sendAmount}
-              onChange={(e) => setSendAmount(e.target.value)}
-              style={{
-                width: "100%", boxSizing: "border-box",
-                background: "#111", border: "1px solid rgba(255,77,0,0.3)",
-                borderRadius: "4px", padding: "10px 12px", color: "#fff",
-                fontFamily: "var(--font-display, monospace)", fontSize: "12px",
-                letterSpacing: "1px", marginBottom: "10px",
-              }}
+              type="number" min="1" step="0.01" placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              disabled={sending}
             />
-            <button
-              className={styles.walletConnectBtn}
-              onClick={handlePhantomSend}
-              disabled={sending || !address}
-              style={{ opacity: sending || !address ? 0.5 : 1, cursor: sending || !address ? "not-allowed" : "pointer" }}
-            >
-              <span style={{ fontSize: "20px" }}>👻</span>
-              {sending ? (sendStatus ?? "PROCESSING...") : "SEND VIA PHANTOM"}
-            </button>
-
-            {sendStatus && !sending && (
-              <div style={{ fontSize: "10px", color: "#4ade80", letterSpacing: "1px", marginTop: "8px", textAlign: "center" }}>
-                {sendStatus}
-              </div>
-            )}
-            {sendError && (
-              <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px", textAlign: "center" }}>
-                ⚠ {sendError}
-              </div>
-            )}
           </div>
+
+          {/* Status / Error */}
+          {status && (
+            <div style={{ fontSize: "10px", color: status.startsWith("✓") ? "#4ade80" : "#FF4D00", letterSpacing: "1px", marginBottom: "12px", textAlign: "center" }}>
+              {status}
+            </div>
+          )}
+          {error && (
+            <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", marginBottom: "12px", textAlign: "center" }}>
+              ⚠ {error}
+            </div>
+          )}
+
+          {/* Installed wallets */}
+          {installedWallets.length > 0 && (
+            <>
+              <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "10px" }}>
+                SELECT WALLET
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
+                {installedWallets.map((w) => (
+                  <button
+                    key={w.name}
+                    className={styles.walletConnectBtn}
+                    onClick={() => handleDeposit(w.provider, w.name)}
+                    disabled={sending}
+                    style={{ opacity: sending ? 0.5 : 1 }}
+                  >
+                    <span style={{ fontSize: "18px" }}>{w.icon}</span>
+                    {sending ? (status ?? "PROCESSING...") : `DEPOSIT WITH ${w.name.toUpperCase()}`}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {/* Not installed wallets */}
+          {otherWallets.length > 0 && (
+            <>
+              <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "8px" }}>
+                {installedWallets.length === 0 ? "NO WALLET DETECTED — INSTALL ONE:" : "MORE WALLETS"}
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                {otherWallets.map((w) => (
+                  <a
+                    key={w.name}
+                    href={w.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontSize: "9px", color: "#555", letterSpacing: "1px",
+                      border: "1px solid rgba(255,255,255,0.06)", borderRadius: "4px",
+                      padding: "6px 12px", textDecoration: "none",
+                    }}
+                  >
+                    {w.icon} {w.name} ↗
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -475,9 +475,8 @@ export default function WalletPage() {
   useEffect(() => { loadWallet(); }, [loadWallet]);
   useEffect(() => { loadTx(txFilter); }, [loadTx, txFilter]);
 
-  const usdc    = Number(walletData?.usdcBalance    ?? 0);
-  const ash     = Number(walletData?.ashBalance     ?? 0);
-  const depAddr = walletData?.depositAddress ?? "";
+  const usdc = Number(walletData?.usdcBalance ?? 0);
+  const ash  = Number(walletData?.ashBalance  ?? 0);
 
   return (
     <>
@@ -556,7 +555,6 @@ export default function WalletPage() {
       {/* ===== MODALS ===== */}
       {modal === "deposit" && (
         <DepositModal
-          address={depAddr}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); startDepositPolling(); }}
         />

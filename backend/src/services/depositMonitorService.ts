@@ -56,7 +56,7 @@ export async function startAllDepositMonitors(): Promise<void> {
     console.log(`[DepositMonitor] Starting monitors for ${wallets.length} wallet(s)`);
 
     for (const wallet of wallets) {
-      watchDepositAddress(wallet.userId, wallet.depositAddress);
+      if (wallet.depositAddress) watchDepositAddress(wallet.userId, wallet.depositAddress);
     }
   } catch (err) {
     console.error("[DepositMonitor] Failed to start monitors:", err);

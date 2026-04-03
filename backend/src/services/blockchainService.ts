@@ -185,6 +185,48 @@ export class BlockchainService {
   }
 
   // ----------------------------------------------------------
+  // verifyDepositTransaction
+  // ----------------------------------------------------------
+  /**
+   * Verifies that a transaction sent USDC to the platform master wallet.
+   * Returns the deposited amount, or null if verification fails.
+   */
+  static async verifyDepositTransaction(
+    txHash: string
+  ): Promise<{ amount: number } | null> {
+    try {
+      const connection = getConnection();
+      const masterAddress = BlockchainService.getMasterWalletAddress();
+
+      const tx = await connection.getParsedTransaction(txHash, {
+        maxSupportedTransactionVersion: 0,
+        commitment: "confirmed",
+      });
+
+      if (!tx || !tx.meta) return null;
+
+      const postBalances = tx.meta.postTokenBalances ?? [];
+      const preBalances  = tx.meta.preTokenBalances  ?? [];
+
+      for (const post of postBalances) {
+        if (post.owner !== masterAddress || post.mint !== USDC_MINT) continue;
+
+        const pre = preBalances.find((p) => p.accountIndex === post.accountIndex);
+        const delta =
+          (post.uiTokenAmount.uiAmount ?? 0) -
+          (pre?.uiTokenAmount.uiAmount ?? 0);
+
+        if (delta > 0) return { amount: delta };
+      }
+
+      return null;
+    } catch (err) {
+      console.error("[BlockchainService] verifyDepositTransaction error:", err);
+      return null;
+    }
+  }
+
+  // ----------------------------------------------------------
   // sweepDepositToMaster
   // ----------------------------------------------------------
   /**
