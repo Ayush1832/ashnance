@@ -134,7 +134,17 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
       tx.add(...instructions);
 
       setStatus(`APPROVE IN ${walletName.toUpperCase()}...`);
-      const { signature } = await walletProvider.signAndSendTransaction(tx);
+
+      // Use signAndSendTransaction if available (Phantom, Backpack, Solflare),
+      // otherwise fall back to signTransaction + manual broadcast (OKX, Coinbase, others)
+      let signature: string;
+      if (typeof walletProvider.signAndSendTransaction === "function") {
+        const result = await walletProvider.signAndSendTransaction(tx);
+        signature = result?.signature ?? result;
+      } else {
+        const signed = await walletProvider.signTransaction(tx);
+        signature = await connection.sendRawTransaction(signed.serialize(), { skipPreflight: false });
+      }
 
       setStatus("CONFIRMING ON CHAIN...");
       const latestBlockhash = await connection.getLatestBlockhash();
