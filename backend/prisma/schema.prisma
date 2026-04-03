@@ -356,6 +356,7 @@ model AuditLog {
 
 enum OwnerWithdrawalStatus {
   PENDING
+  PARTIAL   // owner1 paid on-chain, owner2 transfer failed — needs manual fix
   EXECUTED
   CANCELLED
 }

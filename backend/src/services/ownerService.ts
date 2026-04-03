@@ -124,39 +124,67 @@ export class OwnerService {
       throw new UnauthorizedError("The same owner cannot both initiate and approve a withdrawal");
     }
 
-    // Execute on-chain transfers
-    let txHash1: string | undefined;
-    let txHash2: string | undefined;
+    const now = new Date();
 
+    // --- Transfer 1: owner1 (60%) ---
+    let txHash1: string;
     try {
       txHash1 = await BlockchainService.sendUsdcTransfer(
         request.owner1Wallet,
         Number(request.owner1Amount)
       );
+    } catch (err: any) {
+      throw new Error(`Owner1 on-chain transfer failed — nothing was sent: ${err.message}`);
+    }
+
+    // Record txHash1 immediately so it's never lost
+    await prisma.ownerWithdrawalRequest.update({
+      where: { id: requestId },
+      data: { txHash1, approverEmail, approvedAt: now },
+    });
+
+    // --- Transfer 2: owner2 (40%) ---
+    let txHash2: string;
+    try {
       txHash2 = await BlockchainService.sendUsdcTransfer(
         request.owner2Wallet,
         Number(request.owner2Amount)
       );
     } catch (err: any) {
-      throw new Error(`On-chain transfer failed: ${err.message}`);
+      // Owner1 already received their USDC. Mark as PARTIAL so it's visible
+      // in the owner panel and requires manual resolution for owner2.
+      await prisma.ownerWithdrawalRequest.update({
+        where: { id: requestId },
+        data: { status: "PARTIAL" },
+      });
+      // Deduct owner1's portion from profit pool so the balance reflects reality
+      await prisma.profitPool.updateMany({
+        data: {
+          balance:        { decrement: Number(request.owner1Amount) },
+          totalWithdrawn: { increment: Number(request.owner1Amount) },
+        },
+      });
+      console.error(
+        `[CRITICAL] Owner withdrawal PARTIAL: owner1 paid txHash=${txHash1}, ` +
+        `owner2 transfer failed. requestId=${requestId}`,
+        err
+      );
+      throw new Error(
+        `Owner1 (${request.owner1Wallet}) was paid (${txHash1}). ` +
+        `Owner2 transfer failed — please send $${Number(request.owner2Amount).toFixed(2)} ` +
+        `manually to ${request.owner2Wallet}.`
+      );
     }
 
-    // Update request + deduct from profit pool
+    // Both succeeded — finalize
     const [updatedRequest] = await prisma.$transaction([
       prisma.ownerWithdrawalRequest.update({
         where: { id: requestId },
-        data: {
-          status: "EXECUTED",
-          approverEmail,
-          txHash1: txHash1 || null,
-          txHash2: txHash2 || null,
-          approvedAt: new Date(),
-          executedAt: new Date(),
-        },
+        data: { status: "EXECUTED", txHash2, executedAt: now },
       }),
       prisma.profitPool.updateMany({
         data: {
-          balance: { decrement: Number(request.amount) },
+          balance:        { decrement: Number(request.amount) },
           totalWithdrawn: { increment: Number(request.amount) },
         },
       }),

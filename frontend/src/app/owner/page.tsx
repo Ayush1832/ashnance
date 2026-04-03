@@ -26,7 +26,7 @@ interface WithdrawalRequest {
   amount: number;
   initiatorEmail: string;
   approverEmail: string | null;
-  status: "PENDING" | "EXECUTED" | "CANCELLED";
+  status: "PENDING" | "EXECUTED" | "CANCELLED" | "PARTIAL";
   owner1Wallet: string;
   owner2Wallet: string;
   owner1Amount: number;
@@ -481,6 +481,7 @@ export default function OwnerPage() {
                             <td className={
                               w.status === "EXECUTED"  ? styles.statusExecuted  :
                               w.status === "PENDING"   ? styles.statusPending   :
+                              w.status === "PARTIAL"   ? styles.statusPartial   :
                               styles.statusCancelled
                             }>{w.status}</td>
                           </tr>

@@ -388,8 +388,9 @@
   border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 
-.statusPending  { color: #FFB800; }
-.statusExecuted { color: #27AE60; }
+.statusPending   { color: #FFB800; }
+.statusExecuted  { color: #27AE60; }
+.statusPartial   { color: #FF4D00; }
 .statusCancelled { color: #ff6b6b; }
 
 /* ── ACCESS DENIED ── */
