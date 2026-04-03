@@ -96,44 +96,53 @@ export class BurnService {
 
     // VRF simulation (in production, use Switchboard VRF on-chain)
     const randomNumber = BlockchainService.simulateVRF(userId + Date.now().toString());
-    const isWinner = randomNumber <= effectiveChance;
+    let isWinner = randomNumber <= effectiveChance;
 
     // ---- DETERMINE PRIZE OR ASH ----
     let prizeTier: string | null = null;
     let prizeAmount: number | null = null;
     let ashReward: number | null = null;
 
-    if (isWinner) {
-      // Get reward pool balance for dynamic pricing
-      const pool = await prisma.rewardPool.findFirst();
-      const poolBalance = pool ? Number(pool.totalBalance) : 0;
+    // Fetch pool once — used for cap check and ASH fallback
+    const pool = await prisma.rewardPool.findFirst();
+    const poolBalance = pool ? Number(pool.totalBalance) : 0;
+
+    // Hard cap: no single payout may exceed 50% of current pool.
+    // If pool is below the minimum viable threshold, suspend wins and give
+    // ASH instead — this prevents draining a thin pool.
+    const MAX_PAYOUT_RATIO = 0.5;
+    const MIN_POOL_FOR_WIN  = config.game.minBurnAmount * 10; // ~$49.90 at $4.99 min
+
+    if (isWinner && poolBalance >= MIN_POOL_FOR_WIN) {
+      const maxPayout = Math.floor(poolBalance * MAX_PAYOUT_RATIO);
 
       // Prize tier selection
       const prizeRoll = Math.random();
       if (prizeRoll <= 0.01) {
         prizeTier = "JACKPOT";
-        // Dynamic: 10% of pool, fallback to fixed $2,500
-        prizeAmount = poolBalance > 25000 ? Math.floor(poolBalance * 0.10) : 2500;
+        prizeAmount = 2500;
       } else if (prizeRoll <= 0.05) {
         prizeTier = "BIG";
-        // Dynamic: 5% of pool, fallback to fixed $500
-        prizeAmount = poolBalance > 10000 ? Math.floor(poolBalance * 0.05) : 500;
+        prizeAmount = 500;
       } else if (prizeRoll <= 0.20) {
         prizeTier = "MEDIUM";
-        // Dynamic: 2% of pool, fallback to fixed $200
-        prizeAmount = poolBalance > 10000 ? Math.floor(poolBalance * 0.02) : 200;
+        prizeAmount = 200;
       } else {
         prizeTier = "SMALL";
-        // Dynamic: 1% of pool, fallback to fixed $50
-        prizeAmount = poolBalance > 5000 ? Math.floor(poolBalance * 0.01) : 50;
+        prizeAmount = 50;
       }
 
-      // Safety: ensure prize doesn't exceed pool balance
-      if (prizeAmount > poolBalance && poolBalance > 0) {
-        prizeAmount = Math.floor(poolBalance * 0.5); // Cap at 50% of pool 
+      // Apply hard cap — scale down to maxPayout if prize exceeds it
+      if (prizeAmount > maxPayout) {
+        prizeAmount = maxPayout;
       }
     } else {
-      // ASH reward on lose
+      // Pool too thin OR random said lose — give ASH reward
+      isWinner = false;
+    }
+
+    if (!isWinner) {
+      // ASH reward on lose (also covers pool-suspended wins above)
       ashReward =
         config.game.ashRewardMin +
         Math.floor(

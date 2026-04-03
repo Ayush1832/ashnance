@@ -172,61 +172,63 @@ export class WalletService {
       );
     }
 
-    // Process withdrawal
-    const result = await prisma.$transaction(async (tx: any) => {
-      const wallet = await tx.wallet.update({
-        where: { userId },
-        data: { usdcBalance: { decrement: amount } },
-      });
-
-      const transaction = await tx.transaction.create({
-        data: {
-          userId,
-          type: "WITHDRAWAL",
-          amount,
-          currency: "USDC",
-          status: "PROCESSING",
-          description: `Withdrawal of ${amount} USDC to ${address.slice(0, 8)}...`,
-          metadata: { address },
-        },
-      });
-
-      // Reset failed attempts
-      await tx.user.update({
-        where: { id: userId },
-        data: { failedAttempts: 0 },
-      });
-
-      return { wallet, transaction };
-    });
-
-    // Execute actual on-chain USDC transfer
-    let txHash: string | null = null;
+    // --- Step 1: Execute on-chain transfer FIRST ---
+    // DB is not touched until we have a confirmed txHash.
+    // This means if the transfer fails, the user's balance is never changed —
+    // no refund logic needed.
+    let txHash: string;
     try {
       txHash = await BlockchainService.sendUsdcTransfer(address, amount);
-
-      // Mark transaction as COMPLETED with txHash
-      await prisma.transaction.update({
-        where: { id: result.transaction.id },
-        data: { status: "COMPLETED", txHash },
-      });
     } catch (err) {
       console.error("[WalletService] On-chain withdrawal failed:", err);
-
-      // Refund the balance on-chain failure
-      await prisma.$transaction(async (tx: any) => {
-        await tx.wallet.update({
-          where: { userId },
-          data: { usdcBalance: { increment: amount } },
-        });
-        await tx.transaction.update({
-          where: { id: result.transaction.id },
-          data: { status: "FAILED" },
-        });
-      });
-
       throw new BadRequestError(
-        "On-chain transfer failed. Your balance has been restored. Please try again."
+        "On-chain transfer failed. Your balance was not affected. Please try again."
+      );
+    }
+
+    // --- Step 2: On-chain succeeded — now update DB atomically ---
+    // Edge case: if this DB write fails after on-chain success, the user
+    // received USDC but their balance wasn't decremented. Log as CRITICAL.
+    let result: { wallet: any; transaction: any };
+    try {
+      result = await prisma.$transaction(async (tx: any) => {
+        const wallet = await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { decrement: amount } },
+        });
+
+        const transaction = await tx.transaction.create({
+          data: {
+            userId,
+            type: "WITHDRAWAL",
+            amount,
+            currency: "USDC",
+            status: "COMPLETED",
+            txHash,
+            description: `Withdrawal of ${amount} USDC to ${address.slice(0, 8)}...`,
+            metadata: { address },
+          },
+        });
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { failedAttempts: 0 },
+        });
+
+        return { wallet, transaction };
+      });
+    } catch (dbErr) {
+      // CRITICAL: on-chain transfer succeeded but DB update failed.
+      // The user received USDC but their in-app balance was not decremented.
+      // Requires manual reconciliation.
+      console.error(
+        `[CRITICAL] Withdrawal DB update failed after successful on-chain transfer. ` +
+        `userId=${userId} amount=${amount} txHash=${txHash} address=${address}`,
+        dbErr
+      );
+      throw new BadRequestError(
+        "Withdrawal sent on-chain but our records failed to update. " +
+        "Please contact support with your transaction hash: " + txHash
       );
     }
 
