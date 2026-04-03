@@ -86,4 +86,12 @@ router.put("/burn-config", async (req: AuthRequest, res: Response, next: NextFun
   } catch (err) { next(err); }
 });
 
+// GET /api/owner/solvency
+router.get("/solvency", async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const data = await OwnerService.getSolvency();
+    res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
 export default router;

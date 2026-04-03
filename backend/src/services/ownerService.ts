@@ -205,6 +205,42 @@ export class OwnerService {
     return result;
   }
 
+  /**
+   * Solvency check: compares on-chain master wallet USDC balance against
+   * total platform liabilities (all user balances + reward pool + profit pool).
+   */
+  static async getSolvency() {
+    const masterAddress = BlockchainService.getMasterWalletAddress();
+
+    const [onChainUsdc, userBalanceAgg, rewardPool, profitPool] = await Promise.all([
+      BlockchainService.getUsdcBalance(masterAddress),
+      prisma.wallet.aggregate({ _sum: { usdcBalance: true } }),
+      prisma.rewardPool.findFirst(),
+      OwnerService.getProfitPool(),
+    ]);
+
+    const totalUserBalances = Number(userBalanceAgg._sum.usdcBalance ?? 0);
+    const rewardPoolBalance  = Number(rewardPool?.totalBalance ?? 0);
+    const profitPoolBalance  = Number(profitPool.balance);
+    const totalLiabilities   = totalUserBalances + rewardPoolBalance + profitPoolBalance;
+    const surplus            = onChainUsdc - totalLiabilities;
+    const ratio              = totalLiabilities > 0 ? onChainUsdc / totalLiabilities : 1;
+
+    return {
+      masterWallet: masterAddress,
+      onChainUsdc,
+      totalLiabilities,
+      breakdown: {
+        userBalances: totalUserBalances,
+        rewardPool:   rewardPoolBalance,
+        profitPool:   profitPoolBalance,
+      },
+      surplus,
+      ratio,                      // <1 = underfunded, >=1 = solvent
+      solvent: surplus >= 0,
+    };
+  }
+
   /** Save burn configuration to PlatformConfig */
   static async saveBurnConfig(updates: Record<string, number>) {
     const ops = Object.entries(updates)

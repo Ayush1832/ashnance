@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import styles from "./owner.module.css";
 
-type Section = "pool" | "burn" | "stats";
+type Section = "pool" | "burn" | "stats" | "solvency";
 
 const NAV: { key: Section; icon: string; label: string }[] = [
-  { key: "pool",  icon: "💰", label: "PROFIT POOL"  },
-  { key: "burn",  icon: "🔥", label: "BURN CONFIG"  },
-  { key: "stats", icon: "📊", label: "STATS"        },
+  { key: "pool",     icon: "💰", label: "PROFIT POOL"  },
+  { key: "burn",     icon: "🔥", label: "BURN CONFIG"  },
+  { key: "stats",    icon: "📊", label: "STATS"        },
+  { key: "solvency", icon: "🏦", label: "SOLVENCY"     },
 ];
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -59,6 +60,20 @@ interface Stats {
   profitPoolBalance: number;
   profitPoolTotalDeposited: number;
   profitPoolTotalWithdrawn: number;
+}
+
+interface Solvency {
+  masterWallet: string;
+  onChainUsdc: number;
+  totalLiabilities: number;
+  breakdown: {
+    userBalances: number;
+    rewardPool: number;
+    profitPool: number;
+  };
+  surplus: number;
+  ratio: number;
+  solvent: boolean;
 }
 
 const DEFAULT_CONFIG: BurnConfig = {
@@ -176,6 +191,8 @@ export default function OwnerPage() {
 
   // Stats state
   const [stats,     setStats]     = useState<Stats | null>(null);
+  const [solvency,  setSolvency]  = useState<Solvency | null>(null);
+  const [solvLoading, setSolvLoading] = useState(false);
 
   // ── Auth check ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -225,12 +242,24 @@ export default function OwnerPage() {
     } catch { /* ignore */ }
   }, []);
 
+  // ── Load solvency ───────────────────────────────────────────────────────
+  const loadSolvency = useCallback(async () => {
+    setSolvLoading(true);
+    try {
+      const res = (await api.owner.solvency()) as any;
+      setSolvency(res.data ?? res);
+    } catch { /* ignore */ } finally {
+      setSolvLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!ready || denied) return;
     loadPool();
     loadBurnConfig();
     loadStats();
-  }, [ready, denied, loadPool, loadBurnConfig, loadStats]);
+    loadSolvency();
+  }, [ready, denied, loadPool, loadBurnConfig, loadStats, loadSolvency]);
 
   // ── Actions ────────────────────────────────────────────────────────────
   async function initiateWithdrawal() {
@@ -837,6 +866,82 @@ export default function OwnerPage() {
                   </div>
                 ))}
               </div>
+            )}
+          </>
+        )}
+
+        {/* ════════ SOLVENCY ════════ */}
+        {section === "solvency" && (
+          <>
+            <div className={styles.pageTitle}>SOLVENCY CHECK</div>
+            <div className={styles.pageSub}>MASTER WALLET vs. TOTAL PLATFORM LIABILITIES</div>
+
+            <button
+              className="btn btn-ghost"
+              style={{ marginBottom: "24px", fontSize: "10px" }}
+              onClick={loadSolvency}
+              disabled={solvLoading}
+            >
+              {solvLoading ? "FETCHING..." : "↻ REFRESH"}
+            </button>
+
+            {solvLoading && !solvency ? (
+              <div style={{ color: "#444", fontSize: "10px", letterSpacing: "2px" }}>LOADING...</div>
+            ) : solvency ? (
+              <>
+                {/* Status banner */}
+                <div style={{
+                  padding: "16px 20px",
+                  borderRadius: "8px",
+                  marginBottom: "24px",
+                  background: solvency.solvent ? "rgba(74,222,128,0.08)" : "rgba(255,77,0,0.12)",
+                  border: `1px solid ${solvency.solvent ? "rgba(74,222,128,0.3)" : "rgba(255,77,0,0.4)"}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                }}>
+                  <span style={{ fontSize: "28px" }}>{solvency.solvent ? "✅" : "🚨"}</span>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", letterSpacing: "2px", color: solvency.solvent ? "#4ade80" : "#FF4D00" }}>
+                      {solvency.solvent ? "SOLVENT" : "UNDERFUNDED"}
+                    </div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginTop: "4px" }}>
+                      {solvency.solvent
+                        ? `SURPLUS: $${solvency.surplus.toFixed(2)} USDC — MASTER WALLET IS ADEQUATELY FUNDED`
+                        : `SHORTFALL: $${Math.abs(solvency.surplus).toFixed(2)} USDC — TOP UP MASTER WALLET IMMEDIATELY`}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Numbers grid */}
+                <div className={styles.statsGrid}>
+                  {[
+                    { label: "ON-CHAIN BALANCE",   value: "$" + solvency.onChainUsdc.toFixed(2),          cls: solvency.solvent ? styles.statValueGreen : styles.statValueFire, hint: "Actual USDC in master wallet" },
+                    { label: "TOTAL LIABILITIES",  value: "$" + solvency.totalLiabilities.toFixed(2),     cls: "",                                                               hint: "Sum of all obligations" },
+                    { label: "SURPLUS / SHORTFALL", value: (solvency.surplus >= 0 ? "+" : "") + "$" + solvency.surplus.toFixed(2), cls: solvency.surplus >= 0 ? styles.statValueGreen : styles.statValueFire, hint: "On-chain minus liabilities" },
+                    { label: "COVERAGE RATIO",     value: (solvency.ratio * 100).toFixed(1) + "%",        cls: solvency.ratio >= 1 ? styles.statValueGreen : styles.statValueFire, hint: "100%+ = fully funded" },
+                    { label: "USER BALANCES",      value: "$" + solvency.breakdown.userBalances.toFixed(2), cls: "",                                                              hint: "Sum of all user USDC ledger balances" },
+                    { label: "REWARD POOL",        value: "$" + solvency.breakdown.rewardPool.toFixed(2),  cls: "",                                                              hint: "Prize pot" },
+                    { label: "PROFIT POOL",        value: "$" + solvency.breakdown.profitPool.toFixed(2),  cls: styles.statValueGold,                                            hint: "Owners' accumulated profit" },
+                  ].map(({ label, value, cls, hint }) => (
+                    <div key={label} className={styles.statCard}>
+                      <div className={styles.statLabel}>{label}</div>
+                      <div className={`${styles.statValue} ${cls}`}>{value}</div>
+                      <div style={{ fontSize: "8px", color: "#333", letterSpacing: "1px", marginTop: "4px" }}>{hint}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Master wallet address */}
+                <div style={{ marginTop: "24px", padding: "12px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "6px" }}>
+                  <div style={{ fontSize: "8px", color: "#333", letterSpacing: "2px", marginBottom: "6px" }}>MASTER WALLET ADDRESS</div>
+                  <div style={{ fontSize: "11px", color: "#555", fontFamily: "monospace", letterSpacing: "0.5px", wordBreak: "break-all" }}>
+                    {solvency.masterWallet}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: "#444", fontSize: "10px", letterSpacing: "2px" }}>FAILED TO LOAD — CHECK BACKEND CONNECTION</div>
             )}
           </>
         )}

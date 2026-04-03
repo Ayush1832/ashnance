@@ -259,6 +259,7 @@ class ApiClient {
     getBurnConfig: () => this.request<unknown>("/owner/burn-config"),
     saveBurnConfig: (config: Record<string, number>) =>
       this.request<unknown>("/owner/burn-config", { method: "PUT", body: JSON.stringify(config) }),
+    solvency: () => this.request<unknown>("/owner/solvency"),
   };
 
   // ---- HEALTH ----
