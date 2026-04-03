@@ -93,6 +93,60 @@ function calcEV(cfg: BurnConfig): { winProb: number; evUsdc: number; evAsh: numb
 function fmt2(n: number) { return n.toFixed(2); }
 function fmtPct(n: number) { return (n * 100).toFixed(1) + "%"; }
 
+interface SimResult {
+  burnAmount: number;
+  weight: number;
+  winChance: number;
+  loseChance: number;
+  rewardPoolShare: number;
+  profitPoolShare: number;
+  // on win
+  jackpotChance: number; jackpotPrize: number;
+  bigChance: number;     bigPrize: number;
+  mediumChance: number;  mediumPrize: number;
+  smallChance: number;   smallPrize: number;
+  // on lose
+  ashMin: number; ashMax: number;
+  // expected
+  evUsdc: number; evAsh: number;
+}
+
+function simulate(cfg: BurnConfig, burnAmount: number, vipBonus: number, boostBonus: number): SimResult {
+  const baseUnit = 4.99;
+  const weight = (burnAmount / baseUnit) + vipBonus + boostBonus;
+  const winChance = weight / (weight + cfg.constant_factor);
+  const loseChance = 1 - winChance;
+
+  const rewardPoolShare = burnAmount * cfg.reward_pool_split;
+  const profitPoolShare = burnAmount * cfg.profit_pool_split;
+
+  const jackpotChance = winChance * cfg.jackpot_prob;
+  const bigChance     = winChance * (cfg.big_prob - cfg.jackpot_prob);
+  const mediumChance  = winChance * (cfg.medium_prob - cfg.big_prob);
+  const smallChance   = winChance * (1 - cfg.medium_prob);
+
+  const evUsdc =
+    jackpotChance * cfg.jackpot_amount +
+    bigChance     * cfg.big_amount +
+    mediumChance  * cfg.medium_amount +
+    smallChance   * cfg.small_amount -
+    burnAmount;
+
+  const avgAsh = (cfg.ash_reward_min + cfg.ash_reward_max) / 2;
+  const evAsh = loseChance * avgAsh;
+
+  return {
+    burnAmount, weight, winChance, loseChance,
+    rewardPoolShare, profitPoolShare,
+    jackpotChance, jackpotPrize: cfg.jackpot_amount,
+    bigChance,     bigPrize:     cfg.big_amount,
+    mediumChance,  mediumPrize:  cfg.medium_amount,
+    smallChance,   smallPrize:   cfg.small_amount,
+    ashMin: cfg.ash_reward_min, ashMax: cfg.ash_reward_max,
+    evUsdc, evAsh,
+  };
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function OwnerPage() {
   const router = useRouter();
@@ -114,6 +168,11 @@ export default function OwnerPage() {
   const [cfgLoading, setCfgLoading] = useState(true);
   const [saving,    setSaving]    = useState(false);
   const [saveMsg,   setSaveMsg]   = useState<string | null>(null);
+
+  // Simulator state
+  const [simAmount, setSimAmount] = useState("4.99");
+  const [simVip,    setSimVip]    = useState<"none"|"SPARK"|"ACTIVE_ASH"|"HOLY_FIRE">("none");
+  const [simBoost,  setSimBoost]  = useState(false);
 
   // Stats state
   const [stats,     setStats]     = useState<Stats | null>(null);
@@ -603,6 +662,150 @@ export default function OwnerPage() {
                     </span>
                   )}
                 </div>
+
+                {/* ── BURN SIMULATOR ── */}
+                {(() => {
+                  const vipBonusMap = { none: 0, SPARK: 0.10, ACTIVE_ASH: 0.25, HOLY_FIRE: 0.50 };
+                  const boostBonusVal = simBoost ? 0.50 : 0;
+                  const burnAmt = parseFloat(simAmount) || 0;
+                  const sim = burnAmt >= 4.99
+                    ? simulate(cfg, burnAmt, vipBonusMap[simVip], boostBonusVal)
+                    : null;
+
+                  return (
+                    <div className={styles.panel} style={{ marginTop: "32px", borderColor: "rgba(255,184,0,0.25)" }}>
+                      <div className={styles.panelTitle} style={{ color: "#FFB800" }}>🎲 BURN SIMULATOR</div>
+                      <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "20px" }}>
+                        TEST ANY BURN AMOUNT WITH THE CURRENT CONFIG TO SEE EXACT PROBABILITIES AND RETURNS
+                      </div>
+
+                      {/* Inputs */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "24px" }}>
+                        <div>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>BURN AMOUNT (USDC)</div>
+                          <input
+                            type="number" min="4.99" step="0.01"
+                            value={simAmount}
+                            onChange={(e) => setSimAmount(e.target.value)}
+                            style={{
+                              width: "100%", boxSizing: "border-box",
+                              background: "#0a0a0a", border: "1px solid rgba(255,184,0,0.3)",
+                              borderRadius: "4px", color: "#FFB800", padding: "10px 12px",
+                              fontFamily: "inherit", fontSize: "16px", letterSpacing: "1px",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>VIP TIER</div>
+                          <select
+                            value={simVip}
+                            onChange={(e) => setSimVip(e.target.value as typeof simVip)}
+                            style={{
+                              width: "100%", background: "#0a0a0a",
+                              border: "1px solid rgba(255,184,0,0.3)", borderRadius: "4px",
+                              color: "#fff", padding: "10px 12px",
+                              fontFamily: "inherit", fontSize: "12px", letterSpacing: "1px",
+                            }}
+                          >
+                            <option value="none">None (+0.0x)</option>
+                            <option value="SPARK">Spark (+0.10x)</option>
+                            <option value="ACTIVE_ASH">Active Ash (+0.25x)</option>
+                            <option value="HOLY_FIRE">Holy Fire (+0.50x)</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>ASH BOOST</div>
+                          <button
+                            onClick={() => setSimBoost(!simBoost)}
+                            style={{
+                              width: "100%", padding: "10px 12px",
+                              background: simBoost ? "rgba(255,77,0,0.2)" : "#0a0a0a",
+                              border: `1px solid ${simBoost ? "rgba(255,77,0,0.5)" : "rgba(255,184,0,0.3)"}`,
+                              borderRadius: "4px", color: simBoost ? "#FF4D00" : "#555",
+                              fontFamily: "inherit", fontSize: "12px", letterSpacing: "2px", cursor: "pointer",
+                            }}
+                          >
+                            {simBoost ? "ON (+0.50x)" : "OFF"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {burnAmt < 4.99 && (
+                        <div style={{ fontSize: "10px", color: "#555", letterSpacing: "1px" }}>
+                          Enter at least $4.99 to simulate.
+                        </div>
+                      )}
+
+                      {sim && (
+                        <>
+                          {/* Weight & Win/Lose */}
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+                            {[
+                              { label: "WEIGHT",          value: sim.weight.toFixed(2) + "x",                      color: "#FF4D00" },
+                              { label: "WIN CHANCE",      value: (sim.winChance * 100).toFixed(3) + "%",           color: "#27AE60" },
+                              { label: "LOSE CHANCE",     value: (sim.loseChance * 100).toFixed(3) + "%",          color: "#ff6b6b" },
+                              { label: "EXPECTED RETURN", value: (sim.evUsdc >= 0 ? "+" : "") + "$" + fmt2(sim.evUsdc), color: sim.evUsdc >= 0 ? "#27AE60" : "#ff6b6b" },
+                            ].map(({ label, value, color }) => (
+                              <div key={label} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
+                                <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
+                                <div style={{ fontSize: "20px", color }}>{value}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Pool split */}
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
+                            <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
+                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>GOES TO REWARD POOL</div>
+                              <div style={{ fontSize: "18px", color: "#27AE60" }}>${fmt2(sim.rewardPoolShare)} USDC</div>
+                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>{fmtPct(cfg.reward_pool_split)} of burn</div>
+                            </div>
+                            <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
+                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>GOES TO PROFIT POOL</div>
+                              <div style={{ fontSize: "18px", color: "#FFB800" }}>${fmt2(sim.profitPoolShare)} USDC</div>
+                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>{fmtPct(cfg.profit_pool_split)} of burn</div>
+                            </div>
+                          </div>
+
+                          {/* Prize breakdown */}
+                          <div style={{ marginBottom: "8px", fontSize: "9px", color: "#555", letterSpacing: "2px" }}>IF WIN — PRIZE BREAKDOWN</div>
+                          <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden", marginBottom: "20px" }}>
+                            {[
+                              { emoji: "💎", label: "JACKPOT",  chance: sim.jackpotChance, prize: sim.jackpotPrize },
+                              { emoji: "🔥", label: "BIG",      chance: sim.bigChance,     prize: sim.bigPrize },
+                              { emoji: "✨", label: "MEDIUM",   chance: sim.mediumChance,  prize: sim.mediumPrize },
+                              { emoji: "⚡", label: "SMALL",    chance: sim.smallChance,   prize: sim.smallPrize },
+                            ].map(({ emoji, label, chance, prize }, i) => (
+                              <div key={label} style={{
+                                display: "grid", gridTemplateColumns: "40px 80px 1fr 100px 100px",
+                                alignItems: "center", padding: "12px 16px", gap: "12px",
+                                borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.03)" : "none",
+                              }}>
+                                <span style={{ fontSize: "18px" }}>{emoji}</span>
+                                <span style={{ fontSize: "10px", color: "#888", letterSpacing: "2px" }}>{label}</span>
+                                <div style={{ height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
+                                  <div style={{ height: "100%", width: `${Math.min(100, chance * 100 * 20)}%`, background: "#FF4D00", borderRadius: "2px" }} />
+                                </div>
+                                <span style={{ fontSize: "10px", color: "#FF4D00", textAlign: "right" }}>{(chance * 100).toFixed(4)}%</span>
+                                <span style={{ fontSize: "12px", color: "#FFB800", textAlign: "right" }}>+${prize} USDC</span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* If lose */}
+                          <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <div>
+                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>IF LOSE — ASH REWARD</div>
+                              <div style={{ fontSize: "16px", color: "#aaa" }}>{sim.ashMin} – {sim.ashMax} ASH tokens</div>
+                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>Expected avg: {fmt2(sim.evAsh)} ASH</div>
+                            </div>
+                            <div style={{ fontSize: "32px" }}>💨</div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </>
