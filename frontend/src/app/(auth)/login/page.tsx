@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import styles from "../auth.module.css";
 import { api } from "@/lib/api";
+import type { WalletProvider } from "@/lib/wallets";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -18,6 +19,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [walletModal, setWalletModal] = useState(false);
+  const [wallets, setWallets] = useState<WalletProvider[]>([]);
+
+  useEffect(() => {
+    import("@/lib/wallets").then(({ detectWallets }) => setWallets(detectWallets()));
+  }, []);
 
   // ---- OTP helpers ----
   const handleOtpChange = (index: number, value: string) => {
@@ -90,22 +97,16 @@ export default function LoginPage() {
     }
   };
 
-  const handlePhantomLogin = async () => {
+  const handleWalletLogin = async (wallet: WalletProvider) => {
     setError("");
     setLoading(true);
+    setWalletModal(false);
     try {
-      const provider = (window as any).phantom?.solana ?? (window as any).solana;
-      if (!provider?.isPhantom) {
-        window.open("https://phantom.app/", "_blank");
-        setError("Phantom not detected. Install it and refresh this page.");
-        return;
-      }
-      await provider.connect();
-      const publicKey: string = provider.publicKey.toBase58();
+      const { connectWallet, signMessage } = await import("@/lib/wallets");
+      const publicKey = await connectWallet(wallet.provider);
       const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
-      const encoded = new TextEncoder().encode(message);
-      const { signature } = await provider.signMessage(encoded, "utf8");
-      const sigArray = Array.from(signature as Uint8Array);
+      const signature = await signMessage(wallet.provider, message);
+      const sigArray = Array.from(signature);
       const res = await api.auth.wallet(publicKey, sigArray, message) as { data: { accessToken: string; refreshToken: string } };
       localStorage.setItem("accessToken", res.data.accessToken);
       localStorage.setItem("refreshToken", res.data.refreshToken || "");
@@ -113,7 +114,7 @@ export default function LoginPage() {
       window.location.href = "/dashboard";
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Wallet connection failed";
-      setError(msg.includes("rejected") ? "Signature rejected in Phantom. Please approve to continue." : msg);
+      setError(msg.toLowerCase().includes("rejected") ? "Signature rejected. Please approve to sign in." : msg);
     } finally {
       setLoading(false);
     }
@@ -280,25 +281,68 @@ export default function LoginPage() {
               <span>Twitter</span>
             </button>
 
-            {/* Phantom */}
+            {/* Wallet */}
             <button
-              className={`${styles["social-btn-branded"]} ${styles["phantom-btn"]}`}
+              className={styles["social-btn-branded"]}
               type="button"
-              onClick={handlePhantomLogin}
+              onClick={() => setWalletModal(true)}
+              disabled={loading}
             >
-              <svg width="18" height="18" viewBox="0 0 128 128" fill="none">
-                <rect width="128" height="128" rx="26" fill="#AB9FF2"/>
-                <path d="M110.6 64c0 25.7-20.9 46.6-46.6 46.6S17.4 89.7 17.4 64 38.3 17.4 64 17.4 110.6 38.3 110.6 64z" fill="#AB9FF2"/>
-                <path fillRule="evenodd" clipRule="evenodd" d="M17.4 64C17.4 38.3 38.3 17.4 64 17.4c25.7 0 46.6 20.9 46.6 46.6 0 2.6-.2 5.1-.6 7.6H91.3c.3-2.5.5-5 .5-7.6 0-15.3-12.4-27.7-27.8-27.7-15.3 0-27.7 12.4-27.7 27.7s12.4 27.7 27.7 27.7c5 0 9.7-1.3 13.7-3.7l10.2 9.6C81.9 106 73.3 109.3 64 109.3 38.3 110.6 17.4 89.7 17.4 64z" fill="white" fillOpacity="0.15"/>
-                <ellipse cx="52" cy="60" rx="7" ry="9" fill="white"/>
-                <ellipse cx="76" cy="60" rx="7" ry="9" fill="white"/>
-                <ellipse cx="50" cy="58" rx="3" ry="4" fill="#AB9FF2"/>
-                <ellipse cx="74" cy="58" rx="3" ry="4" fill="#AB9FF2"/>
-              </svg>
-              <span>Phantom</span>
+              <span style={{ fontSize: "18px" }}>👛</span>
+              <span>Wallet</span>
             </button>
           </div>
         </div>
+
+        {/* Wallet selection modal */}
+        {walletModal && (
+          <div
+            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+            onClick={(e) => e.target === e.currentTarget && setWalletModal(false)}
+          >
+            <div style={{ background: "var(--bg-panel, #111)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "28px 24px", width: "320px", maxWidth: "90vw" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+                <span style={{ fontFamily: "var(--font-display)", fontSize: "13px", letterSpacing: "2px" }}>CONNECT WALLET</span>
+                <button onClick={() => setWalletModal(false)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: "16px" }}>✕</button>
+              </div>
+
+              {wallets.filter(w => w.installed).length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {wallets.filter(w => w.installed).map(w => (
+                    <button
+                      key={w.name}
+                      onClick={() => handleWalletLogin(w)}
+                      style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", cursor: "pointer", color: "inherit", fontSize: "13px", letterSpacing: "1px", width: "100%" }}
+                    >
+                      <span style={{ fontSize: "22px" }}>{w.icon}</span>
+                      {w.name.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "11px", color: "#555", letterSpacing: "1px", textAlign: "center", marginBottom: "16px" }}>
+                  NO WALLET DETECTED — INSTALL ONE:
+                </div>
+              )}
+
+              {wallets.filter(w => !w.installed).length > 0 && (
+                <>
+                  <div style={{ fontSize: "9px", color: "#333", letterSpacing: "2px", margin: "16px 0 8px" }}>
+                    {wallets.filter(w => w.installed).length > 0 ? "MORE WALLETS" : "INSTALL A WALLET"}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                    {wallets.filter(w => !w.installed).map(w => (
+                      <a key={w.name} href={w.downloadUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "4px", padding: "6px 12px", textDecoration: "none" }}>
+                        {w.icon} {w.name} ↗
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className={styles["auth-footer"]}>
