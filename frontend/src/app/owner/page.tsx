@@ -43,11 +43,16 @@ interface BurnConfig {
   medium_prob: number;
   medium_amount: number;
   small_amount: number;
-  ash_reward_percent: number; // % of burn value returned as ASH (1.0 = 100%)
+  ash_reward_percent: number;
   constant_factor: number;
   reward_pool_split: number;
   profit_pool_split: number;
   referral_commission: number;
+  min_burn_amount: number;
+  boost_cost_ash: number;
+  vip_spark_bonus: number;
+  vip_active_ash_bonus: number;
+  vip_holy_fire_bonus: number;
 }
 
 interface Stats {
@@ -80,10 +85,15 @@ const DEFAULT_CONFIG: BurnConfig = {
   big_prob: 0.05,     big_amount: 500,
   medium_prob: 0.20,  medium_amount: 200,
   small_amount: 50,
-  ash_reward_percent: 1.0, // burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
+  ash_reward_percent: 1.0,
   constant_factor: 100,
   reward_pool_split: 0.5, profit_pool_split: 0.5,
   referral_commission: 0.1,
+  min_burn_amount: 4.99,
+  boost_cost_ash: 1000,
+  vip_spark_bonus: 0.10,
+  vip_active_ash_bonus: 0.25,
+  vip_holy_fire_bonus: 0.50,
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -127,8 +137,7 @@ interface SimResult {
 }
 
 function simulate(cfg: BurnConfig, burnAmount: number, vipBonus: number, boostBonus: number): SimResult {
-  const baseUnit = 4.99;
-  const weight = (burnAmount / baseUnit) + vipBonus + boostBonus;
+  const weight = (burnAmount / cfg.min_burn_amount) + vipBonus + boostBonus;
   const winChance = weight / (weight + cfg.constant_factor);
   const loseChance = 1 - winChance;
 
@@ -653,6 +662,71 @@ export default function OwnerPage() {
                   </div>
                 </div>
 
+                {/* BURN RULES */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>🔧 BURN RULES</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Min Burn Amount (USDC)
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Smallest allowed burn</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={0.01} min={0.01}
+                          value={cfg.min_burn_amount}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) updateCfg("min_burn_amount", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>USDC</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        ASH Boost Cost
+                        <span style={{ color: "#333", marginLeft: "8px" }}>ASH tokens burned to activate boost</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={100} min={0}
+                          value={cfg.boost_cost_ash}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg("boost_cost_ash", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>ASH</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* VIP BONUSES */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>👑 VIP WEIGHT BONUSES</div>
+                  <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "16px" }}>
+                    Added to base weight — higher weight = better win chance
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+                    {([
+                      { key: "vip_spark_bonus",      label: "⚡ SPARK",       color: "#aaa" },
+                      { key: "vip_active_ash_bonus",  label: "🔥 ACTIVE ASH",  color: "#FF4D00" },
+                      { key: "vip_holy_fire_bonus",   label: "💎 HOLY FIRE",   color: "#FFB800" },
+                    ] as { key: keyof BurnConfig; label: string; color: string }[]).map(({ key, label, color }) => (
+                      <div key={key}>
+                        <div style={{ fontSize: "9px", color, letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <input
+                            type="number" step={0.05} min={0} max={2}
+                            value={cfg[key]}
+                            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg(key, v); }}
+                            style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                          />
+                          <span style={{ fontSize: "10px", color: "#555" }}>+{(cfg[key] as number * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* EV Preview */}
                 <div className={styles.evCalc}>
                   <div className={styles.evTitle}>LIVE PREVIEW — for a $4.99 burn at default weight (1.0x)</div>
@@ -692,10 +766,10 @@ export default function OwnerPage() {
 
                 {/* ── BURN SIMULATOR ── */}
                 {(() => {
-                  const vipBonusMap = { none: 0, SPARK: 0.10, ACTIVE_ASH: 0.25, HOLY_FIRE: 0.50 };
+                  const vipBonusMap = { none: 0, SPARK: cfg.vip_spark_bonus, ACTIVE_ASH: cfg.vip_active_ash_bonus, HOLY_FIRE: cfg.vip_holy_fire_bonus };
                   const boostBonusVal = simBoost ? 0.50 : 0;
                   const burnAmt = parseFloat(simAmount) || 0;
-                  const sim = burnAmt >= 4.99
+                  const sim = burnAmt >= cfg.min_burn_amount
                     ? simulate(cfg, burnAmt, vipBonusMap[simVip], boostBonusVal)
                     : null;
 
@@ -735,9 +809,9 @@ export default function OwnerPage() {
                             }}
                           >
                             <option value="none">None (+0.0x)</option>
-                            <option value="SPARK">Spark (+0.10x)</option>
-                            <option value="ACTIVE_ASH">Active Ash (+0.25x)</option>
-                            <option value="HOLY_FIRE">Holy Fire (+0.50x)</option>
+                            <option value="SPARK">Spark (+{cfg.vip_spark_bonus.toFixed(2)}x)</option>
+                            <option value="ACTIVE_ASH">Active Ash (+{cfg.vip_active_ash_bonus.toFixed(2)}x)</option>
+                            <option value="HOLY_FIRE">Holy Fire (+{cfg.vip_holy_fire_bonus.toFixed(2)}x)</option>
                           </select>
                         </div>
                         <div>

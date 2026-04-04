@@ -11,10 +11,15 @@ const BURN_CONFIG_KEYS = [
   "big_prob", "big_amount",
   "medium_prob", "medium_amount",
   "small_amount",
-  "ash_reward_percent", // % of burn value returned as ASH on loss (e.g. 1.0 = 100%)
+  "ash_reward_percent",
   "constant_factor",
   "reward_pool_split", "profit_pool_split",
   "referral_commission",
+  "min_burn_amount",
+  "boost_cost_ash",
+  "vip_spark_bonus",
+  "vip_active_ash_bonus",
+  "vip_holy_fire_bonus",
 ];
 
 const BURN_CONFIG_DEFAULTS: Record<string, number> = {
@@ -25,12 +30,16 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   medium_prob: 0.20,
   medium_amount: 200,
   small_amount: 50,
-  // burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
   ash_reward_percent: 1.0,
   constant_factor: 100,
   reward_pool_split: 0.5,
   profit_pool_split: 0.5,
   referral_commission: 0.1,
+  min_burn_amount: 4.99,
+  boost_cost_ash: 1000,
+  vip_spark_bonus: 0.10,
+  vip_active_ash_bonus: 0.25,
+  vip_holy_fire_bonus: 0.50,
 };
 
 export class OwnerService {

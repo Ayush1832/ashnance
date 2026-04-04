@@ -29,13 +29,12 @@ export class BurnService {
     amountUsdc: number,
     useBoost: boolean = false
   ): Promise<BurnResult> {
-    // Validate min amount
-    if (amountUsdc < config.game.minBurnAmount) {
-      throw new BadRequestError(`Minimum burn amount is $${config.game.minBurnAmount} USDC`);
-    }
-
-    // Load live burn config from DB (owners can change these in the admin panel)
+    // Load live burn config from DB first — all game parameters come from here
     const burnCfg = await OwnerService.getBurnConfig();
+
+    if (amountUsdc < burnCfg.min_burn_amount) {
+      throw new BadRequestError(`Minimum burn amount is $${burnCfg.min_burn_amount} USDC`);
+    }
 
     // Get user with wallet
     const user = await prisma.user.findUnique({
@@ -58,35 +57,28 @@ export class BurnService {
     }
 
     // ---- CALCULATE WEIGHT ----
-    // Base weight = amount / 4.99
-    const baseWeight = amountUsdc / config.game.baseUnit;
+    const baseWeight = amountUsdc / burnCfg.min_burn_amount;
 
     // VIP bonus
     let vipBonus = 0;
     if (user.isVip && user.vipExpiresAt && user.vipExpiresAt > new Date()) {
       switch (user.vipTier) {
-        case "SPARK":
-          vipBonus = config.weight.sparkBonus;
-          break;
-        case "ACTIVE_ASH":
-          vipBonus = config.weight.activeAshBonus;
-          break;
-        case "HOLY_FIRE":
-          vipBonus = config.weight.holyFireBonus;
-          break;
+        case "SPARK":      vipBonus = burnCfg.vip_spark_bonus;      break;
+        case "ACTIVE_ASH": vipBonus = burnCfg.vip_active_ash_bonus; break;
+        case "HOLY_FIRE":  vipBonus = burnCfg.vip_holy_fire_bonus;  break;
       }
     }
 
-    // Referral bonus: +0.20 per 5 active referrals
+    // Referral bonus: +0.20 per 5 active referrals (not yet owner-configurable)
     const activeReferrals = user.referralsMade.length;
     const referralBonus =
       Math.floor(activeReferrals / 5) * config.weight.referralBonusPer5;
 
-    // Boost bonus (ASH burn)
+    // Boost bonus
     let boostBonus = 0;
     if (useBoost) {
       const ashBalance = Number(user.wallet.ashBalance);
-      if (ashBalance >= config.game.boostCostAsh) {
+      if (ashBalance >= burnCfg.boost_cost_ash) {
         boostBonus = config.weight.ashBoostBonus;
       }
     }
@@ -174,7 +166,7 @@ export class BurnService {
         await tx.wallet.update({
           where: { userId },
           data: {
-            ashBalance: { decrement: config.game.boostCostAsh }, // stays in env config
+            ashBalance: { decrement: burnCfg.boost_cost_ash },
           },
         });
       }
