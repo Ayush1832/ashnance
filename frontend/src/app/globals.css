@@ -264,19 +264,21 @@ ul, ol { list-style: none; }
   flex-direction: column;
 }
 .sidebar-logo {
-  padding: 10px 20px 24px;
+  padding: 16px 20px 20px;
   border-bottom: 1px solid var(--border);
-  font-family: var(--font-display);
-  font-size: 22px;
-  letter-spacing: 3px;
-  color: var(--fire-orange);
+}
+.sidebar-logo img {
+  display: block;
+  width: 140px;
+  height: auto;
 }
 .sidebar-logo span {
   color: var(--gold);
-  font-size: 12px;
+  font-size: 11px;
   display: block;
   letter-spacing: 2px;
   font-family: var(--font-body);
+  margin-top: 6px;
 }
 .sidebar-nav { padding: 16px 0; flex: 1; }
 .nav-item {

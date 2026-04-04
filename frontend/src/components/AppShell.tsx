@@ -38,7 +38,7 @@ export default function AppShell({ children, username = "BURNER", isVip = false 
       {/* ===== SIDEBAR ===== */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          ASHNANCE
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto", display: "block" }} />
           <span>KEEP BURNING</span>
         </div>
 

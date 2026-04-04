@@ -48,14 +48,8 @@ export default function OwnerLoginPage() {
         textAlign: "center",
       }}>
         {/* Logo */}
-        <div style={{
-          fontFamily: "var(--font-display, monospace)",
-          fontSize: "24px",
-          letterSpacing: "8px",
-          color: "#FF4D00",
-          marginBottom: "4px",
-        }}>
-          ASHNANCE
+        <div style={{ marginBottom: "4px" }}>
+          <img src="/logo.png" alt="Ashnance" style={{ width: "160px", height: "auto" }} />
         </div>
         <div style={{
           fontSize: "9px",

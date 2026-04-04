@@ -42,15 +42,10 @@
 }
 
 .auth-logo {
-  font-family: var(--font-display);
-  font-size: 42px;
-  letter-spacing: 5px;
-  color: var(--fire-orange);
   text-decoration: none;
   margin-bottom: 28px;
-  display: block;
-  text-align: center;
-  animation: flicker 6s ease-in-out infinite;
+  display: flex;
+  justify-content: center;
 }
 
 .auth-card {

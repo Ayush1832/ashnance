@@ -100,8 +100,8 @@ export default function ConnectWalletPage() {
         textAlign: "center",
       }}>
         {/* Logo */}
-        <div style={{ fontFamily: "var(--font-display, monospace)", fontSize: "22px", letterSpacing: "6px", color: "#FF4D00", marginBottom: "8px" }}>
-          ASHNANCE
+        <div style={{ marginBottom: "8px" }}>
+          <img src="/logo.png" alt="Ashnance" style={{ width: "160px", height: "auto" }} />
         </div>
 
         {/* Icon */}

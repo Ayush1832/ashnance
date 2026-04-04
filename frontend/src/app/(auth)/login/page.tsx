@@ -134,7 +134,7 @@ export default function LoginPage() {
       <div className={styles["auth-container"]}>
         {/* Logo */}
         <Link href="/" className={styles["auth-logo"]}>
-          ASHNANCE
+          <img src="/logo.png" alt="Ashnance" style={{ width: "180px", height: "auto" }} />
         </Link>
 
         {/* Card */}
