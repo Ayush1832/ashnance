@@ -43,8 +43,7 @@ interface BurnConfig {
   medium_prob: number;
   medium_amount: number;
   small_amount: number;
-  ash_reward_min: number;
-  ash_reward_max: number;
+  ash_reward_percent: number; // % of burn value returned as ASH (1.0 = 100%)
   constant_factor: number;
   reward_pool_split: number;
   profit_pool_split: number;
@@ -81,7 +80,7 @@ const DEFAULT_CONFIG: BurnConfig = {
   big_prob: 0.05,     big_amount: 500,
   medium_prob: 0.20,  medium_amount: 200,
   small_amount: 50,
-  ash_reward_min: 200, ash_reward_max: 500,
+  ash_reward_percent: 1.0, // burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
   constant_factor: 100,
   reward_pool_split: 0.5, profit_pool_split: 0.5,
   referral_commission: 0.1,
@@ -99,8 +98,9 @@ function calcEV(cfg: BurnConfig): { winProb: number; evUsdc: number; evAsh: numb
     (1 - cfg.medium_prob) * cfg.small_amount;
 
   const evUsdc = winProb * prizeRollExpected - 4.99;
-  const avgAsh = (cfg.ash_reward_min + cfg.ash_reward_max) / 2;
-  const evAsh = (1 - winProb) * avgAsh;
+  // ASH on loss: ash_reward_percent of burn value at $0.01/ASH
+  const ashOnLose = (4.99 * cfg.ash_reward_percent) / 0.01;
+  const evAsh = (1 - winProb) * ashOnLose;
 
   return { winProb: winProb * 100, evUsdc, evAsh };
 }
@@ -121,7 +121,7 @@ interface SimResult {
   mediumChance: number;  mediumPrize: number;
   smallChance: number;   smallPrize: number;
   // on lose
-  ashMin: number; ashMax: number;
+  ashOnLose: number; // exact ASH tokens awarded
   // expected
   evUsdc: number; evAsh: number;
 }
@@ -147,8 +147,8 @@ function simulate(cfg: BurnConfig, burnAmount: number, vipBonus: number, boostBo
     smallChance   * cfg.small_amount -
     burnAmount;
 
-  const avgAsh = (cfg.ash_reward_min + cfg.ash_reward_max) / 2;
-  const evAsh = loseChance * avgAsh;
+  const ashOnLose = Math.floor((burnAmount * cfg.ash_reward_percent) / 0.01);
+  const evAsh = loseChance * ashOnLose;
 
   return {
     burnAmount, weight, winChance, loseChance,
@@ -157,7 +157,7 @@ function simulate(cfg: BurnConfig, burnAmount: number, vipBonus: number, boostBo
     bigChance,     bigPrize:     cfg.big_amount,
     mediumChance,  mediumPrize:  cfg.medium_amount,
     smallChance,   smallPrize:   cfg.small_amount,
-    ashMin: cfg.ash_reward_min, ashMax: cfg.ash_reward_max,
+    ashOnLose,
     evUsdc, evAsh,
   };
 }
@@ -554,32 +554,29 @@ export default function OwnerPage() {
                 {/* ASH REWARDS */}
                 <div className={styles.panel}>
                   <div className={styles.panelTitle}>🪙 ASH REWARDS (given when user loses)</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                    {[
-                      { key: "ash_reward_min", label: "Min ASH per loss", hint: "Minimum ASH tokens awarded" },
-                      { key: "ash_reward_max", label: "Max ASH per loss", hint: "Maximum ASH tokens awarded" },
-                    ].map(({ key, label, hint }) => (
-                      <div key={key}>
-                        <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
-                          {label}
-                          <span style={{ color: "#333", marginLeft: "8px" }}>{hint}</span>
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <input
-                            type="number" step={10} min={0}
-                            value={cfg[key as keyof BurnConfig]}
-                            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg(key as keyof BurnConfig, v); }}
-                            style={{
-                              flex: 1, background: "#0a0a0a",
-                              border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
-                              color: "#fff", padding: "10px 12px",
-                              fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
-                            }}
-                          />
-                          <span style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", minWidth: "32px" }}>ASH</span>
-                        </div>
-                      </div>
-                    ))}
+                  <div>
+                    <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                      ASH Reward % of Burn Value
+                      <span style={{ color: "#333", marginLeft: "8px" }}>
+                        1.0 = 100% — burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <input
+                        type="number" step={0.1} min={0} max={2}
+                        value={cfg.ash_reward_percent}
+                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg("ash_reward_percent", v); }}
+                        style={{
+                          width: "120px", background: "#0a0a0a",
+                          border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
+                          color: "#fff", padding: "10px 12px",
+                          fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
+                        }}
+                      />
+                      <span style={{ fontSize: "10px", color: "#888", letterSpacing: "1px" }}>
+                        = {Math.floor((1 * cfg.ash_reward_percent) / 0.01)} ASH per $1 burned
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -826,8 +823,8 @@ export default function OwnerPage() {
                           <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             <div>
                               <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>IF LOSE — ASH REWARD</div>
-                              <div style={{ fontSize: "16px", color: "#aaa" }}>{sim.ashMin} – {sim.ashMax} ASH tokens</div>
-                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>Expected avg: {fmt2(sim.evAsh)} ASH</div>
+                              <div style={{ fontSize: "16px", color: "#aaa" }}>{sim.ashOnLose.toLocaleString()} ASH</div>
+                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>${fmt2(sim.ashOnLose * 0.01)} value at $0.01/ASH</div>
                             </div>
                             <div style={{ fontSize: "32px" }}>💨</div>
                           </div>

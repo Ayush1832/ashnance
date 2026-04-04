@@ -6,7 +6,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
-import { OwnerService } from "./ownerService";
+import { OwnerService, ASH_TOKEN_PRICE_USD } from "./ownerService";
 
 export interface BurnResult {
   burnId: string;
@@ -147,11 +147,11 @@ export class BurnService {
 
     if (!isWinner) {
       // ASH reward on lose (also covers pool-suspended wins above)
-      ashReward =
-        burnCfg.ash_reward_min +
-        Math.floor(
-          Math.random() * (burnCfg.ash_reward_max - burnCfg.ash_reward_min)
-        );
+      // Proportional to burn amount: ash_reward_percent of burn value at $0.01/ASH
+      // e.g. burn $1, percent=1.0 → $1 worth → 100 ASH
+      ashReward = Math.floor(
+        (amountUsdc * burnCfg.ash_reward_percent) / ASH_TOKEN_PRICE_USD
+      );
 
       // VIP bonus: +20% ASH for Holy Fire
       if (user.vipTier === "HOLY_FIRE") {

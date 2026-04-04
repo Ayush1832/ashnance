@@ -3,12 +3,15 @@ import { config } from "../config";
 import { BadRequestError, NotFoundError, UnauthorizedError } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
 
+/** ASH token price in USD — used to convert burn value to ASH tokens on loss */
+export const ASH_TOKEN_PRICE_USD = 0.01;
+
 const BURN_CONFIG_KEYS = [
   "jackpot_prob", "jackpot_amount",
   "big_prob", "big_amount",
   "medium_prob", "medium_amount",
   "small_amount",
-  "ash_reward_min", "ash_reward_max",
+  "ash_reward_percent", // % of burn value returned as ASH on loss (e.g. 1.0 = 100%)
   "constant_factor",
   "reward_pool_split", "profit_pool_split",
   "referral_commission",
@@ -22,8 +25,8 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   medium_prob: 0.20,
   medium_amount: 200,
   small_amount: 50,
-  ash_reward_min: 200,
-  ash_reward_max: 500,
+  // burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
+  ash_reward_percent: 1.0,
   constant_factor: 100,
   reward_pool_split: 0.5,
   profit_pool_split: 0.5,
