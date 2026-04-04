@@ -124,6 +124,11 @@ export class BlockchainService {
     return getMasterKeypair().publicKey.toBase58();
   }
 
+  /** Returns the USDC mint address for the current network */
+  static getUsdcMint(): string {
+    return USDC_MINT;
+  }
+
   // ----------------------------------------------------------
   // validateSolanaAddress
   // ----------------------------------------------------------

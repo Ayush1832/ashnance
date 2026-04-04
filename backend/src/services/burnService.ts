@@ -6,6 +6,7 @@ import {
   NotFoundError,
 } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
+import { OwnerService } from "./ownerService";
 
 export interface BurnResult {
   burnId: string;
@@ -32,6 +33,9 @@ export class BurnService {
     if (amountUsdc < config.game.minBurnAmount) {
       throw new BadRequestError(`Minimum burn amount is $${config.game.minBurnAmount} USDC`);
     }
+
+    // Load live burn config from DB (owners can change these in the admin panel)
+    const burnCfg = await OwnerService.getBurnConfig();
 
     // Get user with wallet
     const user = await prisma.user.findUnique({
@@ -92,7 +96,7 @@ export class BurnService {
     // ---- DETERMINE WIN/LOSE ----
     // EffectiveChance = FinalWeight / (FinalWeight + ConstantFactor)
     const effectiveChance =
-      finalWeight / (finalWeight + config.game.constantFactor);
+      finalWeight / (finalWeight + burnCfg.constant_factor);
 
     // VRF simulation (in production, use Switchboard VRF on-chain)
     const randomNumber = BlockchainService.simulateVRF(userId + Date.now().toString());
@@ -116,20 +120,20 @@ export class BurnService {
     if (isWinner && poolBalance >= MIN_POOL_FOR_WIN) {
       const maxPayout = Math.floor(poolBalance * MAX_PAYOUT_RATIO);
 
-      // Prize tier selection
+      // Prize tier selection — probabilities and amounts from DB config
       const prizeRoll = Math.random();
-      if (prizeRoll <= 0.01) {
+      if (prizeRoll <= burnCfg.jackpot_prob) {
         prizeTier = "JACKPOT";
-        prizeAmount = 2500;
-      } else if (prizeRoll <= 0.05) {
+        prizeAmount = burnCfg.jackpot_amount;
+      } else if (prizeRoll <= burnCfg.big_prob) {
         prizeTier = "BIG";
-        prizeAmount = 500;
-      } else if (prizeRoll <= 0.20) {
+        prizeAmount = burnCfg.big_amount;
+      } else if (prizeRoll <= burnCfg.medium_prob) {
         prizeTier = "MEDIUM";
-        prizeAmount = 200;
+        prizeAmount = burnCfg.medium_amount;
       } else {
         prizeTier = "SMALL";
-        prizeAmount = 50;
+        prizeAmount = burnCfg.small_amount;
       }
 
       // Apply hard cap — scale down to maxPayout if prize exceeds it
@@ -144,9 +148,9 @@ export class BurnService {
     if (!isWinner) {
       // ASH reward on lose (also covers pool-suspended wins above)
       ashReward =
-        config.game.ashRewardMin +
+        burnCfg.ash_reward_min +
         Math.floor(
-          Math.random() * (config.game.ashRewardMax - config.game.ashRewardMin)
+          Math.random() * (burnCfg.ash_reward_max - burnCfg.ash_reward_min)
         );
 
       // VIP bonus: +20% ASH for Holy Fire
@@ -170,13 +174,13 @@ export class BurnService {
         await tx.wallet.update({
           where: { userId },
           data: {
-            ashBalance: { decrement: config.game.boostCostAsh },
+            ashBalance: { decrement: config.game.boostCostAsh }, // stays in env config
           },
         });
       }
 
-      // 3. Split burn amount into pools
-      const rewardPoolAmount = amountUsdc * config.game.rewardPoolSplit;
+      // 3. Split burn amount into pools (ratios from DB config)
+      const rewardPoolAmount = amountUsdc * burnCfg.reward_pool_split;
 
       // Update reward pool
       await tx.rewardPool.updateMany({
@@ -184,7 +188,7 @@ export class BurnService {
       });
 
       // Update profit pool
-      const profitPoolAmount = amountUsdc * config.game.profitPoolSplit;
+      const profitPoolAmount = amountUsdc * burnCfg.profit_pool_split;
       await tx.profitPool.updateMany({
         data: {
           balance: { increment: profitPoolAmount },
@@ -255,9 +259,9 @@ export class BurnService {
         },
       });
 
-      // 8. Process referral reward (10% of burn from reward pool)
+      // 8. Process referral reward (% of burn, rate from DB config)
       if (user.referredById) {
-        const referralReward = amountUsdc * config.game.referralCommission;
+        const referralReward = amountUsdc * burnCfg.referral_commission;
 
         // Credit referrer's wallet
         await tx.wallet.update({

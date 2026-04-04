@@ -271,6 +271,16 @@ export class OwnerService {
 
   /** Save burn configuration to PlatformConfig */
   static async saveBurnConfig(updates: Record<string, number>) {
+    // Validate pool splits always sum to 1.0
+    const current = await OwnerService.getBurnConfig();
+    const merged  = { ...current, ...updates };
+    const splitSum = (merged.reward_pool_split ?? 0) + (merged.profit_pool_split ?? 0);
+    if (Math.abs(splitSum - 1.0) > 0.001) {
+      throw new BadRequestError(
+        `reward_pool_split (${merged.reward_pool_split}) + profit_pool_split (${merged.profit_pool_split}) must equal 1.0`
+      );
+    }
+
     const ops = Object.entries(updates)
       .filter(([key]) => BURN_CONFIG_KEYS.includes(key))
       .map(([key, value]) =>
