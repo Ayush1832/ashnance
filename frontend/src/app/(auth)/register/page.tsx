@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import styles from "../auth.module.css";
+import type { WalletProvider } from "@/lib/wallets";
+import { api } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
@@ -15,6 +17,12 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [walletModal, setWalletModal] = useState(false);
+  const [wallets, setWallets] = useState<WalletProvider[]>([]);
+
+  useEffect(() => {
+    import("@/lib/wallets").then(({ detectWallets }) => setWallets(detectWallets()));
+  }, []);
 
   // ---- OTP helpers ----
   const handleOtpChange = (index: number, value: string) => {
@@ -88,6 +96,29 @@ export default function RegisterPage() {
       window.location.href = "/connect-wallet";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleWalletLogin = async (wallet: WalletProvider) => {
+    setError("");
+    setLoading(true);
+    setWalletModal(false);
+    try {
+      const { connectWallet, signMessage } = await import("@/lib/wallets");
+      const publicKey = await connectWallet(wallet.provider);
+      const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
+      const signature = await signMessage(wallet.provider, message);
+      const sigArray = Array.from(signature);
+      const res = await api.auth.wallet(publicKey, sigArray, message) as { data: { accessToken: string; refreshToken: string } };
+      localStorage.setItem("accessToken", res.data.accessToken);
+      localStorage.setItem("refreshToken", res.data.refreshToken || "");
+      localStorage.setItem("walletAddress", publicKey);
+      window.location.href = "/dashboard";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Wallet connection failed";
+      setError(msg.toLowerCase().includes("rejected") ? "Signature rejected. Please approve to sign in." : msg);
     } finally {
       setLoading(false);
     }
@@ -249,15 +280,14 @@ export default function RegisterPage() {
               </svg>
               <span>Twitter</span>
             </button>
-            <button className={`${styles["social-btn-branded"]} ${styles["phantom-btn"]}`} type="button">
-              <svg width="18" height="18" viewBox="0 0 128 128" fill="none">
-                <rect width="128" height="128" rx="26" fill="#AB9FF2"/>
-                <ellipse cx="52" cy="60" rx="7" ry="9" fill="white"/>
-                <ellipse cx="76" cy="60" rx="7" ry="9" fill="white"/>
-                <ellipse cx="50" cy="58" rx="3" ry="4" fill="#AB9FF2"/>
-                <ellipse cx="74" cy="58" rx="3" ry="4" fill="#AB9FF2"/>
-              </svg>
-              <span>Phantom</span>
+            <button
+              className={styles["social-btn-branded"]}
+              type="button"
+              onClick={() => setWalletModal(true)}
+              disabled={loading}
+            >
+              <span style={{ fontSize: "18px" }}>👛</span>
+              <span>Wallet</span>
             </button>
           </div>
         </div>
@@ -268,6 +298,56 @@ export default function RegisterPage() {
           <Link href="/login">LOGIN HERE</Link>
         </div>
       </div>
+
+      {/* Wallet selection modal */}
+      {walletModal && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          onClick={(e) => e.target === e.currentTarget && setWalletModal(false)}
+        >
+          <div style={{ background: "var(--bg-panel, #111)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "28px 24px", width: "320px", maxWidth: "90vw" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: "13px", letterSpacing: "2px" }}>CONNECT WALLET</span>
+              <button onClick={() => setWalletModal(false)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: "16px" }}>✕</button>
+            </div>
+
+            {wallets.filter(w => w.installed).length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {wallets.filter(w => w.installed).map(w => (
+                  <button
+                    key={w.name}
+                    onClick={() => handleWalletLogin(w)}
+                    style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", cursor: "pointer", color: "inherit", fontSize: "13px", letterSpacing: "1px", width: "100%" }}
+                  >
+                    <span style={{ fontSize: "22px" }}>{w.icon}</span>
+                    {w.name.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: "11px", color: "#555", letterSpacing: "1px", textAlign: "center", marginBottom: "16px" }}>
+                NO WALLET DETECTED — INSTALL ONE:
+              </div>
+            )}
+
+            {wallets.filter(w => !w.installed).length > 0 && (
+              <>
+                <div style={{ fontSize: "9px", color: "#333", letterSpacing: "2px", margin: "16px 0 8px" }}>
+                  {wallets.filter(w => w.installed).length > 0 ? "MORE WALLETS" : "INSTALL A WALLET"}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {wallets.filter(w => !w.installed).map(w => (
+                    <a key={w.name} href={w.downloadUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "4px", padding: "6px 12px", textDecoration: "none" }}>
+                      {w.icon} {w.name} ↗
+                    </a>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

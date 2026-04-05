@@ -6,16 +6,16 @@ import Link from "next/link";
 import styles from "./page.module.css";
 
 const tickerData = [
-  { name: "Ahmed",  action: "burned 10 USDC",          win: false },
-  { name: "Sarah",  action: "won 250 USDC!",            win: true  },
-  { name: "Omar",   action: "earned 300 ASH",           win: false },
-  { name: "Hassan", action: "burned 50 USDC",           win: false },
-  { name: "Nour",   action: "won 2500 USDC! 💎 JACKPOT", win: true  },
-  { name: "Karim",  action: "earned 450 ASH",           win: false },
-  { name: "Layla",  action: "won 500 USDC!",            win: true  },
-  { name: "Yusuf",  action: "burned 4.99 USDC",         win: false },
-  { name: "Mia",    action: "won 200 USDC!",            win: true  },
-  { name: "Raj",    action: "earned 500 ASH",           win: false },
+  { name: "Burner#7492",  action: "burned 10 USDC",          win: false },
+  { name: "Burner#2831",  action: "won 250 USDC!",            win: true  },
+  { name: "Burner#5614",  action: "earned 300 ASH",           win: false },
+  { name: "Burner#9021",  action: "burned 50 USDC",           win: false },
+  { name: "Burner#3357",  action: "won 2500 USDC! 💎 JACKPOT", win: true  },
+  { name: "Burner#8803",  action: "earned 450 ASH",           win: false },
+  { name: "Burner#1245",  action: "won 500 USDC!",            win: true  },
+  { name: "Burner#6678",  action: "burned 4.99 USDC",         win: false },
+  { name: "Burner#4492",  action: "won 200 USDC!",            win: true  },
+  { name: "Burner#7736",  action: "earned 500 ASH",           win: false },
 ];
 
 export default function LandingPage() {
@@ -27,8 +27,6 @@ export default function LandingPage() {
     if (token) { router.replace("/dashboard"); return; }
     setReady(true);
   }, [router]);
-
-  if (!ready) return null;
 
   return (
     <>

@@ -179,7 +179,8 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         <div className={styles.modalBody}>
           <div className={styles.noticeBox}>
             ⚡ SEND USDC DIRECTLY FROM YOUR WALLET. NO ADDRESS COPYING NEEDED.
-            MINIMUM: 1 USDC. DEVNET ONLY.
+            MINIMUM: 1 USDC.{" "}
+            {(process.env.NEXT_PUBLIC_USDC_MINT || "") === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" ? "MAINNET." : "DEVNET (TESTNET ONLY)."}
           </div>
 
           {/* Amount input */}

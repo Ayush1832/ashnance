@@ -14,6 +14,7 @@ const navItems = [
   { icon: "👑", label: "VIP",         href: "/subscribe" },
   { icon: "📋", label: "HISTORY",     href: "/transactions" },
   { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "💎", label: "STAKING",     href: "/staking" },
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
@@ -88,7 +89,22 @@ export default function TransactionsPage() {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data) && data.length > 0) setTxList(data); })
+      .then((res) => {
+        const txs = res?.data?.transactions ?? res?.transactions ?? (Array.isArray(res) ? res : []);
+        if (Array.isArray(txs) && txs.length > 0) {
+          setTxList(txs.map((t: any) => ({
+            id:       t.id,
+            type:     t.type,
+            amount:   Number(t.amount),
+            currency: t.currency ?? "USDC",
+            status:   t.status,
+            desc:     t.description ?? t.desc ?? t.type,
+            date:     new Date(t.createdAt ?? t.date).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+          })));
+        } else if (Array.isArray(txs)) {
+          setTxList([]); // real empty list — don't show mock
+        }
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [filter]);
@@ -110,13 +126,9 @@ export default function TransactionsPage() {
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          ASHNANCE
-          <span>KEEP BURNING</span>
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
         </div>
         <nav className="sidebar-nav">
-          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
-            <span className="nav-icon">📊</span>DASHBOARD
-          </Link>
           {navItems.map((item) => (
             <Link
               key={item.href}

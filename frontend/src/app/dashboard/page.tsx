@@ -35,15 +35,15 @@ interface Transaction {
 
 // ---- Static ticker events (doubled for seamless loop) ----
 const TICKER_ITEMS = [
-  { dot: "win",  name: "Sarah",  action: "won",    amount: "250 USDC",  cls: "win"  },
-  { dot: "burn", name: "Ahmed",  action: "burned",  amount: "10 USDC",   cls: "burn" },
-  { dot: "ash",  name: "John",   action: "earned", amount: "300 ASH",   cls: "ash"  },
-  { dot: "win",  name: "Fatima", action: "won",    amount: "500 USDC",  cls: "win"  },
-  { dot: "burn", name: "Carlos", action: "burned",  amount: "50 USDC",   cls: "burn" },
-  { dot: "win",  name: "Alex",   action: "won",    amount: "2500 USDC", cls: "win"  },
-  { dot: "ash",  name: "Mia",    action: "earned", amount: "450 ASH",   cls: "ash"  },
-  { dot: "burn", name: "Raj",    action: "burned",  amount: "100 USDC",  cls: "burn" },
-  { dot: "win",  name: "Wei",    action: "won",    amount: "50 USDC",   cls: "win"  },
+  { dot: "win",  name: "Burner#2831", action: "won",    amount: "250 USDC",  cls: "win"  },
+  { dot: "burn", name: "Burner#7492", action: "burned",  amount: "10 USDC",   cls: "burn" },
+  { dot: "ash",  name: "Burner#5614", action: "earned", amount: "300 ASH",   cls: "ash"  },
+  { dot: "win",  name: "Burner#1245", action: "won",    amount: "500 USDC",  cls: "win"  },
+  { dot: "burn", name: "Burner#9021", action: "burned",  amount: "50 USDC",   cls: "burn" },
+  { dot: "win",  name: "Burner#3357", action: "won",    amount: "2500 USDC", cls: "win"  },
+  { dot: "ash",  name: "Burner#8803", action: "earned", amount: "450 ASH",   cls: "ash"  },
+  { dot: "burn", name: "Burner#6678", action: "burned",  amount: "100 USDC",  cls: "burn" },
+  { dot: "win",  name: "Burner#4492", action: "won",    amount: "50 USDC",   cls: "win"  },
 ];
 const TICKER_DOUBLE = [...TICKER_ITEMS, ...TICKER_ITEMS];
 

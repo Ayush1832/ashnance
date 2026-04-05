@@ -328,7 +328,12 @@ export default function OwnerPage() {
   }
 
   // ── Render guards ──────────────────────────────────────────────────────
-  if (!ready) return null;
+  if (!ready) return (
+    <div style={{ minHeight: "100vh", background: "#050505", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: "24px", height: "24px", border: "2px solid rgba(255,77,0,0.3)", borderTopColor: "#FF4D00", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
 
   if (denied) {
     return (
@@ -358,7 +363,9 @@ export default function OwnerPage() {
     <div className={styles.layout}>
       {/* ── SIDEBAR ── */}
       <aside className={styles.sidebar}>
-        <div className={styles.sidebarLogo}>ASHNANCE</div>
+        <div className={styles.sidebarLogo}>
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "130px", height: "auto" }} />
+        </div>
         <div className={styles.sidebarLogoSub}>OWNER PORTAL</div>
 
         {NAV.map((n) => (

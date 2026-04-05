@@ -14,6 +14,7 @@ const navItems = [
   { icon: "👑", label: "VIP",         href: "/subscribe" },
   { icon: "📋", label: "HISTORY",     href: "/transactions" },
   { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "💎", label: "STAKING",     href: "/staking" },
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
@@ -31,8 +32,8 @@ export default function SettingsPage() {
   const router   = useRouter();
 
   const [activeTab, setActiveTab]       = useState<SettingsTab>("profile");
-  const [username, setUsername]         = useState("BurnMaster42");
-  const [email, setEmail]               = useState("burn@example.com");
+  const [username, setUsername]         = useState("");
+  const [email, setEmail]               = useState("");
   const [privacyMode, setPrivacyMode]   = useState(false);
   const [saveMsg, setSaveMsg]           = useState("");
 
@@ -56,26 +57,26 @@ export default function SettingsPage() {
   const [addrLabel, setAddrLabel] = useState("");
   const [addrValue, setAddrValue] = useState("");
   const [addrMsg, setAddrMsg]     = useState("");
-  const [addresses, setAddresses] = useState([
-    { label: "My Main Wallet", address: "9xkG...3hPq", verified: true },
-    { label: "Cold Storage",   address: "7mBx...9kLp", verified: false },
-  ]);
+  const [addresses, setAddresses] = useState<{ id?: string; label: string; address: string; verified: boolean }[]>([]);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) return;
-    fetch(`${API}/api/auth/profile`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        const data = res?.data ?? res;
-        if (data?.username)   setUsername(data.username);
-        if (data?.email)      setEmail(data.email);
-        if (data?.twoFaEnabled !== undefined) setTwoFaEnabled(data.twoFaEnabled);
-      })
-      .catch(() => {});
-  }, []);
+    if (!token) { router.replace("/login"); return; }
+
+    Promise.all([
+      fetch(`${API}/api/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).catch(() => null),
+      fetch(`${API}/api/wallet/whitelist`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).catch(() => null),
+    ]).then(([profileRes, whitelistRes]) => {
+      const data = profileRes?.data ?? profileRes;
+      if (data?.username)   setUsername(data.username);
+      if (data?.email)      setEmail(data.email);
+      if (data?.twoFaEnabled !== undefined) setTwoFaEnabled(data.twoFaEnabled);
+      const wl = whitelistRes?.data ?? (Array.isArray(whitelistRes) ? whitelistRes : []);
+      if (Array.isArray(wl)) {
+        setAddresses(wl.map((a: any) => ({ id: a.id, label: a.label ?? "Wallet", address: a.address, verified: a.isVerified ?? false })));
+      }
+    }).catch(() => {});
+  }, [router]);
 
   function handleLogout() {
     if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
@@ -154,12 +155,26 @@ export default function SettingsPage() {
     setTimeout(() => setPassMsg(""), 3000);
   }
 
-  function handleAddAddress() {
+  async function handleAddAddress() {
     setAddrMsg("");
     if (!addrLabel || !addrValue) { setAddrMsg("FILL ALL FIELDS"); return; }
-    setAddresses((prev) => [...prev, { label: addrLabel, address: addrValue, verified: false }]);
-    setAddrLabel(""); setAddrValue("");
-    setAddrMsg("ADDRESS ADDED — 24H COOLDOWN");
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token) return;
+    try {
+      const res = await fetch(`${API}/api/wallet/whitelist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ address: addrValue, label: addrLabel }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAddrMsg((data.error ?? data.message ?? "FAILED").toUpperCase()); return; }
+      const newAddr = data?.data ?? data;
+      setAddresses((prev) => [...prev, { id: newAddr.id, label: addrLabel, address: addrValue, verified: false }]);
+      setAddrLabel(""); setAddrValue("");
+      setAddrMsg("ADDRESS ADDED — PENDING VERIFICATION");
+    } catch {
+      setAddrMsg("FAILED TO ADD ADDRESS");
+    }
     setTimeout(() => setAddrMsg(""), 4000);
   }
 
@@ -170,13 +185,9 @@ export default function SettingsPage() {
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          ASHNANCE
-          <span>KEEP BURNING</span>
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
         </div>
         <nav className="sidebar-nav">
-          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
-            <span className="nav-icon">📊</span>DASHBOARD
-          </Link>
           {navItems.map((item) => (
             <Link
               key={item.href}

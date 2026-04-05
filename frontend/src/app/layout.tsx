@@ -9,19 +9,23 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.ashnance.com"),
   title: "Ashnance — Burn to Win ASH Token | Keep Burning, Keep Earning",
   description:
     "Burn USDC to win grand prizes or earn ASH tokens on the Solana blockchain. A gamified crypto platform where every burn is an instant chance to win.",
   keywords: ["Ashnance", "Burn to Win", "ASH Token", "Solana", "USDC", "Crypto Gaming", "Web3", "DeFi"],
   authors: [{ name: "Ashnance Team" }],
   icons: {
-    icon: "/logo-symbol.png",
+    icon: [
+      { url: "/logo-symbol.png", type: "image/png" },
+    ],
     apple: "/logo-symbol.png",
+    shortcut: "/logo-symbol.png",
   },
   openGraph: {
     title: "Ashnance — Burn to Win ASH Token",
     description: "Burn USDC for a chance to win up to $2,500 or earn ASH tokens. Built on Solana.",
-    url: "https://ashnance.io",
+    url: "https://www.ashnance.com",
     siteName: "Ashnance",
     images: [{ url: "/logo-dark.png", width: 2001, height: 2001 }],
     type: "website",

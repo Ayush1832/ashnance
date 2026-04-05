@@ -81,6 +81,7 @@ const navItems = [
   { icon: "👑", label: "VIP",         href: "/subscribe" },
   { icon: "📋", label: "HISTORY",     href: "/transactions" },
   { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "💎", label: "STAKING",     href: "/staking" },
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
@@ -129,13 +130,9 @@ export default function LeaderboardPage() {
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          ASHNANCE
-          <span>KEEP BURNING</span>
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
         </div>
         <nav className="sidebar-nav">
-          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
-            <span className="nav-icon">📊</span>DASHBOARD
-          </Link>
           {navItems.map((item) => (
             <Link
               key={item.href}

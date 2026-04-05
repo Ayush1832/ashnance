@@ -14,6 +14,7 @@ const navItems = [
   { icon: "👑", label: "VIP",         href: "/subscribe" },
   { icon: "📋", label: "HISTORY",     href: "/transactions" },
   { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
+  { icon: "💎", label: "STAKING",     href: "/staking" },
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
@@ -33,38 +34,38 @@ export default function ReferralsPage() {
   const [leaders, setLeaders]   = useState<Referrer[]>([]);
   const [loading, setLoading]   = useState(true);
 
-  const referralLink = `https://ashnance.io/ref/${refCode}`;
+  const referralLink = `https://www.ashnance.com/ref/${refCode}`;
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (!token) { router.replace("/login"); return; }
+    const headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
 
     Promise.all([
       fetch(`${API}/api/auth/profile`, { headers }).then((r) => r.json()).catch(() => null),
       fetch(`${API}/api/leaderboard/referrers`, { headers }).then((r) => r.json()).catch(() => null),
-    ]).then(([profile, lb]) => {
+    ]).then(([profileRes, lb]) => {
+      const profile = profileRes?.data ?? profileRes;
       if (profile?.referralCode) setRefCode(profile.referralCode);
       if (profile) {
         setStats({
-          friends:    profile.referralCount   ?? 23,
-          earned:     profile.referralEarned  ?? "48.50",
+          friends:    Number(profile.referralCount  ?? 0),
+          earned:     Number(profile.referralEarned ?? 0).toFixed(2),
           commission: "10%",
         });
       }
-      if (Array.isArray(lb)) setLeaders(lb.slice(0, 8));
-      else setLeaders([
-        { username: "CryptoKing",  referrals: 145, earned: "$72.50" },
-        { username: "BlazeMaster", referrals: 120, earned: "$60.00" },
-        { username: "BurnQueen",   referrals: 98,  earned: "$49.00" },
-        { username: "AshLord",     referrals: 87,  earned: "$43.50" },
-        { username: "FireStorm",   referrals: 72,  earned: "$36.00" },
-        { username: "MoonBurn",    referrals: 65,  earned: "$32.50" },
-        { username: "SolanaFire",  referrals: 48,  earned: "$24.00" },
-        { username: "EmberKnight", referrals: 36,  earned: "$18.00" },
-      ]);
+      const lbArr = lb?.data ?? lb;
+      if (Array.isArray(lbArr) && lbArr.length > 0) {
+        setLeaders(lbArr.slice(0, 8).map((e: any) => ({
+          username: e.username ?? "???",
+          referrals: Number(e.referrals ?? e.totalReferrals ?? 0),
+          earned: `$${Number(e.earned ?? e.totalEarned ?? 0).toFixed(2)}`,
+        })));
+      } else {
+        setLeaders([]);
+      }
     }).finally(() => setLoading(false));
-  }, []);
+  }, [router]);
 
   function handleCopy() {
     navigator.clipboard.writeText(referralLink);
@@ -94,13 +95,9 @@ export default function ReferralsPage() {
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          ASHNANCE
-          <span>KEEP BURNING</span>
+          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
         </div>
         <nav className="sidebar-nav">
-          <Link href="/dashboard" className={`nav-item${pathname === "/dashboard" ? " active" : ""}`}>
-            <span className="nav-icon">📊</span>DASHBOARD
-          </Link>
           {navItems.map((item) => (
             <Link
               key={item.href}

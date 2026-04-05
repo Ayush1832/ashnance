@@ -180,11 +180,11 @@ export default function LoginPage() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="login-password">PASSWORD / OTP</label>
+                <label htmlFor="login-password">PASSWORD <span style={{ color: "var(--text-dim)", letterSpacing: "1px" }}>(OPTIONAL — LEAVE BLANK TO USE EMAIL OTP)</span></label>
                 <input
                   id="login-password"
                   type="password"
-                  placeholder="Enter password or leave blank for OTP"
+                  placeholder="Leave blank to receive a one-time code by email"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   autoComplete="current-password"

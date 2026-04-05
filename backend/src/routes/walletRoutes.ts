@@ -24,7 +24,9 @@ router.get("/platform-info", (_req, res: Response) => {
     data: {
       masterWallet: BlockchainService.getMasterWalletAddress(),
       usdcMint: BlockchainService.getUsdcMint(),
-      network: process.env.NODE_ENV === "production" ? "mainnet-beta" : "devnet",
+      network: process.env.USDC_MINT
+        ? (process.env.USDC_MINT === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" ? "mainnet-beta" : "devnet")
+        : (process.env.NODE_ENV === "production" ? "mainnet-beta" : "devnet"),
     },
   });
 });

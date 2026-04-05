@@ -114,7 +114,7 @@ export default function BurnPage() {
   const winPct = calcWinChance(weight);
   const fillPct = Math.min(100, weight * 6);
   const usdcBalance = stats?.usdcBalance ?? 0;
-  const canBurn = amount >= 4.99 && phase === "idle" && usdcBalance >= amount;
+  const canBurn = amount >= 4.99 && phase === "idle" && !statsLoading && usdcBalance >= amount;
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -186,9 +186,13 @@ export default function BurnPage() {
           }}
         >
           BALANCE:{" "}
-          <span style={{ color: "var(--usdc-green)" }}>
-            ${Number(stats?.usdcBalance ?? 0).toFixed(2)} USDC
-          </span>
+          {statsLoading ? (
+            <span style={{ color: "var(--text-dim)" }}>LOADING...</span>
+          ) : (
+            <span style={{ color: "var(--usdc-green)" }}>
+              ${Number(stats?.usdcBalance ?? 0).toFixed(2)} USDC
+            </span>
+          )}
         </div>
       </div>
 
@@ -263,14 +267,16 @@ export default function BurnPage() {
                 disabled={!canBurn}
               >
                 <span className={styles.burnCircleEmoji}>🔥</span>
-                <span className={styles.burnCircleLabel}>BURN</span>
-                {amount >= 4.99 && (
+                <span className={styles.burnCircleLabel}>
+                  {statsLoading ? "..." : "BURN"}
+                </span>
+                {!statsLoading && amount >= 4.99 && (
                   <span className={styles.burnCircleAmt}>
                     ${amount.toFixed(2)}
                   </span>
                 )}
               </button>
-              {amount >= 4.99 && usdcBalance < amount && phase === "idle" && (
+              {!statsLoading && amount >= 4.99 && usdcBalance < amount && phase === "idle" && (
                 <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
                   INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
                 </div>

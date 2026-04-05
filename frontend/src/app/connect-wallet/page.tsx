@@ -75,7 +75,11 @@ export default function ConnectWalletPage() {
     router.replace("/dashboard");
   }
 
-  if (!ready) return null;
+  if (!ready) return (
+    <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: "24px", height: "24px", border: "2px solid rgba(255,77,0,0.3)", borderTopColor: "#FF4D00", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+    </div>
+  );
 
   const installedWallets = wallets.filter((w) => w.installed);
   const otherWallets     = wallets.filter((w) => !w.installed);
