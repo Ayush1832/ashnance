@@ -133,6 +133,86 @@ export default function DashboardPage() {
 
   return (
     <>
+      {/* ===== CONNECTED WALLET BANNER ===== */}
+      {walletAddress && (
+        <div style={{
+          background: "linear-gradient(90deg, rgba(255,183,0,0.10) 0%, rgba(255,77,0,0.08) 100%)",
+          border: "1px solid rgba(255,183,0,0.35)",
+          borderLeft: "3px solid #FFB800",
+          padding: "14px 24px",
+          marginBottom: "0",
+          display: "flex",
+          alignItems: "center",
+          gap: "20px",
+          flexWrap: "wrap",
+        }}>
+          {/* Wallet icon + address */}
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: "200px" }}>
+            <div style={{
+              width: "36px", height: "36px", borderRadius: "50%",
+              background: "rgba(255,183,0,0.15)", border: "1px solid rgba(255,183,0,0.4)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px", flexShrink: 0,
+            }}>
+              👻
+            </div>
+            <div>
+              <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "2px" }}>
+                CONNECTED WALLET
+              </div>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: "13px", color: "#FFB800", letterSpacing: "2px" }}>
+                {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+              </div>
+            </div>
+          </div>
+
+          {/* On-chain balance */}
+          {onchainBalance !== null && (
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{
+                width: "36px", height: "36px", borderRadius: "50%",
+                background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.3)",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px", flexShrink: 0,
+              }}>
+                💵
+              </div>
+              <div>
+                <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "2px", marginBottom: "2px" }}>
+                  ON-CHAIN BALANCE
+                </div>
+                <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", color: "#4ade80", letterSpacing: "2px" }}>
+                  ${onchainBalance.toFixed(2)} <span style={{ fontSize: "10px", color: "var(--text-dim)" }}>USDC</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Disconnect */}
+          <button
+            style={{
+              marginLeft: "auto",
+              background: "rgba(255,77,0,0.08)",
+              border: "1px solid rgba(255,77,0,0.25)",
+              color: "var(--text-dim)",
+              cursor: "pointer",
+              fontSize: "9px",
+              letterSpacing: "2px",
+              padding: "8px 14px",
+              fontFamily: "var(--font-display)",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ff6b6b"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,77,0,0.6)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--text-dim)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,77,0,0.25)"; }}
+            onClick={() => {
+              localStorage.removeItem("walletAddress");
+              setWalletAddress(null);
+              setOnchainBalance(null);
+            }}
+          >
+            DISCONNECT ✕
+          </button>
+        </div>
+      )}
+
       {/* ===== DASH HEADER ===== */}
       <div className="dash-header">
         <div className="dash-title">
@@ -191,45 +271,6 @@ export default function DashboardPage() {
             <div className="stat-value gold">${totalWon.toFixed(2)}</div>
             <div className="stat-sub">LIFETIME WINNINGS</div>
           </div>
-        </div>
-      )}
-
-      {/* ===== CONNECTED WALLET BANNER ===== */}
-      {walletAddress && (
-        <div style={{
-          background: "rgba(255,183,0,0.06)",
-          border: "1px solid rgba(255,183,0,0.25)",
-          borderRadius: "4px",
-          padding: "10px 16px",
-          marginBottom: "16px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontSize: "10px",
-          letterSpacing: "2px",
-        }}>
-          <span style={{ color: "var(--text-dim)" }}>
-            👻 PHANTOM&nbsp;
-            <span style={{ color: "#FFB800" }}>
-              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-            </span>
-          </span>
-          {onchainBalance !== null && (
-            <span style={{ color: "var(--text-dim)" }}>
-              ON-CHAIN:&nbsp;
-              <span style={{ color: "#4ade80" }}>${onchainBalance.toFixed(2)} USDC</span>
-            </span>
-          )}
-          <button
-            style={{ background: "none", border: "none", color: "var(--text-dim)", cursor: "pointer", fontSize: "10px", letterSpacing: "2px" }}
-            onClick={() => {
-              localStorage.removeItem("walletAddress");
-              setWalletAddress(null);
-              setOnchainBalance(null);
-            }}
-          >
-            DISCONNECT ✕
-          </button>
         </div>
       )}
 
