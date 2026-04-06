@@ -10,20 +10,33 @@ const router = Router();
 router.post("/", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const data = burnSchema.parse(req.body);
-    const result = await BurnService.executeBurn(
-      req.user!.userId,
-      data.amount,
-      data.useBoost
-    );
+    const result = await BurnService.executeBurn(req.user!.userId, data.amount);
 
-    res.json({
-      success: true,
-      data: result,
-    });
+    res.json({ success: true, data: result });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return next(new BadRequestError(error.errors[0].message));
     }
+    next(error);
+  }
+});
+
+// POST /api/burn/boost — Activate 1-hour ASH boost
+router.post("/boost", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await BurnService.activateBoost(req.user!.userId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/burn/boost-status — Check current boost status
+router.get("/boost-status", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const status = await BurnService.getBoostStatus(req.user!.userId);
+    res.json({ success: true, data: status });
+  } catch (error) {
     next(error);
   }
 });

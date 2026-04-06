@@ -21,13 +21,74 @@ export interface BurnResult {
 
 export class BurnService {
   /**
+   * Activate a 1-hour ASH boost for a user.
+   * Deducts boost_cost_ash from wallet and sets boostExpiresAt = now + boost_duration_ms.
+   * If boost is already active, extends the timer by another hour.
+   */
+  static async activateBoost(userId: string): Promise<{ boostExpiresAt: Date; ashDeducted: number }> {
+    const burnCfg = await OwnerService.getBurnConfig();
+
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new NotFoundError("Wallet not found");
+
+    const ashBalance = Number(wallet.ashBalance);
+    if (ashBalance < burnCfg.boost_cost_ash) {
+      throw new InsufficientBalanceError(
+        `Insufficient ASH. Need ${burnCfg.boost_cost_ash} ASH, you have ${ashBalance}`
+      );
+    }
+
+    // Start from max(now, current expiry) so stacking adds to remaining time
+    const base = wallet.boostExpiresAt && wallet.boostExpiresAt > new Date()
+      ? wallet.boostExpiresAt
+      : new Date();
+    const boostExpiresAt = new Date(base.getTime() + burnCfg.boost_duration_ms);
+
+    await prisma.wallet.update({
+      where: { userId },
+      data: {
+        ashBalance:    { decrement: burnCfg.boost_cost_ash },
+        boostExpiresAt,
+      },
+    });
+
+    await prisma.transaction.create({
+      data: {
+        userId,
+        type: "ASH_BOOST",
+        amount: burnCfg.boost_cost_ash,
+        currency: "ASH",
+        status: "COMPLETED",
+        description: `ASH boost activated — +0.5 weight for 1 hour`,
+      },
+    });
+
+    return { boostExpiresAt, ashDeducted: burnCfg.boost_cost_ash };
+  }
+
+  /**
+   * Get current boost status for a user.
+   */
+  static async getBoostStatus(userId: string) {
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new NotFoundError("Wallet not found");
+
+    const now = new Date();
+    const active = !!(wallet.boostExpiresAt && wallet.boostExpiresAt > now);
+    const secondsLeft = active
+      ? Math.floor((wallet.boostExpiresAt!.getTime() - now.getTime()) / 1000)
+      : 0;
+
+    return { active, boostExpiresAt: wallet.boostExpiresAt, secondsLeft };
+  }
+
+  /**
    * Execute a burn — the core game mechanic
-   * Follows: feature_spec.md Sections 4, 5, 6, 7
+   * Follows: project.md Sections 4, 5, 6, 7, 8
    */
   static async executeBurn(
     userId: string,
     amountUsdc: number,
-    useBoost: boolean = false
   ): Promise<BurnResult> {
     // Load live burn config from DB first — all game parameters come from here
     const burnCfg = await OwnerService.getBurnConfig();
@@ -57,7 +118,9 @@ export class BurnService {
     }
 
     // ---- CALCULATE WEIGHT ----
-    const baseWeight = amountUsdc / burnCfg.min_burn_amount;
+    // base_unit is always 4.99 (the reference amount per spec Section 7)
+    const baseUnit = burnCfg.base_unit ?? 4.99;
+    const baseWeight = amountUsdc / baseUnit;
 
     // VIP bonus (Holy Fire only)
     let vipBonus = 0;
@@ -65,82 +128,83 @@ export class BurnService {
       vipBonus = burnCfg.vip_holy_fire_bonus;
     }
 
-    // Referral bonus: +0.20 per 5 active referrals (not yet owner-configurable)
+    // Referral bonus: +0.20 per 5 active referrals
     const activeReferrals = user.referralsMade.length;
     const referralBonus =
       Math.floor(activeReferrals / 5) * config.weight.referralBonusPer5;
 
-    // Boost bonus
-    let boostBonus = 0;
-    if (useBoost) {
-      const ashBalance = Number(user.wallet.ashBalance);
-      if (ashBalance >= burnCfg.boost_cost_ash) {
-        boostBonus = config.weight.ashBoostBonus;
-      }
-    }
+    // Boost bonus — time-based (1 hour), already paid for at activation
+    const now = new Date();
+    const boostActive = !!(user.wallet.boostExpiresAt && user.wallet.boostExpiresAt > now);
+    const boostBonus = boostActive ? config.weight.ashBoostBonus : 0;
 
     const finalWeight = baseWeight + vipBonus + referralBonus + boostBonus;
 
     // ---- DETERMINE WIN/LOSE ----
-    // EffectiveChance = FinalWeight / (FinalWeight + ConstantFactor)
     const effectiveChance =
       finalWeight / (finalWeight + burnCfg.constant_factor);
 
-    // VRF simulation (in production, use Switchboard VRF on-chain)
     const randomNumber = BlockchainService.simulateVRF(userId + Date.now().toString());
-    let isWinner = randomNumber <= effectiveChance;
+    const isWinner = randomNumber <= effectiveChance;
 
     // ---- DETERMINE PRIZE OR ASH ----
     let prizeTier: string | null = null;
     let prizeAmount: number | null = null;
     let ashReward: number | null = null;
 
-    // Fetch pool once — used for cap check and ASH fallback
     const pool = await prisma.rewardPool.findFirst();
     const poolBalance = pool ? Number(pool.totalBalance) : 0;
+    const maxPayout = Math.floor(poolBalance * 0.5); // no single payout > 50% of pool
 
-    // Hard cap: no single payout may exceed 50% of current pool.
-    // If pool is below the minimum viable threshold, suspend wins and give
-    // ASH instead — this prevents draining a thin pool.
-    const MAX_PAYOUT_RATIO = 0.5;
-    const MIN_POOL_FOR_WIN  = config.game.minBurnAmount * 10; // ~$49.90 at $4.99 min
-
-    if (isWinner && poolBalance >= MIN_POOL_FOR_WIN) {
-      const maxPayout = Math.floor(poolBalance * MAX_PAYOUT_RATIO);
-
-      // Prize tier selection — probabilities and amounts from DB config
+    if (isWinner) {
+      // Select prize tier by probability roll
       const prizeRoll = Math.random();
+      let selectedTier: string;
+      let selectedAmount: number;
+
       if (prizeRoll <= burnCfg.jackpot_prob) {
-        prizeTier = "JACKPOT";
-        prizeAmount = burnCfg.jackpot_amount;
+        selectedTier = "JACKPOT"; selectedAmount = burnCfg.jackpot_amount;
       } else if (prizeRoll <= burnCfg.big_prob) {
-        prizeTier = "BIG";
-        prizeAmount = burnCfg.big_amount;
+        selectedTier = "BIG";     selectedAmount = burnCfg.big_amount;
       } else if (prizeRoll <= burnCfg.medium_prob) {
-        prizeTier = "MEDIUM";
-        prizeAmount = burnCfg.medium_amount;
+        selectedTier = "MEDIUM";  selectedAmount = burnCfg.medium_amount;
       } else {
-        prizeTier = "SMALL";
-        prizeAmount = burnCfg.small_amount;
+        selectedTier = "SMALL";   selectedAmount = burnCfg.small_amount;
       }
 
-      // Apply hard cap — scale down to maxPayout if prize exceeds it
-      if (prizeAmount > maxPayout) {
-        prizeAmount = maxPayout;
+      // Downgrade prize tier if pool can't cover it (per spec Section 8 Step 4)
+      const tiers = [
+        { tier: selectedTier, amount: selectedAmount },
+        { tier: "BIG",    amount: burnCfg.big_amount },
+        { tier: "MEDIUM", amount: burnCfg.medium_amount },
+        { tier: "SMALL",  amount: burnCfg.small_amount },
+      ];
+      // Deduplicate (if selectedTier is already BIG/MEDIUM/SMALL, avoid dupes)
+      const seen = new Set<string>();
+      const fallbackChain = tiers.filter(t => {
+        if (seen.has(t.tier)) return false;
+        seen.add(t.tier);
+        return true;
+      });
+
+      for (const t of fallbackChain) {
+        const effective = Math.min(t.amount, maxPayout);
+        if (effective > 0 && poolBalance >= effective) {
+          prizeTier   = t.tier;
+          prizeAmount = effective;
+          break;
+        }
       }
-    } else {
-      // Pool too thin OR random said lose — give ASH reward
-      isWinner = false;
+      // If pool can't afford even SMALL → fall through to ASH reward below
     }
 
-    if (!isWinner) {
-      // ASH reward on lose (also covers pool-suspended wins above)
-      // Proportional to burn amount: ash_reward_percent of burn value at $0.01/ASH
-      // e.g. burn $1, percent=1.0 → $1 worth → 100 ASH
+    const actuallyWon = isWinner && prizeAmount !== null;
+
+    if (!actuallyWon) {
+      // ASH reward on loss — proportional to burn amount at $0.01/ASH
       ashReward = Math.floor(
         (amountUsdc * burnCfg.ash_reward_percent) / ASH_TOKEN_PRICE_USD
       );
-
       // VIP bonus: +20% ASH for Holy Fire
       if (user.vipTier === "HOLY_FIRE") {
         ashReward = Math.floor(ashReward * 1.2);
@@ -157,25 +221,13 @@ export class BurnService {
         },
       });
 
-      // 2. Deduct ASH for boost if used
-      if (useBoost && boostBonus > 0) {
-        await tx.wallet.update({
-          where: { userId },
-          data: {
-            ashBalance: { decrement: burnCfg.boost_cost_ash },
-          },
-        });
-      }
-
-      // 3. Split burn amount into pools (ratios from DB config)
+      // 2. Split burn amount into pools (ratios from DB config)
       const rewardPoolAmount = amountUsdc * burnCfg.reward_pool_split;
 
-      // Update reward pool
       await tx.rewardPool.updateMany({
         data: { totalBalance: { increment: rewardPoolAmount } },
       });
 
-      // Update profit pool
       const profitPoolAmount = amountUsdc * burnCfg.profit_pool_split;
       await tx.profitPool.updateMany({
         data: {
@@ -184,14 +236,14 @@ export class BurnService {
         },
       });
 
-      // 4. Create burn record
+      // 3. Create burn record
       const burnRecord = await tx.burn.create({
         data: {
           userId,
           amountUsdc,
           weight: baseWeight,
           finalWeight,
-          isWinner,
+          isWinner: actuallyWon,
           prizeTier: prizeTier as any,
           prizeAmount,
           ashReward,
@@ -199,14 +251,13 @@ export class BurnService {
         },
       });
 
-      // 5. Credit winnings
-      if (isWinner && prizeAmount) {
+      // 4. Credit winnings
+      if (actuallyWon && prizeAmount) {
         await tx.wallet.update({
           where: { userId },
           data: { usdcBalance: { increment: prizeAmount } },
         });
 
-        // Deduct from reward pool
         await tx.rewardPool.updateMany({
           data: {
             totalBalance: { decrement: prizeAmount },
@@ -214,7 +265,6 @@ export class BurnService {
           },
         });
 
-        // Win transaction log
         await tx.transaction.create({
           data: {
             userId,
@@ -227,15 +277,15 @@ export class BurnService {
         });
       }
 
-      // 6. Credit ASH reward on loss
-      if (!isWinner && ashReward) {
+      // 5. Credit ASH reward on loss
+      if (!actuallyWon && ashReward) {
         await tx.wallet.update({
           where: { userId },
           data: { ashBalance: { increment: ashReward } },
         });
       }
 
-      // 7. Burn transaction log
+      // 6. Burn transaction log
       await tx.transaction.create({
         data: {
           userId,
@@ -247,29 +297,20 @@ export class BurnService {
         },
       });
 
-      // 8. Process referral reward (% of burn, rate from DB config)
+      // 7. Process referral reward
       if (user.referredById) {
         const referralReward = amountUsdc * burnCfg.referral_commission;
 
-        // Credit referrer's wallet
         await tx.wallet.update({
           where: { userId: user.referredById },
           data: { usdcBalance: { increment: referralReward } },
         });
 
-        // Update referral record
         await tx.referral.updateMany({
-          where: {
-            referrerId: user.referredById,
-            refereeId: userId,
-          },
-          data: {
-            totalBurns: { increment: 1 },
-            totalEarned: { increment: referralReward },
-          },
+          where: { referrerId: user.referredById, refereeId: userId },
+          data: { totalBurns: { increment: 1 }, totalEarned: { increment: referralReward } },
         });
 
-        // Referral transaction log
         await tx.transaction.create({
           data: {
             userId: user.referredById,
@@ -281,7 +322,6 @@ export class BurnService {
           },
         });
 
-        // Deduct from reward pool
         await tx.rewardPool.updateMany({
           data: { totalBalance: { decrement: referralReward } },
         });
@@ -292,7 +332,7 @@ export class BurnService {
 
     return {
       burnId: burn.id,
-      isWinner,
+      isWinner: actuallyWon,
       prizeTier,
       prizeAmount,
       ashReward,

@@ -16,7 +16,9 @@ const BURN_CONFIG_KEYS = [
   "reward_pool_split", "profit_pool_split",
   "referral_commission",
   "min_burn_amount",
+  "base_unit",
   "boost_cost_ash",
+  "boost_duration_ms",
   "vip_holy_fire_bonus",
 ];
 
@@ -33,8 +35,10 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   reward_pool_split: 0.5,
   profit_pool_split: 0.5,
   referral_commission: 0.1,
-  min_burn_amount: 4.99,
+  min_burn_amount: 1.0,
+  base_unit: 4.99,
   boost_cost_ash: 1000,
+  boost_duration_ms: 3600000, // 1 hour
   vip_holy_fire_bonus: 0.50,
 };
 

@@ -29,9 +29,8 @@ export const otpVerifySchema = z.object({
 export const burnSchema = z.object({
   amount: z
     .number()
-    .min(4.99, "Minimum burn amount is $4.99 USDC")
+    .min(1.0, "Minimum burn amount is $1.00 USDC")
     .max(10000, "Maximum burn amount is $10,000 USDC"),
-  useBoost: z.boolean().optional().default(false),
 });
 
 // ---- WALLET ----

@@ -51,8 +51,8 @@ export const config = {
 
   // Game constants (defaults — also stored in PlatformConfig DB table)
   game: {
-    minBurnAmount: 4.99,
-    baseUnit: 4.99,
+    minBurnAmount: 1.0,
+    baseUnit: 4.99,   // weight reference unit — never changes
     constantFactor: 100,
     rewardPoolSplit: 0.5,   // 50% to reward pool
     profitPoolSplit: 0.5,   // 50% to profit pool

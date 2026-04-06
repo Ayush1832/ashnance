@@ -25,10 +25,10 @@ interface UserStats {
 
 // ---- Presets ----
 const PRESETS = [
+  { label: "1 USDC",   amount: 1,    sub: "0.2x WEIGHT" },
   { label: "4.99 USDC", amount: 4.99, sub: "1.0x WEIGHT" },
-  { label: "10 USDC", amount: 10, sub: "2.5x WEIGHT" },
-  { label: "50 USDC", amount: 50, sub: "15x WEIGHT" },
-  { label: "CUSTOM", amount: 0, sub: "YOU CHOOSE" },
+  { label: "10 USDC",  amount: 10,   sub: "2.0x WEIGHT" },
+  { label: "CUSTOM",   amount: 0,    sub: "YOU CHOOSE" },
 ];
 
 const BURN_MSGS = [
@@ -39,7 +39,7 @@ const BURN_MSGS = [
 ];
 
 function calcWeight(amount: number): number {
-  if (amount < 4.99) return 0;
+  if (amount <= 0) return 0;
   return Math.floor((amount / 4.99) * 10) / 10;
 }
 
@@ -50,13 +50,16 @@ function calcWinChance(weight: number): number {
 export default function BurnPage() {
   const [presetIdx, setPresetIdx] = useState(0);
   const [customAmt, setCustomAmt] = useState("");
-  const [useBoost, setUseBoost] = useState(false);
   const [phase, setPhase] = useState<BurnPhase>("idle");
   const [result, setResult] = useState<BurnResult | null>(null);
   const [burnMsg, setBurnMsg] = useState("");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Boost timer state
+  const [boostActive, setBoostActive] = useState(false);
+  const [boostSecsLeft, setBoostSecsLeft] = useState(0);
+  const [boostLoading, setBoostLoading] = useState(false);
 
   // Load user stats on mount
   const loadStats = useCallback(async () => {
@@ -68,10 +71,13 @@ export default function BurnPage() {
           : null;
       if (token) api.setToken(token);
 
-      const [profileRes, walletRes, burnStatsRes] = await Promise.allSettled([
+      const [profileRes, walletRes, burnStatsRes, boostRes] = await Promise.allSettled([
         api.auth.profile(),
         api.wallet.balance(),
         api.burn.stats(),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/burn/boost-status`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }).then(r => r.json()),
       ]);
 
       let merged: Partial<UserStats> = {};
@@ -105,6 +111,11 @@ export default function BurnPage() {
           totalAshEarned: Number(d?.totalAshEarned ?? 0),
         };
       }
+      if (boostRes.status === "fulfilled") {
+        const bd = (boostRes.value as { data?: { active?: boolean; secondsLeft?: number } }).data ?? boostRes.value as { active?: boolean; secondsLeft?: number };
+        setBoostActive(!!bd?.active);
+        setBoostSecsLeft(Number(bd?.secondsLeft ?? 0));
+      }
       setStats(merged as UserStats);
     } catch {
       // stats are cosmetic — ignore errors
@@ -117,6 +128,18 @@ export default function BurnPage() {
     loadStats();
   }, [loadStats]);
 
+  // Countdown timer for active boost
+  useEffect(() => {
+    if (!boostActive || boostSecsLeft <= 0) return;
+    const tick = setInterval(() => {
+      setBoostSecsLeft(s => {
+        if (s <= 1) { setBoostActive(false); clearInterval(tick); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
+  }, [boostActive, boostSecsLeft]);
+
   // Derive current burn amount
   const isCustom = presetIdx === 3;
   const amount = isCustom
@@ -127,9 +150,8 @@ export default function BurnPage() {
   const fillPct = Math.min(100, weight * 6);
   const usdcBalance = stats?.usdcBalance ?? 0;
   const ashBalance  = stats?.ashBalance  ?? 0;
-  const BOOST_COST  = 1000; // matches burnCfg.boost_cost_ash default
-  const hasEnoughAsh = !useBoost || ashBalance >= BOOST_COST;
-  const canBurn = amount >= 4.99 && phase === "idle" && !statsLoading && usdcBalance >= amount && hasEnoughAsh;
+  const BOOST_COST  = 1000;
+  const canBurn = amount >= 1.0 && phase === "idle" && !statsLoading && usdcBalance >= amount;
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -144,8 +166,8 @@ export default function BurnPage() {
           : null;
       if (token) api.setToken(token);
 
-      // Call real API; fall back to simulated result on network error
-      const res = (await api.burn.execute(amount, useBoost)) as any;
+      // Call real API — boost is applied server-side based on timer
+      const res = (await api.burn.execute(amount)) as any;
       const raw = res?.data ?? res;
       // Normalize backend field names → frontend interface
       const data: BurnResult = {
@@ -248,7 +270,7 @@ export default function BurnPage() {
                 <label>AMOUNT</label>
                 <input
                   type="number"
-                  min="4.99"
+                  min="1.00"
                   step="0.01"
                   placeholder="0.00"
                   className={styles.customInput}
@@ -291,26 +313,21 @@ export default function BurnPage() {
                 <span className={styles.burnCircleLabel}>
                   {statsLoading ? "..." : "BURN"}
                 </span>
-                {!statsLoading && amount >= 4.99 && (
+                {!statsLoading && amount >= 1.0 && (
                   <span className={styles.burnCircleAmt}>
                     ${amount.toFixed(2)}
                   </span>
                 )}
               </button>
-              {!statsLoading && amount >= 4.99 && usdcBalance < amount && phase === "idle" && (
+              {!statsLoading && amount >= 1.0 && usdcBalance < amount && phase === "idle" && (
                 <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
                   INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
-                </div>
-              )}
-              {!statsLoading && useBoost && ashBalance < BOOST_COST && phase === "idle" && (
-                <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
-                  INSUFFICIENT ASH FOR BOOST — YOU HAVE {ashBalance.toLocaleString()} ASH
                 </div>
               )}
             </div>
 
             <div className={styles.disclaimer}>
-              MIN BURN: $4.99 USDC &nbsp;•&nbsp; VRF VERIFIED ON SOLANA
+              MIN BURN: $1.00 USDC &nbsp;•&nbsp; VRF VERIFIED ON SOLANA
             </div>
           </div>
         </div>
@@ -372,26 +389,68 @@ export default function BurnPage() {
           <div className={styles.ashBoostPanel}>
             <div className={styles.ashBoostTitle}>🔥 BOOST WITH ASH</div>
             <div className={styles.ashBoostDesc}>
-              USE YOUR ASH TOKENS TO INCREASE YOUR WEIGHT MULTIPLIER AND BOOST
-              YOUR WIN CHANCE. COSTS 1,000 ASH PER BURN.
+              PAY 1,000 ASH TO ACTIVATE +0.5 WEIGHT FOR 1 FULL HOUR — APPLIES
+              TO EVERY BURN YOU DO WHILE ACTIVE.
             </div>
 
-            <div className={styles.ashBoostRow}>
-              <button
-                className={`${styles.ashToggle}${useBoost ? " " + styles.on : ""}`}
-                onClick={() => setUseBoost(!useBoost)}
-                disabled={!statsLoading && ashBalance < BOOST_COST}
-                aria-label="Toggle ASH boost"
-                style={{ opacity: !statsLoading && ashBalance < BOOST_COST ? 0.4 : 1, cursor: !statsLoading && ashBalance < BOOST_COST ? "not-allowed" : "pointer" }}
-              />
-              <span className={styles.ashToggleLabel}>
-                ASH BOOST {useBoost ? "ON (+0.5x WEIGHT)" : "OFF"}
-              </span>
-            </div>
-
-            {!statsLoading && ashBalance < BOOST_COST && (
-              <div style={{ fontSize: "9px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px" }}>
-                ⚠ NEED {(BOOST_COST - ashBalance).toLocaleString()} MORE ASH TO BOOST
+            {boostActive ? (
+              <div style={{ marginTop: "12px" }}>
+                <div style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  background: "rgba(255,140,66,0.12)", border: "1px solid var(--fire-orange)",
+                  padding: "10px 14px",
+                }}>
+                  <span style={{ color: "var(--fire-orange)", fontSize: "16px" }}>⚡</span>
+                  <div>
+                    <div style={{ fontSize: "11px", letterSpacing: "1px", color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>
+                      BOOST ACTIVE +0.5 WEIGHT
+                    </div>
+                    <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginTop: "2px" }}>
+                      {Math.floor(boostSecsLeft / 60)}m {boostSecsLeft % 60}s REMAINING
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginTop: "12px" }}>
+                <button
+                  onClick={async () => {
+                    if (boostLoading || statsLoading) return;
+                    if (ashBalance < BOOST_COST) return;
+                    setBoostLoading(true);
+                    try {
+                      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+                      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/burn/boost`, {
+                        method: "POST",
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      });
+                      const data = await res.json();
+                      if (res.ok && data.data) {
+                        setBoostActive(true);
+                        setBoostSecsLeft(3600);
+                        await loadStats();
+                      }
+                    } catch {
+                      // ignore
+                    } finally {
+                      setBoostLoading(false);
+                    }
+                  }}
+                  disabled={statsLoading || boostLoading || ashBalance < BOOST_COST}
+                  style={{
+                    width: "100%", padding: "10px", background: "rgba(255,140,66,0.1)",
+                    border: "1px solid rgba(255,140,66,0.4)", color: ashBalance >= BOOST_COST ? "var(--fire-orange)" : "#666",
+                    fontSize: "10px", letterSpacing: "2px", cursor: ashBalance >= BOOST_COST ? "pointer" : "not-allowed",
+                    fontFamily: "var(--font-display)",
+                  }}
+                >
+                  {boostLoading ? "ACTIVATING..." : "⚡ ACTIVATE BOOST (1,000 ASH / 1 HR)"}
+                </button>
+                {!statsLoading && ashBalance < BOOST_COST && (
+                  <div style={{ fontSize: "9px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px" }}>
+                    ⚠ NEED {(BOOST_COST - ashBalance).toLocaleString()} MORE ASH
+                  </div>
+                )}
               </div>
             )}
           </div>

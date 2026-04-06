@@ -145,8 +145,8 @@ class ApiClient {
 
   // ---- BURN ----
   burn = {
-    execute: (amount: number, useBoost: boolean = false) =>
-      this.request<unknown>("/burn", { method: "POST", body: JSON.stringify({ amount, useBoost }) }),
+    execute: (amount: number) =>
+      this.request<unknown>("/burn", { method: "POST", body: JSON.stringify({ amount }) }),
 
     history: (page: number = 1, limit: number = 20) =>
       this.request<unknown>(`/burn/history?page=${page}&limit=${limit}`),
