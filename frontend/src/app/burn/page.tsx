@@ -128,17 +128,17 @@ export default function BurnPage() {
     loadStats();
   }, [loadStats]);
 
-  // Countdown timer for active boost
+  // Countdown timer for active boost — only restart when boostActive changes, not every tick
   useEffect(() => {
-    if (!boostActive || boostSecsLeft <= 0) return;
+    if (!boostActive) return;
     const tick = setInterval(() => {
       setBoostSecsLeft(s => {
-        if (s <= 1) { setBoostActive(false); clearInterval(tick); return 0; }
+        if (s <= 1) { setBoostActive(false); return 0; }
         return s - 1;
       });
     }, 1000);
     return () => clearInterval(tick);
-  }, [boostActive, boostSecsLeft]);
+  }, [boostActive]);
 
   // Derive current burn amount
   const isCustom = presetIdx === 3;

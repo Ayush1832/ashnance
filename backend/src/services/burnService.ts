@@ -172,20 +172,16 @@ export class BurnService {
         selectedTier = "SMALL";   selectedAmount = burnCfg.small_amount;
       }
 
-      // Downgrade prize tier if pool can't cover it (per spec Section 8 Step 4)
-      const tiers = [
-        { tier: selectedTier, amount: selectedAmount },
-        { tier: "BIG",    amount: burnCfg.big_amount },
-        { tier: "MEDIUM", amount: burnCfg.medium_amount },
-        { tier: "SMALL",  amount: burnCfg.small_amount },
+      // Downgrade prize tier if pool can't cover it (per spec Section 8 Step 4).
+      // Full tier order from highest to lowest — start from the selected tier and go down.
+      const allTiers = [
+        { tier: "JACKPOT", amount: burnCfg.jackpot_amount },
+        { tier: "BIG",     amount: burnCfg.big_amount },
+        { tier: "MEDIUM",  amount: burnCfg.medium_amount },
+        { tier: "SMALL",   amount: burnCfg.small_amount },
       ];
-      // Deduplicate (if selectedTier is already BIG/MEDIUM/SMALL, avoid dupes)
-      const seen = new Set<string>();
-      const fallbackChain = tiers.filter(t => {
-        if (seen.has(t.tier)) return false;
-        seen.add(t.tier);
-        return true;
-      });
+      const startIdx = allTiers.findIndex(t => t.tier === selectedTier);
+      const fallbackChain = startIdx >= 0 ? allTiers.slice(startIdx) : allTiers;
 
       for (const t of fallbackChain) {
         const effective = Math.min(t.amount, maxPayout);
