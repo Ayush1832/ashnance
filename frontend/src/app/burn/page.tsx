@@ -126,7 +126,10 @@ export default function BurnPage() {
   const winPct = calcWinChance(weight);
   const fillPct = Math.min(100, weight * 6);
   const usdcBalance = stats?.usdcBalance ?? 0;
-  const canBurn = amount >= 4.99 && phase === "idle" && !statsLoading && usdcBalance >= amount;
+  const ashBalance  = stats?.ashBalance  ?? 0;
+  const BOOST_COST  = 1000; // matches burnCfg.boost_cost_ash default
+  const hasEnoughAsh = !useBoost || ashBalance >= BOOST_COST;
+  const canBurn = amount >= 4.99 && phase === "idle" && !statsLoading && usdcBalance >= amount && hasEnoughAsh;
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -299,6 +302,11 @@ export default function BurnPage() {
                   INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
                 </div>
               )}
+              {!statsLoading && useBoost && ashBalance < BOOST_COST && phase === "idle" && (
+                <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
+                  INSUFFICIENT ASH FOR BOOST — YOU HAVE {ashBalance.toLocaleString()} ASH
+                </div>
+              )}
             </div>
 
             <div className={styles.disclaimer}>
@@ -356,18 +364,35 @@ export default function BurnPage() {
             <div className={styles.ashBoostTitle}>🔥 BOOST WITH ASH</div>
             <div className={styles.ashBoostDesc}>
               USE YOUR ASH TOKENS TO INCREASE YOUR WEIGHT MULTIPLIER AND BOOST
-              YOUR WIN CHANCE. COSTS 100 ASH PER BURN.
+              YOUR WIN CHANCE. COSTS 1,000 ASH PER BURN.
             </div>
+
+            {/* ASH balance row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", fontSize: "9px", letterSpacing: "1px" }}>
+              <span style={{ color: "var(--text-dim)" }}>YOUR ASH BALANCE</span>
+              <span style={{ color: ashBalance >= BOOST_COST ? "var(--ash-token, #FF8C42)" : "#ff6b6b", fontFamily: "var(--font-display)", fontSize: "13px" }}>
+                {statsLoading ? "..." : ashBalance.toLocaleString()} ASH
+              </span>
+            </div>
+
             <div className={styles.ashBoostRow}>
               <button
                 className={`${styles.ashToggle}${useBoost ? " " + styles.on : ""}`}
                 onClick={() => setUseBoost(!useBoost)}
+                disabled={!statsLoading && ashBalance < BOOST_COST}
                 aria-label="Toggle ASH boost"
+                style={{ opacity: !statsLoading && ashBalance < BOOST_COST ? 0.4 : 1, cursor: !statsLoading && ashBalance < BOOST_COST ? "not-allowed" : "pointer" }}
               />
               <span className={styles.ashToggleLabel}>
                 ASH BOOST {useBoost ? "ON (+0.5x WEIGHT)" : "OFF"}
               </span>
             </div>
+
+            {!statsLoading && ashBalance < BOOST_COST && (
+              <div style={{ fontSize: "9px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px" }}>
+                ⚠ NEED {(BOOST_COST - ashBalance).toLocaleString()} MORE ASH TO BOOST
+              </div>
+            )}
           </div>
         </div>
       </div>
