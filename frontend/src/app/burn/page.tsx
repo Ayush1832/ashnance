@@ -130,10 +130,16 @@ export default function BurnPage() {
       if (token) api.setToken(token);
 
       // Call real API; fall back to simulated result on network error
-      const res = (await api.burn.execute(amount, useBoost)) as {
-        data?: BurnResult;
-      } & BurnResult;
-      const data: BurnResult = res.data ?? res;
+      const res = (await api.burn.execute(amount, useBoost)) as any;
+      const raw = res?.data ?? res;
+      // Normalize backend field names → frontend interface
+      const data: BurnResult = {
+        won:        raw.isWinner  ?? raw.won        ?? false,
+        prizeAmount: raw.prizeAmount ?? null,
+        prizeLabel:  raw.prizeTier  ?? raw.prizeLabel ?? null,
+        ashEarned:  raw.ashReward  ?? raw.ashEarned  ?? 0,
+        message:    raw.message    ?? null,
+      };
       setResult(data);
       if (data.won) {
         speak(
