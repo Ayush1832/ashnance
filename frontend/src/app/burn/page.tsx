@@ -19,6 +19,7 @@ interface UserStats {
   totalBurns: number;
   totalWon: number;
   ashBalance: number;
+  totalAshEarned: number;
   usdcBalance: number;
 }
 
@@ -67,9 +68,10 @@ export default function BurnPage() {
           : null;
       if (token) api.setToken(token);
 
-      const [profileRes, walletRes] = await Promise.allSettled([
+      const [profileRes, walletRes, burnStatsRes] = await Promise.allSettled([
         api.auth.profile(),
         api.wallet.balance(),
+        api.burn.stats(),
       ]);
 
       let merged: Partial<UserStats> = {};
@@ -91,6 +93,16 @@ export default function BurnPage() {
           ...merged,
           usdcBalance: Number(d.usdcBalance ?? 0),
           ashBalance: Number(d.ashBalance ?? 0),
+        };
+      }
+      if (burnStatsRes.status === "fulfilled") {
+        const d = (burnStatsRes.value as { data?: { totalBurns?: number; totalWon?: number; totalAshEarned?: number } }).data ??
+          (burnStatsRes.value as { totalBurns?: number; totalWon?: number; totalAshEarned?: number });
+        merged = {
+          ...merged,
+          totalBurns:    Number(d?.totalBurns    ?? merged.totalBurns    ?? 0),
+          totalWon:      Number(d?.totalWon       ?? merged.totalWon      ?? 0),
+          totalAshEarned: Number(d?.totalAshEarned ?? 0),
         };
       }
       setStats(merged as UserStats);
@@ -332,7 +344,7 @@ export default function BurnPage() {
                   <span
                     className={`${styles.sideStatVal} ${styles.sideStatAsh}`}
                   >
-                    {(stats?.ashBalance ?? 0).toLocaleString()}
+                    {(stats?.totalAshEarned ?? 0).toLocaleString()}
                   </span>
                 </div>
               </>
