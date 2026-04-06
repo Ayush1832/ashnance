@@ -348,11 +348,20 @@ export default function BurnPage() {
                   </span>
                 </div>
                 <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>ASH EARNED</span>
+                  <span className={styles.sideStatLabel}>TOTAL ASH EARNED</span>
                   <span
                     className={`${styles.sideStatVal} ${styles.sideStatAsh}`}
                   >
                     {(stats?.totalAshEarned ?? 0).toLocaleString()}
+                  </span>
+                </div>
+                <div className={styles.sideStat}>
+                  <span className={styles.sideStatLabel}>ASH BALANCE</span>
+                  <span
+                    className={`${styles.sideStatVal} ${styles.sideStatAsh}`}
+                    style={{ color: ashBalance >= BOOST_COST ? undefined : "#ff6b6b" }}
+                  >
+                    {ashBalance.toLocaleString()}
                   </span>
                 </div>
               </>
@@ -365,14 +374,6 @@ export default function BurnPage() {
             <div className={styles.ashBoostDesc}>
               USE YOUR ASH TOKENS TO INCREASE YOUR WEIGHT MULTIPLIER AND BOOST
               YOUR WIN CHANCE. COSTS 1,000 ASH PER BURN.
-            </div>
-
-            {/* ASH balance row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px", fontSize: "9px", letterSpacing: "1px" }}>
-              <span style={{ color: "var(--text-dim)" }}>YOUR ASH BALANCE</span>
-              <span style={{ color: ashBalance >= BOOST_COST ? "var(--ash-token, #FF8C42)" : "#ff6b6b", fontFamily: "var(--font-display)", fontSize: "13px" }}>
-                {statsLoading ? "..." : ashBalance.toLocaleString()} ASH
-              </span>
             </div>
 
             <div className={styles.ashBoostRow}>
