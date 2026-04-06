@@ -17,61 +17,25 @@ const navItems = [
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
-const TIERS = [
-  {
-    key:          "spark",
-    title:        "SPARK",
-    price:        "$4.99",
-    period:       "/mo",
-    weightBonus:  "+0.10",
-    ashBonus:     null,
-    raffle:       false,
-    badge:        false,
-    featured:     false,
-    benefits: [
-      "+0.10 weight bonus on every burn",
-      "Access to standard game modes",
-      "Base ASH token rewards",
-    ],
-  },
-  {
-    key:          "active_ash",
-    title:        "ACTIVE ASH",
-    price:        "$9.99",
-    period:       "/mo",
-    weightBonus:  "+0.25",
-    ashBonus:     "+10% ASH",
-    raffle:       false,
-    badge:        false,
-    featured:     false,
-    benefits: [
-      "+0.25 weight bonus on every burn",
-      "+10% extra ASH tokens on every loss",
-      "Priority support",
-      "Access to bonus burn modes",
-    ],
-  },
-  {
-    key:          "holy_fire",
-    title:        "HOLY FIRE",
-    price:        "$24.99",
-    period:       "/mo",
-    weightBonus:  "+0.50",
-    ashBonus:     "+20% ASH",
-    raffle:       true,
-    badge:        true,
-    featured:     true,
-    benefits: [
-      "+0.50 weight bonus on every burn",
-      "+20% extra ASH tokens on every loss",
-      "Weekly exclusive raffle entry",
-      "VIP badge on profile",
-      "Priority AI assistant hints",
-      "Early access to new features",
-      "Exclusive VIP-only promotions",
-    ],
-  },
-];
+const HOLY_FIRE = {
+  key:         "holy_fire",
+  title:       "HOLY FIRE",
+  price:       "$24.99",
+  period:      "/mo",
+  weightBonus: "+0.50",
+  ashBonus:    "+20% ASH",
+  raffle:      true,
+  badge:       true,
+  benefits: [
+    "+0.50 weight bonus on every burn",
+    "+20% extra ASH tokens on every loss",
+    "Weekly exclusive raffle entry",
+    "VIP badge on profile",
+    "Priority AI assistant hints",
+    "Early access to new features",
+    "Exclusive VIP-only promotions",
+  ],
+};
 
 interface VipStatus {
   tier: string | null;
@@ -83,7 +47,7 @@ export default function SubscribePage() {
   const pathname = usePathname();
   const router   = useRouter();
 
-  const [selected, setSelected]   = useState("holy_fire");
+  const [selected] = useState("holy_fire");
   const [vipStatus, setVipStatus] = useState<VipStatus | null>(null);
   const [loading, setLoading]     = useState(true);
   const [subLoading, setSubLoading] = useState(false);
@@ -226,140 +190,83 @@ export default function SubscribePage() {
           </div>
         )}
 
-        {/* Tier cards */}
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: "16px",
-          marginBottom: "28px",
+        {/* Holy Fire card */}
+        <div className="panel-box" style={{
+          borderColor: "var(--gold)",
+          background: "var(--panel2)",
+          boxShadow: "0 0 24px rgba(255,184,0,0.08)",
+          marginBottom: "24px",
+          position: "relative",
+          overflow: "hidden",
         }}>
-          {TIERS.map((tier) => (
-            <div
-              key={tier.key}
-              onClick={() => setSelected(tier.key)}
-              style={{
-                background: tier.featured ? "var(--panel2)" : "var(--panel)",
-                border: `1px solid ${selected === tier.key ? "var(--fire-orange)" : tier.featured ? "var(--gold)" : "var(--border)"}`,
-                padding: "24px",
-                cursor: "pointer",
-                position: "relative",
-                overflow: "hidden",
-                clipPath: "polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px))",
-                transition: "border-color 0.15s",
-                boxShadow: tier.featured ? "0 0 20px rgba(255,184,0,0.08)" : "none",
-              }}
-            >
-              {tier.featured && (
-                <div style={{
-                  position: "absolute",
-                  top: 14,
-                  right: -28,
-                  background: "var(--gold)",
-                  color: "#000",
-                  fontSize: "8px",
-                  fontWeight: 700,
-                  padding: "4px 36px",
-                  transform: "rotate(45deg)",
-                  textTransform: "uppercase",
-                  letterSpacing: "1px",
-                }}>
-                  BEST VALUE
-                </div>
-              )}
+          <div style={{
+            position: "absolute",
+            top: 14,
+            right: -28,
+            background: "var(--gold)",
+            color: "#000",
+            fontSize: "8px",
+            fontWeight: 700,
+            padding: "4px 36px",
+            transform: "rotate(45deg)",
+            textTransform: "uppercase",
+            letterSpacing: "1px",
+          }}>
+            EXCLUSIVE
+          </div>
 
-              {/* Selected indicator */}
-              {selected === tier.key && (
-                <div style={{
-                  position: "absolute",
-                  top: "10px",
-                  left: "10px",
-                  width: "8px",
-                  height: "8px",
-                  borderRadius: "50%",
-                  background: "var(--fire-orange)",
-                  boxShadow: "0 0 8px var(--fire-orange)",
-                }} />
-              )}
-
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "32px", flexWrap: "wrap" }}>
+            {/* Left: price */}
+            <div style={{ minWidth: "160px" }}>
               <div style={{
                 fontFamily: "var(--font-display)",
-                fontSize: "28px",
+                fontSize: "32px",
                 letterSpacing: "3px",
-                color: tier.featured ? "var(--gold)" : "var(--text)",
-                marginBottom: "6px",
-              }}>
-                {tier.title}
-              </div>
-              <div style={{
-                fontFamily: "var(--font-display)",
-                fontSize: "38px",
-                color: "var(--fire-orange)",
-                lineHeight: 1,
+                color: "var(--gold)",
                 marginBottom: "4px",
               }}>
-                {tier.price}<span style={{ fontSize: "16px", color: "var(--text-dim)" }}>{tier.period}</span>
+                {HOLY_FIRE.title}
               </div>
-
-              <div style={{ margin: "16px 0", borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
-                {tier.benefits.map((b, bi) => (
-                  <div key={bi} style={{
-                    display: "flex",
-                    gap: "8px",
-                    fontSize: "11px",
-                    color: "var(--text-dim)",
-                    letterSpacing: "0.5px",
-                    marginBottom: "8px",
-                    lineHeight: 1.4,
-                  }}>
-                    <span style={{ color: "var(--fire-orange)", flexShrink: 0, fontSize: "10px" }}>✦</span>
-                    {b}
-                  </div>
-                ))}
-              </div>
-
               <div style={{
-                display: "flex",
-                gap: "8px",
-                flexWrap: "wrap",
-                marginTop: "12px",
+                fontFamily: "var(--font-display)",
+                fontSize: "44px",
+                color: "var(--fire-orange)",
+                lineHeight: 1,
+                marginBottom: "8px",
               }}>
-                <span style={{
-                  fontSize: "9px",
-                  letterSpacing: "1px",
-                  padding: "3px 8px",
-                  background: "rgba(255,77,0,0.1)",
-                  border: "1px solid rgba(255,77,0,0.2)",
-                  color: "var(--fire-orange)",
-                }}>
-                  {tier.weightBonus} WEIGHT
+                {HOLY_FIRE.price}<span style={{ fontSize: "16px", color: "var(--text-dim)" }}>{HOLY_FIRE.period}</span>
+              </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
+                <span style={{ fontSize: "9px", letterSpacing: "1px", padding: "3px 8px", background: "rgba(255,77,0,0.1)", border: "1px solid rgba(255,77,0,0.2)", color: "var(--fire-orange)" }}>
+                  {HOLY_FIRE.weightBonus} WEIGHT
                 </span>
-                {tier.ashBonus && (
-                  <span style={{
-                    fontSize: "9px",
-                    letterSpacing: "1px",
-                    padding: "3px 8px",
-                    background: "rgba(176,96,48,0.1)",
-                    border: "1px solid rgba(176,96,48,0.2)",
-                    color: "var(--ash-token)",
-                  }}>
-                    {tier.ashBonus}
-                  </span>
-                )}
-                {tier.raffle && (
-                  <span style={{
-                    fontSize: "9px",
-                    letterSpacing: "1px",
-                    padding: "3px 8px",
-                    background: "rgba(255,184,0,0.1)",
-                    border: "1px solid rgba(255,184,0,0.2)",
-                    color: "var(--gold)",
-                  }}>
-                    RAFFLE
-                  </span>
-                )}
+                <span style={{ fontSize: "9px", letterSpacing: "1px", padding: "3px 8px", background: "rgba(176,96,48,0.1)", border: "1px solid rgba(176,96,48,0.2)", color: "var(--ash-token)" }}>
+                  {HOLY_FIRE.ashBonus}
+                </span>
+                <span style={{ fontSize: "9px", letterSpacing: "1px", padding: "3px 8px", background: "rgba(255,184,0,0.1)", border: "1px solid rgba(255,184,0,0.2)", color: "var(--gold)" }}>
+                  RAFFLE
+                </span>
               </div>
             </div>
-          ))}
+
+            {/* Right: benefits */}
+            <div style={{ flex: 1, borderLeft: "1px solid var(--border)", paddingLeft: "32px", minWidth: "200px" }}>
+              {HOLY_FIRE.benefits.map((b, bi) => (
+                <div key={bi} style={{
+                  display: "flex",
+                  gap: "8px",
+                  fontSize: "11px",
+                  color: "var(--text-dim)",
+                  letterSpacing: "0.5px",
+                  marginBottom: "10px",
+                  lineHeight: 1.4,
+                }}>
+                  <span style={{ color: "var(--gold)", flexShrink: 0, fontSize: "10px" }}>✦</span>
+                  {b}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* CTA */}
@@ -384,7 +291,7 @@ export default function SubscribePage() {
             letterSpacing: "1px",
             marginBottom: "24px",
           }}>
-            {TIERS.find((t) => t.key === selected)?.title} SUBSCRIPTION — PAID FROM YOUR USDC BALANCE. CANCEL ANYTIME.
+            HOLY FIRE SUBSCRIPTION — PAID FROM YOUR USDC BALANCE. CANCEL ANYTIME.
           </div>
 
           {msg && (
@@ -404,9 +311,7 @@ export default function SubscribePage() {
             disabled={subLoading}
             style={{ fontSize: "14px", padding: "14px 40px", letterSpacing: "3px" }}
           >
-            {subLoading
-              ? "PROCESSING..."
-              : `👑 SUBSCRIBE TO ${TIERS.find((t) => t.key === selected)?.title}`}
+            {subLoading ? "PROCESSING..." : "👑 SUBSCRIBE TO HOLY FIRE"}
           </button>
 
           <div style={{ marginTop: "16px", fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>

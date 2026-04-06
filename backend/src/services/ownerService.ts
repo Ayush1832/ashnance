@@ -17,8 +17,6 @@ const BURN_CONFIG_KEYS = [
   "referral_commission",
   "min_burn_amount",
   "boost_cost_ash",
-  "vip_spark_bonus",
-  "vip_active_ash_bonus",
   "vip_holy_fire_bonus",
 ];
 
@@ -37,8 +35,6 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   referral_commission: 0.1,
   min_burn_amount: 4.99,
   boost_cost_ash: 1000,
-  vip_spark_bonus: 0.10,
-  vip_active_ash_bonus: 0.25,
   vip_holy_fire_bonus: 0.50,
 };
 

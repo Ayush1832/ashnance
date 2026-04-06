@@ -6,7 +6,7 @@ import {
   InsufficientBalanceError,
 } from "../utils/errors";
 
-export type VipTier = "SPARK" | "ACTIVE_ASH" | "HOLY_FIRE";
+export type VipTier = "HOLY_FIRE";
 
 interface TierConfig {
   name: VipTier;
@@ -17,8 +17,6 @@ interface TierConfig {
 }
 
 const TIERS: Record<VipTier, TierConfig> = {
-  SPARK: { name: "SPARK", price: 0, weightBonus: 0.10, ashBonusPercent: 0, raffleEntry: false },
-  ACTIVE_ASH: { name: "ACTIVE_ASH", price: 9.99, weightBonus: 0.25, ashBonusPercent: 10, raffleEntry: false },
   HOLY_FIRE: { name: "HOLY_FIRE", price: 24.99, weightBonus: 0.50, ashBonusPercent: 20, raffleEntry: true },
 };
 

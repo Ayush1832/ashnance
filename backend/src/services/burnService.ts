@@ -59,14 +59,10 @@ export class BurnService {
     // ---- CALCULATE WEIGHT ----
     const baseWeight = amountUsdc / burnCfg.min_burn_amount;
 
-    // VIP bonus
+    // VIP bonus (Holy Fire only)
     let vipBonus = 0;
-    if (user.isVip && user.vipExpiresAt && user.vipExpiresAt > new Date()) {
-      switch (user.vipTier) {
-        case "SPARK":      vipBonus = burnCfg.vip_spark_bonus;      break;
-        case "ACTIVE_ASH": vipBonus = burnCfg.vip_active_ash_bonus; break;
-        case "HOLY_FIRE":  vipBonus = burnCfg.vip_holy_fire_bonus;  break;
-      }
+    if (user.isVip && user.vipExpiresAt && user.vipExpiresAt > new Date() && user.vipTier === "HOLY_FIRE") {
+      vipBonus = burnCfg.vip_holy_fire_bonus;
     }
 
     // Referral bonus: +0.20 per 5 active referrals (not yet owner-configurable)
