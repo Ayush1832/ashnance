@@ -8,44 +8,57 @@ import styles from "./burn.module.css";
 type BurnPhase = "idle" | "burning" | "result";
 
 interface BurnResult {
-  won: boolean;
-  prizeAmount?: number;
-  prizeLabel?: string;
   ashEarned: number;
-  message?: string;
+  finalWeight: number;
+  userCumulativeWeight: number;
+  userRoundRank: number | null;
+  roundCurrentPool: number;
+  roundTargetPool: number;
+  roundProgressPercent: number;
+  roundEnded: boolean;
+  roundWinner: string | null;
+  roundPrize: number | null;
+  roundNumber: number | null;
 }
 
 interface UserStats {
   totalBurns: number;
-  totalWon: number;
+  cumulativeWeight: number;
   ashBalance: number;
   totalAshEarned: number;
   usdcBalance: number;
 }
 
+interface RoundStatus {
+  roundNumber: number;
+  currentPool: number;
+  prizePoolTarget: number;
+  progressPercent: number;
+  status: string;
+  startedAt: string;
+}
+
 // ---- Presets ----
 const PRESETS = [
-  { label: "1 USDC",   amount: 1,    sub: "0.2x WEIGHT" },
-  { label: "4.99 USDC", amount: 4.99, sub: "1.0x WEIGHT" },
-  { label: "10 USDC",  amount: 10,   sub: "2.0x WEIGHT" },
-  { label: "CUSTOM",   amount: 0,    sub: "YOU CHOOSE" },
+  { label: "5 USDC",  amount: 5,  sub: "1.0x WEIGHT" },
+  { label: "10 USDC", amount: 10, sub: "2.0x WEIGHT" },
+  { label: "25 USDC", amount: 25, sub: "5.0x WEIGHT" },
+  { label: "CUSTOM",  amount: 0,  sub: "YOU CHOOSE" },
 ];
 
 const BURN_MSGS = [
-  "THE FIRE REVEALS YOUR FATE...",
   "FEEDING THE FLAMES...",
-  "THE ORACLE SPEAKS...",
-  "IGNITING THE CHAIN...",
+  "CLIMBING THE LEADERBOARD...",
+  "ACCUMULATING WEIGHT...",
+  "THE FIRE GROWS...",
 ];
 
 function calcWeight(amount: number): number {
   if (amount <= 0) return 0;
-  return Math.floor((amount / 4.99) * 10) / 10;
+  return Math.round((amount / 4.99) * 100) / 100;
 }
 
-function calcWinChance(weight: number): number {
-  return Math.min(25, weight * 1.6);
-}
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function BurnPage() {
   const [presetIdx, setPresetIdx] = useState(0);
@@ -56,12 +69,15 @@ export default function BurnPage() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [round, setRound] = useState<RoundStatus | null>(null);
+  const [userRoundRank, setUserRoundRank] = useState<number | null>(null);
+  const [userRoundWeight, setUserRoundWeight] = useState<number>(0);
   // Boost timer state
   const [boostActive, setBoostActive] = useState(false);
   const [boostSecsLeft, setBoostSecsLeft] = useState(0);
   const [boostLoading, setBoostLoading] = useState(false);
 
-  // Load user stats on mount
+  // Load user stats + round status on mount
   const loadStats = useCallback(async () => {
     try {
       setStatsLoading(true);
@@ -71,26 +87,19 @@ export default function BurnPage() {
           : null;
       if (token) api.setToken(token);
 
-      const [profileRes, walletRes, burnStatsRes, boostRes] = await Promise.allSettled([
-        api.auth.profile(),
+      const authHeaders: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
+      const [walletRes, burnStatsRes, boostRes, roundRes] = await Promise.allSettled([
         api.wallet.balance(),
         api.burn.stats(),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/burn/boost-status`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        }).then(r => r.json()),
+        fetch(`${API_BASE}/api/burn/boost-status`, { headers: authHeaders }).then(r => r.json()),
+        fetch(`${API_BASE}/api/round/current`, { headers: authHeaders }).then(r => r.json()),
       ]);
 
       let merged: Partial<UserStats> = {};
-      if (profileRes.status === "fulfilled") {
-        type ProfileShape = { data?: { stats?: { totalBurns?: number; totalWon?: number } }; stats?: { totalBurns?: number; totalWon?: number } };
-        const raw = profileRes.value as ProfileShape;
-        const stats = raw.data?.stats ?? raw.stats;
-        merged = {
-          ...merged,
-          totalBurns: Number(stats?.totalBurns ?? 0),
-          totalWon: Number(stats?.totalWon ?? 0),
-        };
-      }
+
       if (walletRes.status === "fulfilled") {
         const d =
           (walletRes.value as { data?: UserStats }).data ??
@@ -98,17 +107,17 @@ export default function BurnPage() {
         merged = {
           ...merged,
           usdcBalance: Number(d.usdcBalance ?? 0),
-          ashBalance: Number(d.ashBalance ?? 0),
+          ashBalance:  Number(d.ashBalance  ?? 0),
         };
       }
       if (burnStatsRes.status === "fulfilled") {
-        const d = (burnStatsRes.value as { data?: { totalBurns?: number; totalWon?: number; totalAshEarned?: number } }).data ??
-          (burnStatsRes.value as { totalBurns?: number; totalWon?: number; totalAshEarned?: number });
+        const d = (burnStatsRes.value as { data?: { totalBurns?: number; totalAshEarned?: number; cumulativeWeight?: number } }).data ??
+          (burnStatsRes.value as { totalBurns?: number; totalAshEarned?: number; cumulativeWeight?: number });
         merged = {
           ...merged,
-          totalBurns:    Number(d?.totalBurns    ?? merged.totalBurns    ?? 0),
-          totalWon:      Number(d?.totalWon       ?? merged.totalWon      ?? 0),
-          totalAshEarned: Number(d?.totalAshEarned ?? 0),
+          totalBurns:       Number(d?.totalBurns       ?? merged.totalBurns       ?? 0),
+          totalAshEarned:   Number(d?.totalAshEarned   ?? 0),
+          cumulativeWeight: Number(d?.cumulativeWeight ?? 0),
         };
       }
       if (boostRes.status === "fulfilled") {
@@ -116,6 +125,13 @@ export default function BurnPage() {
         setBoostActive(!!bd?.active);
         setBoostSecsLeft(Number(bd?.secondsLeft ?? 0));
       }
+      if (roundRes.status === "fulfilled") {
+        const rd = (roundRes.value as { data?: { round?: RoundStatus | null; userRank?: number | null; userWeight?: number } }).data ?? (roundRes.value as { round?: RoundStatus | null; userRank?: number | null; userWeight?: number });
+        setRound(rd?.round ?? null);
+        setUserRoundRank(rd?.userRank ?? null);
+        setUserRoundWeight(Number(rd?.userWeight ?? 0));
+      }
+
       setStats(merged as UserStats);
     } catch {
       // stats are cosmetic — ignore errors
@@ -128,7 +144,7 @@ export default function BurnPage() {
     loadStats();
   }, [loadStats]);
 
-  // Countdown timer for active boost — only restart when boostActive changes, not every tick
+  // Countdown timer for active boost — only restart when boostActive changes
   useEffect(() => {
     if (!boostActive) return;
     const tick = setInterval(() => {
@@ -140,18 +156,20 @@ export default function BurnPage() {
     return () => clearInterval(tick);
   }, [boostActive]);
 
-  // Derive current burn amount
-  const isCustom = presetIdx === 3;
-  const amount = isCustom
-    ? parseFloat(customAmt) || 0
-    : PRESETS[presetIdx].amount;
-  const weight = calcWeight(amount);
-  const winPct = calcWinChance(weight);
-  const fillPct = Math.min(100, weight * 6);
-  const usdcBalance = stats?.usdcBalance ?? 0;
-  const ashBalance  = stats?.ashBalance  ?? 0;
-  const BOOST_COST  = 1000;
-  const canBurn = amount >= 1.0 && phase === "idle" && !statsLoading && usdcBalance >= amount;
+  // Derived state
+  const isCustom     = presetIdx === 3;
+  const amount       = isCustom ? parseFloat(customAmt) || 0 : PRESETS[presetIdx].amount;
+  const weight       = calcWeight(amount);
+  const fillPct      = Math.min(100, (weight / 6) * 100);
+  const usdcBalance  = stats?.usdcBalance ?? 0;
+  const ashBalance   = stats?.ashBalance  ?? 0;
+  const BOOST_COST   = 1000;
+  const canBurn      = amount >= 5.0 && phase === "idle" && !statsLoading && usdcBalance >= amount;
+
+  // Round progress bar fill
+  const roundProgress = round
+    ? Math.min(100, (round.currentPool / round.prizePoolTarget) * 100)
+    : 0;
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -166,25 +184,43 @@ export default function BurnPage() {
           : null;
       if (token) api.setToken(token);
 
-      // Call real API — boost is applied server-side based on timer
       const res = (await api.burn.execute(amount)) as any;
       const raw = res?.data ?? res;
-      // Normalize backend field names → frontend interface
+
       const data: BurnResult = {
-        won:        raw.isWinner  ?? raw.won        ?? false,
-        prizeAmount: raw.prizeAmount ?? null,
-        prizeLabel:  raw.prizeTier  ?? raw.prizeLabel ?? null,
-        ashEarned:  raw.ashReward  ?? raw.ashEarned  ?? 0,
-        message:    raw.message    ?? null,
+        ashEarned:            Number(raw.ashReward   ?? raw.ashEarned   ?? 0),
+        finalWeight:          Number(raw.finalWeight ?? 0),
+        userCumulativeWeight: Number(raw.userCumulativeWeight ?? 0),
+        userRoundRank:        raw.userRoundRank ?? null,
+        roundCurrentPool:     Number(raw.roundCurrentPool   ?? 0),
+        roundTargetPool:      Number(raw.roundTargetPool    ?? 0),
+        roundProgressPercent: Number(raw.roundProgressPercent ?? 0),
+        roundEnded:   !!raw.roundEnded,
+        roundWinner:  raw.roundWinner  ?? null,
+        roundPrize:   raw.roundPrize != null ? Number(raw.roundPrize) : null,
+        roundNumber:  raw.roundNumber  ?? null,
       };
+
       setResult(data);
-      if (data.won) {
+
+      // Update round display from burn result
+      if (raw.roundId) {
+        setRound(prev => prev ? {
+          ...prev,
+          currentPool:    data.roundCurrentPool,
+          progressPercent: data.roundProgressPercent,
+        } : prev);
+        setUserRoundRank(data.userRoundRank);
+        setUserRoundWeight(data.userCumulativeWeight);
+      }
+
+      if (data.roundEnded && data.roundWinner) {
         speak(
-          `Congratulations! You won ${data.prizeAmount ? data.prizeAmount + " U S D C" : "a prize"}! The fire rewards the bold!`,
+          `Round ${data.roundNumber} complete! ${data.roundWinner} wins $${data.roundPrize?.toFixed(2)} U S D C!`
         );
       } else {
         speak(
-          `The fire consumed your U S D C, but awarded you ${data.ashEarned} Ash tokens. Keep burning!`,
+          `Burn complete! Earned ${data.ashEarned} A S H tokens. Weight now ${data.userCumulativeWeight.toFixed(2)}.`
         );
       }
     } catch (e: unknown) {
@@ -221,13 +257,7 @@ export default function BurnPage() {
         <div className="dash-title">
           BURN <span>NOW</span>
         </div>
-        <div
-          style={{
-            fontSize: "11px",
-            color: "var(--text-dim)",
-            letterSpacing: "2px",
-          }}
-        >
+        <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px" }}>
           BALANCE:{" "}
           {statsLoading ? (
             <span style={{ color: "var(--text-dim)" }}>LOADING...</span>
@@ -240,6 +270,59 @@ export default function BurnPage() {
       </div>
 
       {error && <div className={styles.loadErr}>⚠ {error}</div>}
+
+      {/* ===== ROUND PROGRESS PANEL ===== */}
+      <div className="panel-box" style={{ marginBottom: "16px" }}>
+        <div className="panel-title">
+          🏆 ROUND{round ? ` #${round.roundNumber}` : ""} — PRIZE POOL
+        </div>
+        {!round ? (
+          <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px", padding: "8px 0" }}>
+            NO ACTIVE ROUND — WAITING FOR OWNER TO START ONE
+          </div>
+        ) : (
+          <>
+            {/* Progress Bar */}
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginBottom: "6px" }}>
+              <span>CURRENT: <span style={{ color: "var(--usdc-green)" }}>${round.currentPool.toFixed(2)}</span></span>
+              <span>TARGET: <span style={{ color: "var(--fire-orange)" }}>${round.prizePoolTarget.toFixed(2)}</span></span>
+            </div>
+            <div style={{
+              height: "12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,140,66,0.2)",
+              position: "relative", overflow: "hidden",
+            }}>
+              <div style={{
+                height: "100%", width: `${roundProgress}%`,
+                background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
+                boxShadow: "0 0 12px rgba(255,140,66,0.5)",
+                transition: "width 0.4s ease",
+              }} />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", flexWrap: "wrap", gap: "8px" }}>
+              <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>
+                {roundProgress.toFixed(1)}% TO PRIZE
+              </div>
+              <div style={{ display: "flex", gap: "16px", fontSize: "10px", letterSpacing: "1px" }}>
+                {userRoundRank != null ? (
+                  <span style={{ color: userRoundRank === 1 ? "var(--gold)" : "var(--fire-orange)" }}>
+                    YOUR RANK: <strong>#{userRoundRank}</strong>
+                  </span>
+                ) : (
+                  <span style={{ color: "var(--text-dim)" }}>BURN TO JOIN ROUND</span>
+                )}
+                {userRoundWeight > 0 && (
+                  <span style={{ color: "var(--text-dim)" }}>
+                    WEIGHT: <span style={{ color: "var(--fire-orange)" }}>{userRoundWeight.toFixed(2)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "1px", marginTop: "8px" }}>
+              WINNER = #1 ON LEADERBOARD WHEN POOL HITS TARGET
+            </div>
+          </>
+        )}
+      </div>
 
       <div className={styles.burnLayout}>
         {/* ===== LEFT — MAIN BURN AREA ===== */}
@@ -270,7 +353,7 @@ export default function BurnPage() {
                 <label>AMOUNT</label>
                 <input
                   type="number"
-                  min="1.00"
+                  min="5.00"
                   step="0.01"
                   placeholder="0.00"
                   className={styles.customInput}
@@ -282,10 +365,10 @@ export default function BurnPage() {
               </div>
             )}
 
-            {/* Luck Meter */}
+            {/* Weight Meter */}
             <div className={styles.luckSection}>
               <div className={styles.luckLabel}>
-                ⚡ LUCK MULTIPLIER (WEIGHT)
+                ⚡ WEIGHT ACCUMULATION
               </div>
               <div className={styles.luckBar}>
                 <div
@@ -295,10 +378,12 @@ export default function BurnPage() {
               </div>
               <div className={styles.luckMeta}>
                 <span style={{ color: "var(--fire-orange)" }}>
-                  {weight.toFixed(1)}x Weight
+                  +{weight.toFixed(2)} WEIGHT THIS BURN
                 </span>
                 {" → "}
-                <span>~{winPct.toFixed(1)}% Win Chance</span>
+                <span>
+                  TOTAL: {((stats?.cumulativeWeight ?? 0) + weight).toFixed(2)}
+                </span>
               </div>
             </div>
 
@@ -313,13 +398,13 @@ export default function BurnPage() {
                 <span className={styles.burnCircleLabel}>
                   {statsLoading ? "..." : "BURN"}
                 </span>
-                {!statsLoading && amount >= 1.0 && (
+                {!statsLoading && amount >= 5.0 && (
                   <span className={styles.burnCircleAmt}>
                     ${amount.toFixed(2)}
                   </span>
                 )}
               </button>
-              {!statsLoading && amount >= 1.0 && usdcBalance < amount && phase === "idle" && (
+              {!statsLoading && amount >= 5.0 && usdcBalance < amount && phase === "idle" && (
                 <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
                   INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
                 </div>
@@ -327,7 +412,7 @@ export default function BurnPage() {
             </div>
 
             <div className={styles.disclaimer}>
-              MIN BURN: $1.00 USDC &nbsp;•&nbsp; VRF VERIFIED ON SOLANA
+              MIN BURN: $5.00 USDC &nbsp;•&nbsp; WINNER = #1 WHEN POOL HITS TARGET
             </div>
           </div>
         </div>
@@ -337,38 +422,26 @@ export default function BurnPage() {
           <div className="panel-box">
             <div className="panel-title">YOUR STATS</div>
             {statsLoading ? (
-              <div
-                style={{
-                  color: "var(--text-dim)",
-                  fontSize: "10px",
-                  letterSpacing: "2px",
-                }}
-              >
+              <div style={{ color: "var(--text-dim)", fontSize: "10px", letterSpacing: "2px" }}>
                 LOADING...
               </div>
             ) : (
               <>
                 <div className={styles.sideStat}>
                   <span className={styles.sideStatLabel}>TOTAL BURNS</span>
-                  <span
-                    className={`${styles.sideStatVal} ${styles.sideStatFire}`}
-                  >
+                  <span className={`${styles.sideStatVal} ${styles.sideStatFire}`}>
                     {stats?.totalBurns ?? 0}
                   </span>
                 </div>
                 <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>TOTAL WON</span>
-                  <span
-                    className={`${styles.sideStatVal} ${styles.sideStatGold}`}
-                  >
-                    ${Number(stats?.totalWon ?? 0).toFixed(2)}
+                  <span className={styles.sideStatLabel}>TOTAL WEIGHT</span>
+                  <span className={`${styles.sideStatVal} ${styles.sideStatGold}`}>
+                    {Number(stats?.cumulativeWeight ?? 0).toFixed(2)}
                   </span>
                 </div>
                 <div className={styles.sideStat}>
                   <span className={styles.sideStatLabel}>TOTAL ASH EARNED</span>
-                  <span
-                    className={`${styles.sideStatVal} ${styles.sideStatAsh}`}
-                  >
+                  <span className={`${styles.sideStatVal} ${styles.sideStatAsh}`}>
                     {(stats?.totalAshEarned ?? 0).toLocaleString()}
                   </span>
                 </div>
@@ -420,7 +493,7 @@ export default function BurnPage() {
                     setBoostLoading(true);
                     try {
                       const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000"}/api/burn/boost`, {
+                      const res = await fetch(`${API_BASE}/api/burn/boost`, {
                         method: "POST",
                         headers: token ? { Authorization: `Bearer ${token}` } : {},
                       });
@@ -463,7 +536,7 @@ export default function BurnPage() {
           <div className={styles.burningEmoji}>🔥</div>
           <div className={styles.burningText}>{burnMsg}</div>
           <div className={styles.burningSub}>
-            VERIFYING ON SOLANA BLOCKCHAIN...
+            UPDATING LEADERBOARD...
           </div>
         </div>
       )}
@@ -472,30 +545,58 @@ export default function BurnPage() {
       {phase === "result" && result && (
         <div className={styles.resultOverlay}>
           <div className={styles.resultCard}>
-            <div className={styles.resultEmoji}>{result.won ? "🏆" : "💨"}</div>
-
-            <div
-              className={`${styles.resultTitle} ${result.won ? styles.resultTitleWin : styles.resultTitleLose}`}
-            >
-              {result.won ? "WIN!" : "BURNED"}
-            </div>
-
-            {result.won && result.prizeAmount != null && (
-              <div className={`${styles.resultAmt} ${styles.resultAmtWin}`}>
-                +${Number(result.prizeAmount).toFixed(2)} USDC
-              </div>
-            )}
-
-            {!result.won && (
-              <div className={`${styles.resultAmt} ${styles.resultAmtAsh}`}>
-                +{result.ashEarned} ASH
-              </div>
-            )}
-
-            {result.message && (
-              <div className={styles.resultMsg}>
-                {result.message.toUpperCase()}
-              </div>
+            {result.roundEnded ? (
+              <>
+                <div className={styles.resultEmoji}>🏆</div>
+                <div className={`${styles.resultTitle} ${styles.resultTitleWin}`}>
+                  ROUND {result.roundNumber} ENDED!
+                </div>
+                <div style={{ textAlign: "center", marginBottom: "12px" }}>
+                  <div style={{ fontSize: "14px", color: "var(--gold)", letterSpacing: "2px", fontFamily: "var(--font-display)", marginBottom: "4px" }}>
+                    WINNER: {result.roundWinner}
+                  </div>
+                  <div className={`${styles.resultAmt} ${styles.resultAmtWin}`}>
+                    ${result.roundPrize?.toFixed(2)} USDC
+                  </div>
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", textAlign: "center", marginBottom: "16px" }}>
+                  A NEW ROUND WILL BEGIN SOON
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles.resultEmoji}>🔥</div>
+                <div className={`${styles.resultTitle} ${styles.resultTitleLose}`}>
+                  BURNED
+                </div>
+                <div className={`${styles.resultAmt} ${styles.resultAmtAsh}`}>
+                  +{result.ashEarned} ASH
+                </div>
+                <div style={{ display: "flex", gap: "16px", justifyContent: "center", fontSize: "10px", letterSpacing: "1px", marginBottom: "12px", flexWrap: "wrap" }}>
+                  <span style={{ color: "var(--fire-orange)" }}>
+                    +{result.finalWeight.toFixed(2)} WEIGHT
+                  </span>
+                  {result.userRoundRank != null && (
+                    <span style={{ color: result.userRoundRank === 1 ? "var(--gold)" : "var(--text-dim)" }}>
+                      RANK #{result.userRoundRank}
+                    </span>
+                  )}
+                </div>
+                {/* Mini progress bar in result */}
+                <div style={{ width: "100%", marginBottom: "16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "var(--text-dim)", marginBottom: "4px" }}>
+                    <span>POOL: ${result.roundCurrentPool.toFixed(2)}</span>
+                    <span>TARGET: ${result.roundTargetPool.toFixed(2)}</span>
+                  </div>
+                  <div style={{ height: "8px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", width: `${result.roundProgressPercent}%`,
+                      background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
+                      transition: "width 0.4s ease",
+                    }} />
+                  </div>
+                </div>
+              </>
             )}
 
             <div className={styles.resultActions}>

@@ -16,6 +16,7 @@ import vipRoutes from "./routes/vipRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import stakingRoutes from "./routes/stakingRoutes";
 import ownerRoutes from "./routes/ownerRoutes";
+import roundRoutes from "./routes/roundRoutes";
 
 // ============================================================
 // Express App
@@ -78,6 +79,7 @@ app.use("/api/vip", vipRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/staking", stakingRoutes);
 app.use("/api/owner", ownerRoutes);
+app.use("/api/round", roundRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler);

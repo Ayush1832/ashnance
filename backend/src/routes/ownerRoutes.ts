@@ -2,6 +2,8 @@ import { Router, Response, NextFunction } from "express";
 import { authenticate } from "../middleware/auth";
 import { requireOwner } from "../middleware/ownerAuth";
 import { OwnerService } from "../services/ownerService";
+import { RoundService } from "../services/roundService";
+import { BadRequestError } from "../utils/errors";
 import { AuthRequest } from "../middleware/auth";
 
 const router = Router();
@@ -91,6 +93,46 @@ router.get("/solvency", async (_req: AuthRequest, res: Response, next: NextFunct
   try {
     const data = await OwnerService.getSolvency();
     res.json({ success: true, data });
+  } catch (err) { next(err); }
+});
+
+// ---- ROUND MANAGEMENT ----
+
+// POST /api/owner/round — create a new round
+router.post("/round", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const burnCfg = await OwnerService.getBurnConfig();
+    const prizePoolTarget = Number(req.body.prizePoolTarget ?? burnCfg.prize_pool_target ?? 500);
+    if (isNaN(prizePoolTarget) || prizePoolTarget <= 0) {
+      return next(new BadRequestError("prizePoolTarget must be a positive number"));
+    }
+    const round = await RoundService.createRound(prizePoolTarget);
+    res.json({ success: true, data: round });
+  } catch (err) { next(err); }
+});
+
+// POST /api/owner/round/:id/end — manually end a round and pay winner
+router.post("/round/:id/end", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await RoundService.endRound(req.params.id as string);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// POST /api/owner/round/:id/cancel — cancel a round without paying prize
+router.post("/round/:id/cancel", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await RoundService.cancelRound(req.params.id as string);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// GET /api/owner/rounds — list all rounds (for admin panel)
+router.get("/rounds", async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const rounds = await RoundService.getRoundHistory(20);
+    const active = await RoundService.getActiveRound();
+    res.json({ success: true, data: { active, history: rounds } });
   } catch (err) { next(err); }
 });
 

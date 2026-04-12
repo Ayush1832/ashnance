@@ -7,16 +7,25 @@ import {
 } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
 import { OwnerService, ASH_TOKEN_PRICE_USD } from "./ownerService";
+import { RoundService } from "./roundService";
 
 export interface BurnResult {
   burnId: string;
-  isWinner: boolean;
-  prizeTier: string | null;
-  prizeAmount: number | null;
-  ashReward: number | null;
+  ashReward: number;
   weight: number;
   finalWeight: number;
-  effectiveChance: number;
+  userCumulativeWeight: number;
+  // Round context
+  roundId: string | null;
+  roundCurrentPool: number;
+  roundTargetPool: number;
+  roundProgressPercent: number;
+  userRoundRank: number | null;
+  // Set only when this burn triggered the round to end
+  roundEnded: boolean;
+  roundWinner: string | null;
+  roundPrize: number | null;
+  roundNumber: number | null;
 }
 
 export class BurnService {
@@ -83,14 +92,23 @@ export class BurnService {
   }
 
   /**
-   * Execute a burn — the core game mechanic
-   * Follows: project.md Sections 4, 5, 6, 7, 8
+   * Execute a burn — the core game mechanic (round-based competitive system).
+   *
+   * Every burn:
+   *  1. Deducts USDC from the user's wallet
+   *  2. Splits the amount: reward_pool_split → round prize pool, profit_pool_split → profit
+   *  3. Adds finalWeight to the user's persistent cumulativeWeight (leaderboard ranking)
+   *  4. Grants ASH tokens to the burner (always — no per-burn random win/lose)
+   *  5. Checks if round.currentPool >= prizePoolTarget → if so, ends the round and pays winner
+   *
+   * The WINNER is the user ranked #1 by cumulativeWeight (weight accumulated during this round)
+   * at the exact moment the prize pool hits its target.
    */
   static async executeBurn(
     userId: string,
     amountUsdc: number,
   ): Promise<BurnResult> {
-    // Load live burn config from DB first — all game parameters come from here
+    // Load live burn config from DB
     const burnCfg = await OwnerService.getBurnConfig();
 
     if (amountUsdc < burnCfg.min_burn_amount) {
@@ -118,7 +136,6 @@ export class BurnService {
     }
 
     // ---- CALCULATE WEIGHT ----
-    // base_unit is always 4.99 (the reference amount per spec Section 7)
     const baseUnit = burnCfg.base_unit ?? 4.99;
     const baseWeight = amountUsdc / baseUnit;
 
@@ -133,167 +150,92 @@ export class BurnService {
     const referralBonus =
       Math.floor(activeReferrals / 5) * config.weight.referralBonusPer5;
 
-    // Boost bonus — time-based (1 hour), already paid for at activation
+    // Boost bonus — time-based (1 hour)
     const now = new Date();
     const boostActive = !!(user.wallet.boostExpiresAt && user.wallet.boostExpiresAt > now);
     const boostBonus = boostActive ? config.weight.ashBoostBonus : 0;
 
     const finalWeight = baseWeight + vipBonus + referralBonus + boostBonus;
 
-    // ---- DETERMINE WIN/LOSE ----
-    const effectiveChance =
-      finalWeight / (finalWeight + burnCfg.constant_factor);
-
-    const randomNumber = BlockchainService.simulateVRF(userId + Date.now().toString());
-    const isWinner = randomNumber <= effectiveChance;
-
-    // ---- DETERMINE PRIZE OR ASH ----
-    let prizeTier: string | null = null;
-    let prizeAmount: number | null = null;
-    let ashReward: number | null = null;
-
-    const pool = await prisma.rewardPool.findFirst();
-    const poolBalance = pool ? Number(pool.totalBalance) : 0;
-    const maxPayout = Math.floor(poolBalance * 0.5); // no single payout > 50% of pool
-
-    if (isWinner) {
-      // Select prize tier by probability roll
-      const prizeRoll = Math.random();
-      let selectedTier: string;
-      let selectedAmount: number;
-
-      if (prizeRoll <= burnCfg.jackpot_prob) {
-        selectedTier = "JACKPOT"; selectedAmount = burnCfg.jackpot_amount;
-      } else if (prizeRoll <= burnCfg.big_prob) {
-        selectedTier = "BIG";     selectedAmount = burnCfg.big_amount;
-      } else if (prizeRoll <= burnCfg.medium_prob) {
-        selectedTier = "MEDIUM";  selectedAmount = burnCfg.medium_amount;
-      } else {
-        selectedTier = "SMALL";   selectedAmount = burnCfg.small_amount;
-      }
-
-      // Downgrade prize tier if pool can't cover it (per spec Section 8 Step 4).
-      // Full tier order from highest to lowest — start from the selected tier and go down.
-      const allTiers = [
-        { tier: "JACKPOT", amount: burnCfg.jackpot_amount },
-        { tier: "BIG",     amount: burnCfg.big_amount },
-        { tier: "MEDIUM",  amount: burnCfg.medium_amount },
-        { tier: "SMALL",   amount: burnCfg.small_amount },
-      ];
-      const startIdx = allTiers.findIndex(t => t.tier === selectedTier);
-      const fallbackChain = startIdx >= 0 ? allTiers.slice(startIdx) : allTiers;
-
-      for (const t of fallbackChain) {
-        const effective = Math.min(t.amount, maxPayout);
-        if (effective > 0 && poolBalance >= effective) {
-          prizeTier   = t.tier;
-          prizeAmount = effective;
-          break;
-        }
-      }
-      // If pool can't afford even SMALL → fall through to ASH reward below
+    // ---- ASH REWARD (all burners receive ASH) ----
+    let ashReward = Math.floor(
+      (amountUsdc * burnCfg.ash_reward_percent) / ASH_TOKEN_PRICE_USD
+    );
+    // VIP bonus: +20% ASH for Holy Fire
+    if (user.vipTier === "HOLY_FIRE") {
+      ashReward = Math.floor(ashReward * 1.2);
     }
 
-    const actuallyWon = isWinner && prizeAmount !== null;
-
-    if (!actuallyWon) {
-      // ASH reward on loss — proportional to burn amount at $0.01/ASH
-      ashReward = Math.floor(
-        (amountUsdc * burnCfg.ash_reward_percent) / ASH_TOKEN_PRICE_USD
-      );
-      // VIP bonus: +20% ASH for Holy Fire
-      if (user.vipTier === "HOLY_FIRE") {
-        ashReward = Math.floor(ashReward * 1.2);
-      }
-    }
+    // ---- GET ACTIVE ROUND ----
+    const activeRound = await RoundService.getActiveRound();
 
     // ---- EXECUTE IN TRANSACTION ----
+    const rewardPoolAmount = amountUsdc * burnCfg.reward_pool_split;
+    const profitPoolAmount = amountUsdc * burnCfg.profit_pool_split;
+
+    let newCumulativeWeight = 0;
+    let newRoundPool = 0;
+
     const burn = await prisma.$transaction(async (tx: any) => {
-      // 1. Deduct USDC from wallet
-      await tx.wallet.update({
+      // 1. Deduct USDC from wallet and update cumulativeWeight
+      const updatedWallet = await tx.wallet.update({
         where: { userId },
         data: {
-          usdcBalance: { decrement: amountUsdc },
+          usdcBalance:      { decrement: amountUsdc },
+          ashBalance:       { increment: ashReward },
+          cumulativeWeight: { increment: finalWeight },
         },
       });
+      newCumulativeWeight = Number(updatedWallet.cumulativeWeight);
 
-      // 2. Split burn amount into pools (ratios from DB config)
-      const rewardPoolAmount = amountUsdc * burnCfg.reward_pool_split;
-
+      // 2. Split into pools
       await tx.rewardPool.updateMany({
         data: { totalBalance: { increment: rewardPoolAmount } },
       });
 
-      const profitPoolAmount = amountUsdc * burnCfg.profit_pool_split;
       await tx.profitPool.updateMany({
         data: {
-          balance: { increment: profitPoolAmount },
+          balance:        { increment: profitPoolAmount },
           totalDeposited: { increment: profitPoolAmount },
         },
       });
 
-      // 3. Create burn record
+      // 3. Update round's currentPool if there's an active round
+      if (activeRound) {
+        const updatedRound = await tx.round.update({
+          where: { id: activeRound.id },
+          data: { currentPool: { increment: rewardPoolAmount } },
+        });
+        newRoundPool = Number(updatedRound.currentPool);
+      }
+
+      // 4. Create burn record
       const burnRecord = await tx.burn.create({
         data: {
           userId,
           amountUsdc,
-          weight: baseWeight,
+          weight:     baseWeight,
           finalWeight,
-          isWinner: actuallyWon,
-          prizeTier: prizeTier as any,
-          prizeAmount,
           ashReward,
-          vrfSeed: randomNumber.toString(),
+          roundId:    activeRound?.id ?? null,
+          isWinner:   false,
+          vrfSeed:    BlockchainService.simulateVRF(userId + Date.now().toString()).toString(),
         },
       });
 
-      // 4. Credit winnings
-      if (actuallyWon && prizeAmount) {
-        await tx.wallet.update({
-          where: { userId },
-          data: { usdcBalance: { increment: prizeAmount } },
-        });
-
-        await tx.rewardPool.updateMany({
-          data: {
-            totalBalance: { decrement: prizeAmount },
-            totalPaidOut: { increment: prizeAmount },
-          },
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId,
-            type: "WIN",
-            amount: prizeAmount,
-            currency: "USDC",
-            status: "COMPLETED",
-            description: `Won ${prizeTier} prize`,
-          },
-        });
-      }
-
-      // 5. Credit ASH reward on loss
-      if (!actuallyWon && ashReward) {
-        await tx.wallet.update({
-          where: { userId },
-          data: { ashBalance: { increment: ashReward } },
-        });
-      }
-
-      // 6. Burn transaction log
+      // 5. Burn transaction log
       await tx.transaction.create({
         data: {
           userId,
-          type: "BURN",
-          amount: amountUsdc,
-          currency: "USDC",
-          status: "COMPLETED",
-          description: `Burned $${amountUsdc} USDC`,
+          type:        "BURN",
+          amount:      amountUsdc,
+          currency:    "USDC",
+          status:      "COMPLETED",
+          description: `Burned $${amountUsdc} USDC${activeRound ? ` (Round #${activeRound.roundNumber})` : ""}`,
         },
       });
 
-      // 7. Process referral reward
+      // 6. Process referral reward
       if (user.referredById) {
         const referralReward = amountUsdc * burnCfg.referral_commission;
 
@@ -309,11 +251,11 @@ export class BurnService {
 
         await tx.transaction.create({
           data: {
-            userId: user.referredById,
-            type: "REFERRAL_REWARD",
-            amount: referralReward,
-            currency: "USDC",
-            status: "COMPLETED",
+            userId:      user.referredById,
+            type:        "REFERRAL_REWARD",
+            amount:      referralReward,
+            currency:    "USDC",
+            status:      "COMPLETED",
             description: `Referral reward from ${user.username}'s burn`,
           },
         });
@@ -326,15 +268,58 @@ export class BurnService {
       return burnRecord;
     });
 
+    // ---- CHECK IF ROUND SHOULD END (outside main tx to avoid nested tx issues) ----
+    let roundEnded = false;
+    let roundWinner: string | null = null;
+    let roundPrize: number | null = null;
+    let roundNumber: number | null = null;
+
+    if (activeRound && newRoundPool >= Number(activeRound.prizePoolTarget)) {
+      try {
+        const result = await RoundService.endRound(activeRound.id);
+        roundEnded = true;
+        roundWinner = result.winner.username;
+        roundPrize = result.prizeAmount;
+        roundNumber = result.roundNumber;
+
+        // Mark the winning burn
+        await prisma.burn.update({
+          where: { id: burn.id },
+          data: { isWinner: userId === result.winner.userId },
+        });
+      } catch {
+        // Round may have already been ended (race condition) — ignore
+      }
+    }
+
+    // ---- GET USER'S CURRENT ROUND RANK ----
+    let userRoundRank: number | null = null;
+    const prizePoolTarget = activeRound ? Number(activeRound.prizePoolTarget) : burnCfg.prize_pool_target ?? 500;
+    const currentPool = activeRound ? newRoundPool : 0;
+
+    if (activeRound && !roundEnded) {
+      const leaderboard = await RoundService.getRoundLeaderboard(activeRound.id);
+      const entry = leaderboard.find((e) => e.userId === userId);
+      userRoundRank = entry?.rank ?? null;
+    }
+
     return {
-      burnId: burn.id,
-      isWinner: actuallyWon,
-      prizeTier,
-      prizeAmount,
+      burnId:               burn.id,
       ashReward,
-      weight: baseWeight,
+      weight:               baseWeight,
       finalWeight,
-      effectiveChance,
+      userCumulativeWeight: newCumulativeWeight,
+      roundId:              activeRound?.id ?? null,
+      roundCurrentPool:     currentPool,
+      roundTargetPool:      prizePoolTarget,
+      roundProgressPercent: prizePoolTarget > 0
+        ? Math.min(100, (currentPool / prizePoolTarget) * 100)
+        : 0,
+      userRoundRank,
+      roundEnded,
+      roundWinner,
+      roundPrize,
+      roundNumber,
     };
   }
 
@@ -352,6 +337,7 @@ export class BurnService {
         orderBy: { createdAt: "desc" },
         take: limit,
         skip: (page - 1) * limit,
+        include: { round: { select: { roundNumber: true, status: true } } },
       }),
       prisma.burn.count({ where: { userId } }),
     ]);
@@ -371,26 +357,22 @@ export class BurnService {
    * Get burn stats for a user
    */
   static async getBurnStats(userId: string) {
-    const [totalBurns, totalWins, stats, biggestWin] = await Promise.all([
+    const [totalBurns, totalWins, stats, wallet] = await Promise.all([
       prisma.burn.count({ where: { userId } }),
       prisma.burn.count({ where: { userId, isWinner: true } }),
       prisma.burn.aggregate({
         where: { userId },
         _sum: { amountUsdc: true, ashReward: true },
       }),
-      prisma.burn.findFirst({
-        where: { userId, isWinner: true },
-        orderBy: { prizeAmount: "desc" },
-      }),
+      prisma.wallet.findUnique({ where: { userId }, select: { cumulativeWeight: true } }),
     ]);
 
     return {
       totalBurns,
       totalWins,
-      winRate: totalBurns > 0 ? ((totalWins / totalBurns) * 100).toFixed(1) : "0.0",
-      totalBurned: stats._sum.amountUsdc || 0,
-      totalAshEarned: stats._sum.ashReward || 0,
-      biggestWin: biggestWin?.prizeAmount || 0,
+      totalBurned:       stats._sum.amountUsdc || 0,
+      totalAshEarned:    stats._sum.ashReward || 0,
+      cumulativeWeight:  wallet ? Number(wallet.cumulativeWeight) : 0,
     };
   }
 }

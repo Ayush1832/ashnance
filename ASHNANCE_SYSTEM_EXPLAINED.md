@@ -1,9 +1,9 @@
 # Ashnance — Complete System Mechanics
 
-> Everything you need to understand: how money flows in, how pools work, how winners and
-> losers are decided, and how the platform generates profit.
+> Everything you need to understand: how money flows in, how pools work, how rounds work,
+> how the winner is decided, and how the platform generates profit.
 >
-> Last updated: reflects live codebase as of April 2026.
+> Last updated: reflects live codebase as of April 2026 (round-based system).
 
 ---
 
@@ -11,10 +11,11 @@
 
 A user deposits real USDC on-chain into their personal deposit address. The platform
 detects it and credits their in-app wallet. They spend that USDC to "burn" (play). Each
-burn splits 50/50 into two pools. A weighted random draw decides if they win USDC from the
-Reward Pool or lose and earn ASH tokens instead. ASH can be activated as a 1-hour boost,
-staked for passive yield, or held speculatively. The other 50% sits in the Profit Pool for
-the owners to withdraw. Two owners must co-sign every withdrawal.
+burn splits 50/50 into two pools. The reward-pool share is added to the current **round's
+prize pool**. Every burn also gives the user persistent **weight** (their leaderboard rank)
+and **ASH tokens** as a reward. When the round's prize pool hits its target amount, the
+user who has accumulated the most weight **during that round** wins the entire pool.
+The other 50% sits in the Profit Pool for the owners to withdraw via two-signature process.
 
 ---
 
@@ -42,6 +43,7 @@ Master Wallet  ◄── single hot wallet that pays all prizes
 ```
 
 **Key points:**
+
 - Each user gets a unique deposit address so the system knows whose payment it is.
 - After crediting, the USDC is immediately swept to the master wallet. User balances are
   tracked in the database; the master wallet holds all the actual USDC.
@@ -56,30 +58,30 @@ When a user burns $10, the system immediately splits it:
 ```
 $10 USDC burned
 ├── $5.00 → Reward Pool   (50%, configurable via reward_pool_split)
+│           └── also tracked as this round's currentPool
 └── $5.00 → Profit Pool   (50%, configurable via profit_pool_split)
 ```
 
 These ratios are set in `PlatformConfig` by the owner. They must always add up to 1.0.
 
 ### Reward Pool
-- Funds all prize payouts to winners.
+
+- Funds all round prize payouts to winners.
 - Also funds referral commissions (deducted from the reward pool share).
-- A single win can never exceed 50% of the current pool balance (hard cap).
-- If the pool is too thin to pay even the SMALL prize after applying the cap, the win
-  falls back to an ASH reward instead.
+- The full reward pool balance (currentPool) is paid to the round winner when the target is reached.
 
 ### Profit Pool
+
 - Pure platform profit — no automatic payouts from here.
-- Owners can withdraw it at any time via the two-signature process (see Section 10).
-- Tracks: `balance` (current), `totalDeposited` (lifetime in), `totalWithdrawn` (lifetime out).
+- Owners can withdraw it at any time via the two-signature process (see Section 9).
 
 ---
 
-## 4. The Burn — Win/Lose Mechanic
+## 4. The Burn — How Burns Work
 
 ### Step 1: Calculate Weight
 
-Weight determines your probability of winning. More weight = higher chance.
+Weight determines your leaderboard ranking. More weight = higher rank = closer to winning.
 
 ```
 baseWeight    = burnAmount ÷ base_unit (4.99)
@@ -93,96 +95,125 @@ finalWeight   = baseWeight + vipBonus + referralBonus + boostBonus
 ```
 
 **Note:** `base_unit` is always **$4.99** (the weight reference unit, never changes).
-`min_burn_amount` is **$1.00** (the minimum you can burn, separate from the weight unit).
+`min_burn_amount` is **$5.00** (the minimum you can burn per the round-based entry fee).
 
 **Example:** Burn $10, Holy Fire VIP active, 5 referrals, boost active:
 `finalWeight = 2.00 + 0.50 + 0.20 + 0.50 = 3.20`
 
-### Step 2: Calculate Win Probability
+### Step 2: Update Cumulative Weight
 
 ```
-effectiveChance = finalWeight ÷ (finalWeight + constantFactor)
+user.cumulativeWeight += finalWeight
 ```
 
-`constantFactor` defaults to **100** (owner-configurable).
+The cumulative weight is **persistent across rounds** — it never resets. This is your
+permanent leaderboard ranking signal that rewards long-term participation.
+
+### Step 3: ASH Reward (Always Earned)
+
+Every burn earns ASH tokens — there is no per-burn random win/lose:
 
 ```
-Example: 3.20 ÷ (3.20 + 100) = 3.10% chance of winning
+ashReward = floor(burnAmount × ashRewardPercent ÷ ashTokenPrice)
+          = floor($5.00 × 1.0 ÷ $0.01) = 500 ASH   (burning $5)
+          = floor($10   × 1.0 ÷ $0.01) = 1,000 ASH (burning $10)
 ```
 
-Burning $1 with no bonuses: `0.20 ÷ (0.20 + 100) = 0.20% win chance`
-Burning $4.99 with no bonuses: `1.0 ÷ (1.0 + 100) = 0.99% win chance`
-
-### Step 3: VRF Random Draw
-
-```typescript
-randomNumber = simulateVRF(userId + timestamp)  // 0.0 to 1.0
-isWinner     = randomNumber <= effectiveChance
-```
-
-`simulateVRF` uses a deterministic SHA-256 hash of the user ID + timestamp, normalized to
-`[0, 1]`. In production this will be replaced with Switchboard VRF (verifiable randomness
-on Solana so no one can manipulate it).
-
-### Step 4: Prize Tier (Winners Only)
-
-A second random roll selects the prize tier:
+**Holy Fire VIP bonus:** +20% extra ASH on every burn.
 
 ```
-Roll ≤ 0.01 (1%)   → JACKPOT   $2,500
-Roll ≤ 0.05 (5%)   → BIG       $500
-Roll ≤ 0.20 (20%)  → MEDIUM    $200
-Roll > 0.20 (74%)  → SMALL     $50
+500 ASH × 1.20 = 600 ASH  (burning $5 with Holy Fire)
 ```
 
-### Step 5: Pool Fallback (Downgrade if Needed)
+### Step 4: Round Pool Contribution
 
-The 50% hard cap is applied: `maxPayout = floor(poolBalance × 0.5)`
-
-The system tries to pay the selected prize. If the pool can't cover it, it **downgrades
-to the next tier** (not cancels):
-
-```
-JACKPOT can't be paid → try BIG
-BIG can't be paid     → try MEDIUM
-MEDIUM can't be paid  → try SMALL
-SMALL can't be paid   → winner gets ASH instead (pool too thin)
-```
-
-Prize amount is also capped at 50% of pool. So if SMALL is $50 but the pool only has
-$60 (50% cap = $30), the player wins $30 labeled "SMALL".
-
-The prize is credited to the user's USDC wallet immediately and deducted from the reward pool.
+The reward pool share from this burn (50% of burnAmount) is added to the active round's
+`currentPool`. If `currentPool >= prizePoolTarget`, the round ends immediately.
 
 ---
 
-## 5. ASH Token — The Loser's Reward
+## 5. The Round — Competitive Prize Mechanic
 
-When you lose (or when the pool is too thin to pay any prize), you earn ASH tokens.
+### How Rounds Work
+
+```
+Owner starts a new round with a target (e.g. $500)
+        │
+        │  Round is ACTIVE — users burn to:
+        │    1. Add to the prize pool (reward split)
+        │    2. Accumulate weight (leaderboard rank)
+        │    3. Earn ASH tokens
+        ▼
+Prize pool grows with every burn
+        │
+        │  When currentPool >= prizePoolTarget:
+        ▼
+RoundService.endRound() fires automatically
+        │
+        │  Winner = user ranked #1 on the leaderboard
+        │  (highest cumulative weight accumulated during this round)
+        ▼
+Winner receives the entire round prize pool in USDC
+        │
+        ▼
+Round status = COMPLETED
+```
+
+**Key rule:** The winner is the user ranked **#1 by weight** at the **exact moment** the
+prize pool hits its target. The live leaderboard is always visible on the burn page and
+leaderboard page.
+
+### Weight Persistence
+
+Weight is **persistent** — it carries over from previous rounds. A user who burned heavily
+in past rounds enters future rounds with a higher baseline, but new burns always add more
+weight. This rewards sustained participation while keeping each round competitive (any
+user can climb by burning more).
+
+### Admin Round Controls
+
+Owners can:
+
+- `POST /api/owner/round` — create a new round (optionally set `prizePoolTarget`)
+- `POST /api/owner/round/:id/end` — manually end a round (pays #1 on leaderboard)
+- `POST /api/owner/round/:id/cancel` — cancel without paying (emergency only)
+
+### Public Endpoints
+
+| Endpoint                        | Purpose                                             |
+| ------------------------------- | --------------------------------------------------- |
+| `GET /api/round/current`        | Active round status + caller's rank (auth required) |
+| `GET /api/round/current/public` | Same but no auth (for public progress bar)          |
+| `GET /api/round/leaderboard`    | Top 10 by weight for active round                   |
+| `GET /api/round/history`        | Last 10 completed/cancelled rounds                  |
+
+---
+
+## 6. ASH Token — Earned on Every Burn
+
+Every burn earns ASH regardless of outcome — it is the base reward for participation.
 
 ### How ASH Amount is Calculated
 
 ```
 ashReward = floor(burnAmount × ashRewardPercent ÷ ashTokenPrice)
-          = floor($1.00 × 1.0 ÷ $0.01) = 100 ASH   (burning $1)
-          = floor($4.99 × 1.0 ÷ $0.01) = 499 ASH   (burning $4.99)
+          = floor($5.00 × 1.0 ÷ $0.01) = 500 ASH   (burning $5)
           = floor($10   × 1.0 ÷ $0.01) = 1,000 ASH (burning $10)
+          = floor($25   × 1.0 ÷ $0.01) = 2,500 ASH (burning $25)
 ```
 
 **Default values:**
+
 - `ashRewardPercent = 1.0` — 100% of burn value returned as ASH
 - `ashTokenPrice = $0.01` per ASH (hardcoded)
 
-**Holy Fire VIP bonus:** +20% extra ASH on every loss.
-```
-499 ASH × 1.20 = 598 ASH  (burning $4.99 with Holy Fire)
-```
+**Holy Fire VIP bonus:** +20% extra ASH on every burn.
 
 ASH is **not** currently tradeable on-chain — it is an in-app reward and utility token.
 
 ---
 
-## 6. ASH Boost — 1-Hour Weight Bonus
+## 7. ASH Boost — 1-Hour Weight Bonus
 
 The boost is **time-based** — you pay once and all burns within the next hour get the bonus.
 
@@ -203,17 +234,18 @@ When the timer hits zero the boost expires automatically — no action needed.
 
 ---
 
-## 7. ASH Staking — Earning More ASH Passively
+## 8. ASH Staking — Earning More ASH Passively
 
 After earning ASH from burns you can lock it in a staking pool to earn more:
 
-| Pool         | APY  | Lock Period | Min Stake |
-|-------------|------|------------|-----------|
-| EMBER POOL  | 8%   | 7 days     | 100 ASH   |
-| FLAME POOL  | 15%  | 30 days    | 500 ASH   |
-| INFERNO POOL| 30%  | 90 days    | 1,000 ASH |
+| Pool         | APY | Lock Period | Min Stake |
+| ------------ | --- | ----------- | --------- |
+| EMBER POOL   | 8%  | 7 days      | 100 ASH   |
+| FLAME POOL   | 15% | 30 days     | 500 ASH   |
+| INFERNO POOL | 30% | 90 days     | 1,000 ASH |
 
 **How rewards accrue:**
+
 ```
 dailyRate     = APY ÷ 365
 pendingReward = stakedAmount × dailyRate × elapsedDays
@@ -224,7 +256,7 @@ ends. Rewards are issued from the platform's ASH supply (not from the reward poo
 
 ---
 
-## 8. Referral System — Earning from Others' Burns
+## 9. Referral System — Earning from Others' Burns
 
 When you refer a friend and they burn:
 
@@ -236,6 +268,7 @@ If your friend burns $10, you instantly receive **$1.00 USDC** in your wallet.
 This is deducted from the reward pool.
 
 **Referral weight bonus:** For every 5 active referrals you have:
+
 ```
 referralBonus += 0.20 per 5 referrals
 ```
@@ -244,16 +277,16 @@ So 10 active referrals → +0.40 weight on every burn you do.
 
 ---
 
-## 9. VIP Subscription — Holy Fire
+## 10. VIP Subscription — Holy Fire
 
 There is one subscription plan: **HOLY FIRE** at **$24.99 USDC/month**.
 
-| Benefit | Detail |
-|--------|--------|
-| Weight bonus | +0.50 on every burn |
-| ASH bonus | +20% extra ASH tokens on every loss |
-| Raffle entry | Weekly exclusive raffle |
-| VIP badge | Special marker on profile |
+| Benefit      | Detail                              |
+| ------------ | ----------------------------------- |
+| Weight bonus | +0.50 on every burn                 |
+| ASH bonus    | +20% extra ASH tokens on every burn |
+| Raffle entry | Weekly exclusive raffle             |
+| VIP badge    | Special marker on profile           |
 
 - Paid from your in-app USDC balance at subscription time.
 - Active for 30 days, auto-renews if you have enough balance.
@@ -261,7 +294,7 @@ There is one subscription plan: **HOLY FIRE** at **$24.99 USDC/month**.
 
 ---
 
-## 10. Owner Withdrawals — How Profits Come Out
+## 11. Owner Withdrawals — How Profits Come Out
 
 The profit pool can only be withdrawn via a two-signature process:
 
@@ -281,15 +314,16 @@ Status = EXECUTED, profit pool balance set to 0
 ```
 
 **Safety mechanisms:**
+
 - Same owner cannot initiate and approve — prevents solo theft.
 - Only one pending request at a time.
 - If Transfer 1 succeeds but Transfer 2 fails, status becomes `PARTIAL` and is logged
-  as a critical error requiring manual resolution — Owner 1's payment is never lost.
+  as a critical error requiring manual resolution.
 - Full audit trail: `txHash1`, `txHash2`, `initiatorEmail`, `approverEmail`, timestamps.
 
 ---
 
-## 11. Solvency Check — Is the Platform Solvent?
+## 12. Solvency Check
 
 The admin panel can run a solvency check at any time:
 
@@ -301,13 +335,9 @@ surplus = onChainUSDC - liabilities
 ratio   = onChainUSDC ÷ liabilities  (must be ≥ 1.0 to be solvent)
 ```
 
-If `ratio < 1.0`, the platform owes more than it has. This should never happen under
-normal operation because every deposit is immediately swept to the master wallet and
-pool splits are applied atomically.
-
 ---
 
-## 12. Complete Money Flow Diagram
+## 13. Complete Money Flow Diagram
 
 ```
 USER DEPOSITS $100 USDC on-chain
@@ -315,26 +345,23 @@ USER DEPOSITS $100 USDC on-chain
         ▼
 In-app wallet: $100 USDC
         │
-USER BURNS $10 USDC  (minimum $1.00)
+USER BURNS $10 USDC  (minimum $5.00)
         │
-        ├── $5 → Reward Pool
-        │         ├── pays prizes to winners (with tier fallback)
+        ├── $5 → Reward Pool / Round Prize Pool
+        │         ├── grows until target is reached
         │         └── pays 10% referral commissions
         └── $5 → Profit Pool (owner revenue)
         │
         ▼
-RANDOM DRAW (weight-based probability)
+WEIGHT ACCUMULATED  (leaderboard ranking)
         │
-        ├── WIN  → Prize tier selected (JACKPOT/BIG/MEDIUM/SMALL)
-        │           → Downgraded if pool can't cover
-        │           → User gets $50–$2,500 USDC
+        ├── ALL burners → ASH reward (100 ASH per $1 burned, +20% with Holy Fire)
         │
-        └── LOSE → ASH reward (100 ASH per $1 burned, +20% with Holy Fire)
+        └── ROUND TARGET REACHED → #1 on leaderboard wins the entire prize pool
                         │
                         ▼
-                  ASH can be used for:
-                  ├── BOOST:   pay 1,000 ASH → +0.50 weight for 1 HOUR
-                  └── STAKING: lock ASH → earn 8–30% APY → more ASH
+                  Winner receives $500+ USDC prize
+                  New round starts (owner-initiated)
 
 OWNERS WITHDRAW (requires 2-of-2 signature)
         │
@@ -343,45 +370,44 @@ OWNERS WITHDRAW (requires 2-of-2 signature)
 
 ---
 
-## 13. Default Configuration Reference
+## 14. Default Configuration Reference
 
 All values below are defaults and can be changed by the owner in the admin panel.
 
-| Parameter             | Default    | Meaning                                          |
-|----------------------|------------|--------------------------------------------------|
-| `min_burn_amount`     | **$1.00**  | Smallest allowed burn                            |
-| `base_unit`           | $4.99      | Weight reference unit (Weight = burn ÷ base_unit)|
-| `constant_factor`     | 100        | Controls house edge (higher = harder to win)     |
-| `reward_pool_split`   | 0.50       | % of each burn into reward pool                  |
-| `profit_pool_split`   | 0.50       | % of each burn into profit pool                  |
-| `jackpot_prob`        | 0.01       | 1% chance of JACKPOT among winning rolls         |
-| `jackpot_amount`      | $2,500     | JACKPOT prize                                    |
-| `big_prob`            | 0.05       | 5% cumulative chance of BIG                      |
-| `big_amount`          | $500       | BIG prize                                        |
-| `medium_prob`         | 0.20       | 20% cumulative chance of MEDIUM                  |
-| `medium_amount`       | $200       | MEDIUM prize                                     |
-| `small_amount`        | $50        | SMALL prize (74% of winning rolls)               |
-| `ash_reward_percent`  | 1.0        | 100% of burn value returned as ASH on loss       |
-| `boost_cost_ash`      | 1,000      | ASH required to activate 1-hour boost            |
-| `boost_duration_ms`   | 3,600,000  | Boost duration: 1 hour in milliseconds           |
-| `referral_commission` | 0.10       | 10% of each burn goes to referrer                |
-| `vip_holy_fire_bonus` | 0.50       | Weight bonus for Holy Fire VIP subscribers       |
-| ASH token price       | $0.01      | Used for ASH reward calculation (hardcoded)      |
+| Parameter             | Default   | Meaning                                           |
+| --------------------- | --------- | ------------------------------------------------- |
+| `min_burn_amount`     | **$5.00** | Smallest allowed burn (entry fee)                 |
+| `base_unit`           | $4.99     | Weight reference unit (Weight = burn ÷ base_unit) |
+| `constant_factor`     | 100       | Legacy — unused in round-based system             |
+| `reward_pool_split`   | 0.50      | % of each burn into reward/round pool             |
+| `profit_pool_split`   | 0.50      | % of each burn into profit pool                   |
+| `prize_pool_target`   | $500      | Round ends when pool reaches this amount          |
+| `ash_reward_percent`  | 1.0       | 100% of burn value returned as ASH                |
+| `boost_cost_ash`      | 1,000     | ASH required to activate 1-hour boost             |
+| `boost_duration_ms`   | 3,600,000 | Boost duration: 1 hour in milliseconds            |
+| `referral_commission` | 0.10      | 10% of each burn goes to referrer                 |
+| `vip_holy_fire_bonus` | 0.50      | Weight bonus for Holy Fire VIP subscribers        |
+| ASH token price       | $0.01     | Used for ASH reward calculation (hardcoded)       |
 
 ---
 
-## 14. VPS Migration Note
+## 15. VPS Migration Note
 
-After the April 2026 update, run this on the VPS to apply the DB schema change:
+After the April 2026 update (round-based system), run this on the VPS to apply the DB schema changes:
 
 ```bash
 cd /path/to/ashnance/backend
 npx prisma db push
+npx prisma generate
 ```
 
-This adds the `boostExpiresAt` column to the `wallets` table (needed for the 1-hour boost timer).
+This adds:
+
+- `rounds` table with `RoundStatus` enum
+- `cumulativeWeight` column to `wallets` table
+- `roundId` foreign key column to `burns` table
 
 ---
 
-*Generated from live codebase — burnService.ts, ownerService.ts, stakingService.ts,
-vipService.ts, depositMonitorService.ts*
+_Generated from live codebase — burnService.ts, roundService.ts, ownerService.ts,
+stakingService.ts, vipService.ts, depositMonitorService.ts_

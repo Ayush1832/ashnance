@@ -6,9 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-type Tab = "winners" | "burners" | "referrers" | "ash";
+type Tab = "round" | "winners" | "burners" | "referrers" | "ash";
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: "round",     label: "ROUND LEADERS" },
   { key: "winners",   label: "TOP WINNERS" },
   { key: "burners",   label: "TOP BURNERS" },
   { key: "referrers", label: "REFERRAL KINGS" },
@@ -16,6 +17,7 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 const ENDPOINTS: Record<Tab, string> = {
+  round:     "/api/round/leaderboard",
   winners:   "/api/leaderboard/winners",
   burners:   "/api/leaderboard/burners",
   referrers: "/api/leaderboard/referrers",
@@ -23,6 +25,18 @@ const ENDPOINTS: Record<Tab, string> = {
 };
 
 const MOCK: Record<Tab, { name: string; value: string }[]> = {
+  round: [
+    { name: "FireStorm",   value: "42.50 WEIGHT" },
+    { name: "BlazeMaster", value: "38.20 WEIGHT" },
+    { name: "CryptoKing",  value: "31.00 WEIGHT" },
+    { name: "AshLord",     value: "28.40 WEIGHT" },
+    { name: "MoonBurn",    value: "24.10 WEIGHT" },
+    { name: "PhoenixRise", value: "19.80 WEIGHT" },
+    { name: "BurnQueen",   value: "17.50 WEIGHT" },
+    { name: "SolanaFire",  value: "15.20 WEIGHT" },
+    { name: "EmberKnight", value: "12.00 WEIGHT" },
+    { name: "AshTrader",   value: "8.40 WEIGHT" },
+  ],
   winners: [
     { name: "CryptoKing",  value: "$12,500" },
     { name: "BlazeMaster", value: "$8,200"  },
@@ -91,7 +105,7 @@ export default function LeaderboardPage() {
   const pathname = usePathname();
   const router   = useRouter();
 
-  const [activeTab, setActiveTab] = useState<Tab>("winners");
+  const [activeTab, setActiveTab] = useState<Tab>("round");
   const [data, setData]           = useState<Entry[]>([]);
   const [loading, setLoading]     = useState(true);
 
@@ -104,6 +118,20 @@ export default function LeaderboardPage() {
     fetch(`${API}${ENDPOINTS[activeTab]}`, { headers })
       .then((r) => r.json())
       .then((json) => {
+        // Round leaderboard returns { data: { leaderboard: [...], round: {...} } }
+        if (activeTab === "round") {
+          const leaderboard = json?.data?.leaderboard ?? json?.leaderboard ?? json?.data ?? [];
+          if (Array.isArray(leaderboard) && leaderboard.length > 0) {
+            setData(leaderboard.map((e: Record<string, string | number>) => ({
+              name:  String(e.username ?? e.name ?? "???"),
+              value: `${Number(e.cumulativeWeight ?? e.weight ?? 0).toFixed(2)} WEIGHT`,
+            })));
+          } else {
+            setData(MOCK[activeTab]);
+          }
+          return;
+        }
+        // Standard leaderboard format
         if (Array.isArray(json) && json.length > 0) {
           setData(json.map((e: Record<string, string | number>) => ({
             name:  String(e.username ?? e.name ?? "???"),

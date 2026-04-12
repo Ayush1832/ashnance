@@ -244,6 +244,13 @@ class ApiClient {
       this.request<unknown>(`/staking/unstake/${positionId}`, { method: "POST" }),
   };
 
+  // ---- ROUND ----
+  round = {
+    current: () => this.request<unknown>("/round/current"),
+    leaderboard: () => this.request<unknown>("/round/leaderboard"),
+    history: () => this.request<unknown>("/round/history"),
+  };
+
   // ---- OWNER ----
   owner = {
     me: () => this.request<unknown>("/owner/me"),
@@ -260,6 +267,13 @@ class ApiClient {
     saveBurnConfig: (config: Record<string, number>) =>
       this.request<unknown>("/owner/burn-config", { method: "PUT", body: JSON.stringify(config) }),
     solvency: () => this.request<unknown>("/owner/solvency"),
+    rounds: () => this.request<unknown>("/owner/rounds"),
+    createRound: (prizePoolTarget?: number) =>
+      this.request<unknown>("/owner/round", { method: "POST", body: JSON.stringify({ prizePoolTarget }) }),
+    endRound: (id: string) =>
+      this.request<unknown>(`/owner/round/${id}/end`, { method: "POST" }),
+    cancelRound: (id: string) =>
+      this.request<unknown>(`/owner/round/${id}/cancel`, { method: "POST" }),
   };
 
   // ---- HEALTH ----

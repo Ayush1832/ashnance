@@ -7,10 +7,6 @@ import { BlockchainService } from "./blockchainService";
 export const ASH_TOKEN_PRICE_USD = 0.01;
 
 const BURN_CONFIG_KEYS = [
-  "jackpot_prob", "jackpot_amount",
-  "big_prob", "big_amount",
-  "medium_prob", "medium_amount",
-  "small_amount",
   "ash_reward_percent",
   "constant_factor",
   "reward_pool_split", "profit_pool_split",
@@ -20,26 +16,21 @@ const BURN_CONFIG_KEYS = [
   "boost_cost_ash",
   "boost_duration_ms",
   "vip_holy_fire_bonus",
+  "prize_pool_target",  // USDC amount the round pool must reach to end the round
 ];
 
 const BURN_CONFIG_DEFAULTS: Record<string, number> = {
-  jackpot_prob: 0.01,
-  jackpot_amount: 2500,
-  big_prob: 0.05,
-  big_amount: 500,
-  medium_prob: 0.20,
-  medium_amount: 200,
-  small_amount: 50,
   ash_reward_percent: 1.0,
   constant_factor: 100,
   reward_pool_split: 0.5,
   profit_pool_split: 0.5,
   referral_commission: 0.1,
-  min_burn_amount: 1.0,
-  base_unit: 4.99,
+  min_burn_amount: 5.0,   // Entry = $5 per round-based spec
+  base_unit: 4.99,        // Weight reference unit — never changes
   boost_cost_ash: 1000,
   boost_duration_ms: 3600000, // 1 hour
   vip_holy_fire_bonus: 0.50,
+  prize_pool_target: 500, // default: round ends when reward pool reaches $500
 };
 
 export class OwnerService {
