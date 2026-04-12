@@ -13,13 +13,13 @@ interface Profile {
   isVip: boolean;
   referralCode: string;
   totalBurns: number;
-  totalWon: number;
   ashBalance: number;
 }
 
 interface WalletData {
   usdcBalance: number;
   ashBalance: number;
+  cumulativeWeight: number;
   depositAddress: string;
 }
 
@@ -126,8 +126,8 @@ export default function DashboardPage() {
 
   const usdcBalance = Number(wallet?.usdcBalance ?? 0);
   const ashBalance  = Number(wallet?.ashBalance  ?? profile?.ashBalance ?? 0);
-  const totalBurns  = Number(profile?.totalBurns ?? 0);
-  const totalWon    = Number(profile?.totalWon   ?? 0);
+  const totalBurns       = Number(profile?.totalBurns ?? 0);
+  const cumulativeWeight = Number(wallet?.cumulativeWeight ?? 0);
   const username    = profile?.username   ?? "BURNER";
   const isVip       = profile?.isVip      ?? false;
 
@@ -267,9 +267,9 @@ export default function DashboardPage() {
             <div className="stat-sub">LIFETIME BURNS</div>
           </div>
           <div className="stat-card clip-card">
-            <div className="stat-label">TOTAL WON</div>
-            <div className="stat-value gold">${totalWon.toFixed(2)}</div>
-            <div className="stat-sub">LIFETIME WINNINGS</div>
+            <div className="stat-label">CURRENT WEIGHT</div>
+            <div className="stat-value gold">{cumulativeWeight.toFixed(2)}</div>
+            <div className="stat-sub">LEADERBOARD RANK</div>
           </div>
         </div>
       )}

@@ -34,6 +34,10 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
       socket.join("leaderboard");
     });
 
+    socket.on("join:round", () => {
+      socket.join("round");
+    });
+
     socket.on("disconnect", () => {
       console.log(`[WS] Client disconnected: ${socket.id}`);
     });
@@ -53,34 +57,62 @@ export function getIO(): SocketServer {
 
 // ---- Event broadcasters ----
 
+/**
+ * Broadcast a burn event to the live ticker and update leaderboard.
+ * Round-based system: every burn earns ASH, no per-burn win.
+ */
 export function broadcastBurnEvent(data: {
   username: string;
   amount: number;
-  isWinner: boolean;
-  prize?: number;
-  prizeTier?: string;
+  ashReward: number;
+  finalWeight: number;
+  roundCurrentPool: number;
+  roundTargetPool: number;
+  roundProgressPercent: number;
 }) {
   if (!io) return;
 
-  // Broadcast to live ticker
   io.to("ticker").emit("burn:new", {
-    user: data.username,
-    amount: data.amount,
-    result: data.isWinner ? "win" : "burn",
+    user:      data.username,
+    amount:    data.amount,
+    ashReward: data.ashReward,
+    weight:    data.finalWeight,
     timestamp: new Date().toISOString(),
   });
 
-  if (data.isWinner) {
-    io.to("ticker").emit("win:new", {
-      user: data.username,
-      prize: data.prize,
-      tier: data.prizeTier,
-      timestamp: new Date().toISOString(),
-    });
+  // Push updated round progress to anyone watching the round room
+  io.to("round").emit("round:progress", {
+    currentPool:     data.roundCurrentPool,
+    targetPool:      data.roundTargetPool,
+    progressPercent: data.roundProgressPercent,
+    timestamp:       new Date().toISOString(),
+  });
 
-    // Update leaderboard
-    io.to("leaderboard").emit("leaderboard:update");
-  }
+  // Trigger leaderboard refresh
+  io.to("leaderboard").emit("leaderboard:update");
+}
+
+/**
+ * Broadcast a round-end event when a round concludes and a winner is paid.
+ */
+export function broadcastRoundEndEvent(data: {
+  roundNumber: number;
+  winnerUsername: string;
+  prizeAmount: number;
+}) {
+  if (!io) return;
+
+  const payload = {
+    roundNumber:     data.roundNumber,
+    winner:          data.winnerUsername,
+    prize:           data.prizeAmount,
+    timestamp:       new Date().toISOString(),
+  };
+
+  // Announce to everyone
+  io.to("ticker").emit("round:ended", payload);
+  io.to("round").emit("round:ended", payload);
+  io.to("leaderboard").emit("round:ended", payload);
 }
 
 export function broadcastDepositEvent(userId: string, amount: number) {

@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import styles from "./owner.module.css";
 
-type Section = "pool" | "burn" | "stats" | "solvency";
+type Section = "pool" | "burn" | "rounds" | "stats" | "solvency";
 
 const NAV: { key: Section; icon: string; label: string }[] = [
   { key: "pool",     icon: "💰", label: "PROFIT POOL"  },
   { key: "burn",     icon: "🔥", label: "BURN CONFIG"  },
+  { key: "rounds",   icon: "🏆", label: "ROUNDS"       },
   { key: "stats",    icon: "📊", label: "STATS"        },
   { key: "solvency", icon: "🏦", label: "SOLVENCY"     },
 ];
@@ -36,22 +37,13 @@ interface WithdrawalRequest {
 }
 
 interface BurnConfig {
-  jackpot_prob: number;
-  jackpot_amount: number;
-  big_prob: number;
-  big_amount: number;
-  medium_prob: number;
-  medium_amount: number;
-  small_amount: number;
   ash_reward_percent: number;
-  constant_factor: number;
   reward_pool_split: number;
   profit_pool_split: number;
   referral_commission: number;
   min_burn_amount: number;
   boost_cost_ash: number;
-  vip_spark_bonus: number;
-  vip_active_ash_bonus: number;
+  prize_pool_target: number;
   vip_holy_fire_bonus: number;
 }
 
@@ -80,95 +72,51 @@ interface Solvency {
   solvent: boolean;
 }
 
+interface Round {
+  id: string;
+  roundNumber: number;
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  prizePoolTarget: number;
+  currentPool: number;
+  winnerId: string | null;
+  winner?: { username: string } | null;
+  prizeAmount: number | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+
 const DEFAULT_CONFIG: BurnConfig = {
-  jackpot_prob: 0.01, jackpot_amount: 2500,
-  big_prob: 0.05,     big_amount: 500,
-  medium_prob: 0.20,  medium_amount: 200,
-  small_amount: 50,
   ash_reward_percent: 1.0,
-  constant_factor: 100,
-  reward_pool_split: 0.5, profit_pool_split: 0.5,
+  reward_pool_split: 0.5,
+  profit_pool_split: 0.5,
   referral_commission: 0.1,
-  min_burn_amount: 4.99,
+  min_burn_amount: 5.0,
   boost_cost_ash: 1000,
-  vip_spark_bonus: 0.10,
-  vip_active_ash_bonus: 0.25,
+  prize_pool_target: 500,
   vip_holy_fire_bonus: 0.50,
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function calcEV(cfg: BurnConfig): { winProb: number; evUsdc: number; evAsh: number } {
-  const weight = 1.0; // base weight for $4.99 burn
-  const winProb = weight / (weight + cfg.constant_factor);
-
-  const prizeRollExpected =
-    cfg.jackpot_prob * cfg.jackpot_amount +
-    (cfg.big_prob - cfg.jackpot_prob) * cfg.big_amount +
-    (cfg.medium_prob - cfg.big_prob) * cfg.medium_amount +
-    (1 - cfg.medium_prob) * cfg.small_amount;
-
-  const evUsdc = winProb * prizeRollExpected - 4.99;
-  // ASH on loss: ash_reward_percent of burn value at $0.01/ASH
-  const ashOnLose = (4.99 * cfg.ash_reward_percent) / 0.01;
-  const evAsh = (1 - winProb) * ashOnLose;
-
-  return { winProb: winProb * 100, evUsdc, evAsh };
-}
-
 function fmt2(n: number) { return n.toFixed(2); }
 function fmtPct(n: number) { return (n * 100).toFixed(1) + "%"; }
 
 interface SimResult {
   burnAmount: number;
   weight: number;
-  winChance: number;
-  loseChance: number;
+  ashReward: number;
   rewardPoolShare: number;
   profitPoolShare: number;
-  // on win
-  jackpotChance: number; jackpotPrize: number;
-  bigChance: number;     bigPrize: number;
-  mediumChance: number;  mediumPrize: number;
-  smallChance: number;   smallPrize: number;
-  // on lose
-  ashOnLose: number; // exact ASH tokens awarded
-  // expected
-  evUsdc: number; evAsh: number;
+  poolContributionPct: number;
 }
 
 function simulate(cfg: BurnConfig, burnAmount: number, vipBonus: number, boostBonus: number): SimResult {
-  const weight = (burnAmount / cfg.min_burn_amount) + vipBonus + boostBonus;
-  const winChance = weight / (weight + cfg.constant_factor);
-  const loseChance = 1 - winChance;
-
+  const baseUnit = 4.99;
+  const weight = (burnAmount / baseUnit) + vipBonus + boostBonus;
+  const ashReward = Math.floor((burnAmount * cfg.ash_reward_percent) / 0.01);
   const rewardPoolShare = burnAmount * cfg.reward_pool_split;
   const profitPoolShare = burnAmount * cfg.profit_pool_split;
-
-  const jackpotChance = winChance * cfg.jackpot_prob;
-  const bigChance     = winChance * (cfg.big_prob - cfg.jackpot_prob);
-  const mediumChance  = winChance * (cfg.medium_prob - cfg.big_prob);
-  const smallChance   = winChance * (1 - cfg.medium_prob);
-
-  const evUsdc =
-    jackpotChance * cfg.jackpot_amount +
-    bigChance     * cfg.big_amount +
-    mediumChance  * cfg.medium_amount +
-    smallChance   * cfg.small_amount -
-    burnAmount;
-
-  const ashOnLose = Math.floor((burnAmount * cfg.ash_reward_percent) / 0.01);
-  const evAsh = loseChance * ashOnLose;
-
-  return {
-    burnAmount, weight, winChance, loseChance,
-    rewardPoolShare, profitPoolShare,
-    jackpotChance, jackpotPrize: cfg.jackpot_amount,
-    bigChance,     bigPrize:     cfg.big_amount,
-    mediumChance,  mediumPrize:  cfg.medium_amount,
-    smallChance,   smallPrize:   cfg.small_amount,
-    ashOnLose,
-    evUsdc, evAsh,
-  };
+  const poolContributionPct = (rewardPoolShare / cfg.prize_pool_target) * 100;
+  return { burnAmount, weight, ashReward, rewardPoolShare, profitPoolShare, poolContributionPct };
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────
@@ -194,14 +142,22 @@ export default function OwnerPage() {
   const [saveMsg,   setSaveMsg]   = useState<string | null>(null);
 
   // Simulator state
-  const [simAmount, setSimAmount] = useState("4.99");
-  const [simVip,    setSimVip]    = useState<"none"|"SPARK"|"ACTIVE_ASH"|"HOLY_FIRE">("none");
+  const [simAmount, setSimAmount] = useState("5");
+  const [simVip,    setSimVip]    = useState<"none" | "HOLY_FIRE">("none");
   const [simBoost,  setSimBoost]  = useState(false);
 
   // Stats state
   const [stats,     setStats]     = useState<Stats | null>(null);
   const [solvency,  setSolvency]  = useState<Solvency | null>(null);
   const [solvLoading, setSolvLoading] = useState(false);
+
+  // Rounds state
+  const [activeRound,   setActiveRound]   = useState<Round | null>(null);
+  const [roundHistory,  setRoundHistory]  = useState<Round[]>([]);
+  const [roundsLoading, setRoundsLoading] = useState(false);
+  const [roundAction,   setRoundAction]   = useState<string | null>(null);
+  const [roundError,    setRoundError]    = useState<string | null>(null);
+  const [newTarget,     setNewTarget]     = useState("500");
 
   // ── Auth check ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -262,6 +218,22 @@ export default function OwnerPage() {
     }
   }, []);
 
+  // ── Load rounds ─────────────────────────────────────────────────────────
+  const loadRounds = useCallback(async () => {
+    setRoundsLoading(true);
+    setRoundError(null);
+    try {
+      const res = (await api.owner.rounds()) as any;
+      const data = res.data ?? res;
+      setActiveRound(data.activeRound ?? null);
+      setRoundHistory(data.rounds ?? data.history ?? []);
+    } catch (e: any) {
+      setRoundError(e.message ?? "Failed to load rounds");
+    } finally {
+      setRoundsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!ready || denied) return;
     loadPool();
@@ -269,6 +241,11 @@ export default function OwnerPage() {
     loadStats();
     loadSolvency();
   }, [ready, denied, loadPool, loadBurnConfig, loadStats, loadSolvency]);
+
+  useEffect(() => {
+    if (!ready || denied || section !== "rounds") return;
+    loadRounds();
+  }, [ready, denied, section, loadRounds]);
 
   // ── Actions ────────────────────────────────────────────────────────────
   async function initiateWithdrawal() {
@@ -322,6 +299,43 @@ export default function OwnerPage() {
     setCfg((prev) => ({ ...prev, [key]: val }));
   }
 
+  async function handleCreateRound() {
+    const target = parseFloat(newTarget);
+    if (isNaN(target) || target < 1) return;
+    setRoundAction("Creating...");
+    setRoundError(null);
+    try {
+      await api.owner.createRound(target);
+      await loadRounds();
+    } catch (e: any) {
+      setRoundError(e.message ?? "Failed to create round");
+    } finally { setRoundAction(null); }
+  }
+
+  async function handleEndRound() {
+    if (!activeRound) return;
+    setRoundAction("Ending...");
+    setRoundError(null);
+    try {
+      await api.owner.endRound(activeRound.id);
+      await loadRounds();
+    } catch (e: any) {
+      setRoundError(e.message ?? "Failed to end round");
+    } finally { setRoundAction(null); }
+  }
+
+  async function handleCancelRound() {
+    if (!activeRound) return;
+    setRoundAction("Cancelling...");
+    setRoundError(null);
+    try {
+      await api.owner.cancelRound(activeRound.id);
+      await loadRounds();
+    } catch (e: any) {
+      setRoundError(e.message ?? "Failed to cancel round");
+    } finally { setRoundAction(null); }
+  }
+
   function handleLogout() {
     api.clearToken();
     router.replace("/owner-login");
@@ -352,7 +366,6 @@ export default function OwnerPage() {
     );
   }
 
-  const ev = calcEV(cfg);
   const balance = Number(pool?.balance ?? 0);
   const o1Amt = balance * 0.6;
   const o2Amt = balance * 0.4;
@@ -521,60 +534,14 @@ export default function OwnerPage() {
               <div style={{ color: "#444", fontSize: "10px", letterSpacing: "2px" }}>LOADING...</div>
             ) : (
               <>
-                {/* PRIZE SECTION */}
-                <div className={styles.panel}>
-                  <div className={styles.panelTitle}>💎 PRIZES</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                    {[
-                      { key: "jackpot_amount", label: "💎 Jackpot Prize", unit: "USDC", hint: "Amount winner receives for jackpot" },
-                      { key: "jackpot_prob",   label: "💎 Jackpot Chance", unit: "%",   hint: "e.g. 1 = 1% chance", multiplier: 100, decimals: 2 },
-                      { key: "big_amount",     label: "🔥 Big Prize",      unit: "USDC", hint: "Amount for big prize" },
-                      { key: "big_prob",       label: "🔥 Big Chance",     unit: "%",   hint: "Cumulative e.g. 5 = 5%", multiplier: 100, decimals: 2 },
-                      { key: "medium_amount",  label: "✨ Medium Prize",   unit: "USDC", hint: "Amount for medium prize" },
-                      { key: "medium_prob",    label: "✨ Medium Chance",  unit: "%",   hint: "Cumulative e.g. 20 = 20%", multiplier: 100, decimals: 1 },
-                      { key: "small_amount",   label: "⚡ Small Prize",    unit: "USDC", hint: "Amount for small prize" },
-                    ].map(({ key, label, unit, hint, multiplier = 1, decimals = 0 }) => {
-                      const raw = cfg[key as keyof BurnConfig];
-                      const display = raw * multiplier;
-                      return (
-                        <div key={key}>
-                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
-                            {label}
-                            <span style={{ color: "#333", marginLeft: "8px" }}>{hint}</span>
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                            <input
-                              type="number"
-                              step={decimals > 0 ? 0.01 : 1}
-                              min={0}
-                              value={parseFloat(display.toFixed(decimals))}
-                              onChange={(e) => {
-                                const v = parseFloat(e.target.value) / multiplier;
-                                if (!isNaN(v)) updateCfg(key as keyof BurnConfig, v);
-                              }}
-                              style={{
-                                flex: 1, background: "#0a0a0a",
-                                border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
-                                color: "#fff", padding: "10px 12px",
-                                fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
-                              }}
-                            />
-                            <span style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", minWidth: "32px" }}>{unit}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* ASH REWARDS */}
                 <div className={styles.panel}>
-                  <div className={styles.panelTitle}>🪙 ASH REWARDS (given when user loses)</div>
+                  <div className={styles.panelTitle}>🪙 ASH REWARDS (earned on every burn)</div>
                   <div>
                     <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
                       ASH Reward % of Burn Value
                       <span style={{ color: "#333", marginLeft: "8px" }}>
-                        1.0 = 100% — burn $1 → lose → 100 ASH ($1 at $0.01/ASH)
+                        1.0 = 100% — burn $1 → earn 100 ASH ($1 at $0.01/ASH)
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -600,23 +567,6 @@ export default function OwnerPage() {
                 <div className={styles.panel}>
                   <div className={styles.panelTitle}>⚖️ GAME BALANCE</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                    <div>
-                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
-                        Win Difficulty (Constant Factor)
-                        <span style={{ color: "#333", marginLeft: "8px" }}>Higher = harder to win. Default 100</span>
-                      </div>
-                      <input
-                        type="number" step={5} min={1}
-                        value={cfg.constant_factor}
-                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg("constant_factor", v); }}
-                        style={{
-                          width: "100%", boxSizing: "border-box", background: "#0a0a0a",
-                          border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px",
-                          color: "#fff", padding: "10px 12px",
-                          fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px",
-                        }}
-                      />
-                    </div>
                     <div>
                       <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
                         Reward Pool % (from each burn)
@@ -672,15 +622,15 @@ export default function OwnerPage() {
                 {/* BURN RULES */}
                 <div className={styles.panel}>
                   <div className={styles.panelTitle}>🔧 BURN RULES</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "20px" }}>
                     <div>
                       <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
                         Min Burn Amount (USDC)
-                        <span style={{ color: "#333", marginLeft: "8px" }}>Smallest allowed burn</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Smallest allowed burn (entry fee)</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <input
-                          type="number" step={0.01} min={0.01}
+                          type="number" step={0.01} min={1}
                           value={cfg.min_burn_amount}
                           onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) updateCfg("min_burn_amount", v); }}
                           style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
@@ -691,7 +641,7 @@ export default function OwnerPage() {
                     <div>
                       <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
                         ASH Boost Cost
-                        <span style={{ color: "#333", marginLeft: "8px" }}>ASH tokens burned to activate boost</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>ASH burned to activate 1-hour boost</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <input
@@ -703,60 +653,49 @@ export default function OwnerPage() {
                         <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>ASH</span>
                       </div>
                     </div>
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Default Prize Pool Target
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Round ends when pool hits this amount</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={50} min={10}
+                          value={cfg.prize_pool_target}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) updateCfg("prize_pool_target", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>USDC</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* VIP BONUSES */}
                 <div className={styles.panel}>
-                  <div className={styles.panelTitle}>👑 VIP WEIGHT BONUSES</div>
+                  <div className={styles.panelTitle}>👑 VIP WEIGHT BONUS</div>
                   <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "16px" }}>
-                    Added to base weight — higher weight = better win chance
+                    Added to base weight on every burn — higher weight = better leaderboard rank
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
-                    {([
-                      { key: "vip_spark_bonus",      label: "⚡ SPARK",       color: "#aaa" },
-                      { key: "vip_active_ash_bonus",  label: "🔥 ACTIVE ASH",  color: "#FF4D00" },
-                      { key: "vip_holy_fire_bonus",   label: "💎 HOLY FIRE",   color: "#FFB800" },
-                    ] as { key: keyof BurnConfig; label: string; color: string }[]).map(({ key, label, color }) => (
-                      <div key={key}>
-                        <div style={{ fontSize: "9px", color, letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                          <input
-                            type="number" step={0.05} min={0} max={2}
-                            value={cfg[key]}
-                            onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg(key, v); }}
-                            style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
-                          />
-                          <span style={{ fontSize: "10px", color: "#555" }}>+{(cfg[key] as number * 100).toFixed(0)}%</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* EV Preview */}
-                <div className={styles.evCalc}>
-                  <div className={styles.evTitle}>LIVE PREVIEW — for a $4.99 burn at default weight (1.0x)</div>
-                  <div className={styles.evGrid}>
-                    <div className={styles.evItem}>
-                      <div className={styles.evLabel}>WIN PROBABILITY</div>
-                      <div className={styles.evVal}>{ev.winProb.toFixed(3)}%</div>
+                  <div style={{ maxWidth: "240px" }}>
+                    <div style={{ fontSize: "9px", color: "#FFB800", letterSpacing: "1px", marginBottom: "6px" }}>💎 HOLY FIRE</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <input
+                        type="number" step={0.05} min={0} max={2}
+                        value={cfg.vip_holy_fire_bonus}
+                        onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v)) updateCfg("vip_holy_fire_bonus", v); }}
+                        style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                      />
+                      <span style={{ fontSize: "10px", color: "#555" }}>+{(cfg.vip_holy_fire_bonus * 100).toFixed(0)}% weight</span>
                     </div>
-                    <div className={styles.evItem}>
-                      <div className={styles.evLabel}>EXPECTED USDC VALUE</div>
-                      <div className={styles.evVal} style={{ color: ev.evUsdc >= 0 ? "#27AE60" : "#ff6b6b" }}>
-                        ${fmt2(ev.evUsdc)}
-                      </div>
-                    </div>
-                    <div className={styles.evItem}>
-                      <div className={styles.evLabel}>EXPECTED ASH (on loss)</div>
-                      <div className={styles.evVal}>{ev.evAsh.toFixed(0)}</div>
+                    <div style={{ fontSize: "8px", color: "#444", marginTop: "4px", letterSpacing: "1px" }}>
+                      Also grants +20% ASH on every burn (hardcoded)
                     </div>
                   </div>
                 </div>
 
                 {/* Save */}
-                <div style={{ marginTop: "24px", display: "flex", alignItems: "center" }}>
+                <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "16px" }}>
                   <button
                     className={styles.btnFire}
                     onClick={saveBurnConfig}
@@ -773,18 +712,18 @@ export default function OwnerPage() {
 
                 {/* ── BURN SIMULATOR ── */}
                 {(() => {
-                  const vipBonusMap = { none: 0, SPARK: cfg.vip_spark_bonus, ACTIVE_ASH: cfg.vip_active_ash_bonus, HOLY_FIRE: cfg.vip_holy_fire_bonus };
+                  const vipBonusVal = simVip === "HOLY_FIRE" ? cfg.vip_holy_fire_bonus : 0;
                   const boostBonusVal = simBoost ? 0.50 : 0;
                   const burnAmt = parseFloat(simAmount) || 0;
                   const sim = burnAmt >= cfg.min_burn_amount
-                    ? simulate(cfg, burnAmt, vipBonusMap[simVip], boostBonusVal)
+                    ? simulate(cfg, burnAmt, vipBonusVal, boostBonusVal)
                     : null;
 
                   return (
                     <div className={styles.panel} style={{ marginTop: "32px", borderColor: "rgba(255,184,0,0.25)" }}>
                       <div className={styles.panelTitle} style={{ color: "#FFB800" }}>🎲 BURN SIMULATOR</div>
                       <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "20px" }}>
-                        TEST ANY BURN AMOUNT WITH THE CURRENT CONFIG TO SEE EXACT PROBABILITIES AND RETURNS
+                        TEST ANY BURN AMOUNT WITH THE CURRENT CONFIG TO SEE EXACT WEIGHT AND RETURNS
                       </div>
 
                       {/* Inputs */}
@@ -792,7 +731,7 @@ export default function OwnerPage() {
                         <div>
                           <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>BURN AMOUNT (USDC)</div>
                           <input
-                            type="number" min="4.99" step="0.01"
+                            type="number" min={cfg.min_burn_amount} step="1"
                             value={simAmount}
                             onChange={(e) => setSimAmount(e.target.value)}
                             style={{
@@ -815,10 +754,8 @@ export default function OwnerPage() {
                               fontFamily: "inherit", fontSize: "12px", letterSpacing: "1px",
                             }}
                           >
-                            <option value="none">None (+0.0x)</option>
-                            <option value="SPARK">Spark (+{cfg.vip_spark_bonus.toFixed(2)}x)</option>
-                            <option value="ACTIVE_ASH">Active Ash (+{cfg.vip_active_ash_bonus.toFixed(2)}x)</option>
-                            <option value="HOLY_FIRE">Holy Fire (+{cfg.vip_holy_fire_bonus.toFixed(2)}x)</option>
+                            <option value="none">None (+0.0 weight)</option>
+                            <option value="HOLY_FIRE">Holy Fire (+{cfg.vip_holy_fire_bonus.toFixed(2)} weight)</option>
                           </select>
                         </div>
                         <div>
@@ -833,87 +770,207 @@ export default function OwnerPage() {
                               fontFamily: "inherit", fontSize: "12px", letterSpacing: "2px", cursor: "pointer",
                             }}
                           >
-                            {simBoost ? "ON (+0.50x)" : "OFF"}
+                            {simBoost ? "ON (+0.50 weight)" : "OFF"}
                           </button>
                         </div>
                       </div>
 
-                      {burnAmt < 4.99 && (
+                      {burnAmt < cfg.min_burn_amount && (
                         <div style={{ fontSize: "10px", color: "#555", letterSpacing: "1px" }}>
-                          Enter at least $4.99 to simulate.
+                          Enter at least ${cfg.min_burn_amount.toFixed(2)} to simulate.
                         </div>
                       )}
 
                       {sim && (
                         <>
-                          {/* Weight & Win/Lose */}
+                          {/* Weight & outcomes */}
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
                             {[
-                              { label: "WEIGHT",          value: sim.weight.toFixed(2) + "x",                      color: "#FF4D00" },
-                              { label: "WIN CHANCE",      value: (sim.winChance * 100).toFixed(3) + "%",           color: "#27AE60" },
-                              { label: "LOSE CHANCE",     value: (sim.loseChance * 100).toFixed(3) + "%",          color: "#ff6b6b" },
-                              { label: "EXPECTED RETURN", value: (sim.evUsdc >= 0 ? "+" : "") + "$" + fmt2(sim.evUsdc), color: sim.evUsdc >= 0 ? "#27AE60" : "#ff6b6b" },
+                              { label: "WEIGHT EARNED",     value: sim.weight.toFixed(2) + "x",                 color: "#FF4D00" },
+                              { label: "ASH REWARD",        value: sim.ashReward.toLocaleString() + " ASH",     color: "#FFB800" },
+                              { label: "→ REWARD POOL",     value: "$" + fmt2(sim.rewardPoolShare),             color: "#27AE60" },
+                              { label: "→ PROFIT POOL",     value: "$" + fmt2(sim.profitPoolShare),             color: "#aaa" },
                             ].map(({ label, value, color }) => (
                               <div key={label} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
                                 <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
-                                <div style={{ fontSize: "20px", color }}>{value}</div>
+                                <div style={{ fontSize: "18px", color }}>{value}</div>
                               </div>
                             ))}
                           </div>
 
-                          {/* Pool split */}
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" }}>
-                            <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
-                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>GOES TO REWARD POOL</div>
-                              <div style={{ fontSize: "18px", color: "#27AE60" }}>${fmt2(sim.rewardPoolShare)} USDC</div>
-                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>{fmtPct(cfg.reward_pool_split)} of burn</div>
+                          {/* Pool contribution */}
+                          <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
+                            <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "8px" }}>
+                              ROUND POOL CONTRIBUTION — at ${fmt2(cfg.prize_pool_target)} target
                             </div>
-                            <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
-                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>GOES TO PROFIT POOL</div>
-                              <div style={{ fontSize: "18px", color: "#FFB800" }}>${fmt2(sim.profitPoolShare)} USDC</div>
-                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>{fmtPct(cfg.profit_pool_split)} of burn</div>
+                            <div style={{ height: "6px", background: "rgba(255,255,255,0.05)", borderRadius: "3px", marginBottom: "6px" }}>
+                              <div style={{ height: "100%", width: `${Math.min(100, sim.poolContributionPct)}%`, background: "#FF4D00", borderRadius: "3px" }} />
                             </div>
-                          </div>
-
-                          {/* Prize breakdown */}
-                          <div style={{ marginBottom: "8px", fontSize: "9px", color: "#555", letterSpacing: "2px" }}>IF WIN — PRIZE BREAKDOWN</div>
-                          <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", overflow: "hidden", marginBottom: "20px" }}>
-                            {[
-                              { emoji: "💎", label: "JACKPOT",  chance: sim.jackpotChance, prize: sim.jackpotPrize },
-                              { emoji: "🔥", label: "BIG",      chance: sim.bigChance,     prize: sim.bigPrize },
-                              { emoji: "✨", label: "MEDIUM",   chance: sim.mediumChance,  prize: sim.mediumPrize },
-                              { emoji: "⚡", label: "SMALL",    chance: sim.smallChance,   prize: sim.smallPrize },
-                            ].map(({ emoji, label, chance, prize }, i) => (
-                              <div key={label} style={{
-                                display: "grid", gridTemplateColumns: "40px 80px 1fr 100px 100px",
-                                alignItems: "center", padding: "12px 16px", gap: "12px",
-                                borderBottom: i < 3 ? "1px solid rgba(255,255,255,0.03)" : "none",
-                              }}>
-                                <span style={{ fontSize: "18px" }}>{emoji}</span>
-                                <span style={{ fontSize: "10px", color: "#888", letterSpacing: "2px" }}>{label}</span>
-                                <div style={{ height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px" }}>
-                                  <div style={{ height: "100%", width: `${Math.min(100, chance * 100 * 20)}%`, background: "#FF4D00", borderRadius: "2px" }} />
-                                </div>
-                                <span style={{ fontSize: "10px", color: "#FF4D00", textAlign: "right" }}>{(chance * 100).toFixed(4)}%</span>
-                                <span style={{ fontSize: "12px", color: "#FFB800", textAlign: "right" }}>+${prize} USDC</span>
-                              </div>
-                            ))}
-                          </div>
-
-                          {/* If lose */}
-                          <div style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <div>
-                              <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "4px" }}>IF LOSE — ASH REWARD</div>
-                              <div style={{ fontSize: "16px", color: "#aaa" }}>{sim.ashOnLose.toLocaleString()} ASH</div>
-                              <div style={{ fontSize: "8px", color: "#333", marginTop: "2px" }}>${fmt2(sim.ashOnLose * 0.01)} value at $0.01/ASH</div>
+                            <div style={{ fontSize: "10px", color: "#FF4D00" }}>
+                              {sim.poolContributionPct.toFixed(2)}% of prize pool target per burn
                             </div>
-                            <div style={{ fontSize: "32px" }}>💨</div>
+                            <div style={{ fontSize: "8px", color: "#333", marginTop: "4px" }}>
+                              {fmtPct(cfg.reward_pool_split)} of burn → round pool &nbsp;•&nbsp;
+                              every burn earns ASH regardless of outcome
+                            </div>
                           </div>
                         </>
                       )}
                     </div>
                   );
                 })()}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ════════ ROUNDS ════════ */}
+        {section === "rounds" && (
+          <>
+            <div className={styles.pageTitle}>ROUND MANAGEMENT</div>
+            <div className={styles.pageSub}>CREATE ROUNDS AND PAY OUT WINNERS — WINNER = #1 BY WEIGHT WHEN POOL HITS TARGET</div>
+
+            {roundsLoading ? (
+              <div style={{ color: "#444", fontSize: "10px", letterSpacing: "2px" }}>LOADING...</div>
+            ) : (
+              <>
+                {/* Active Round */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>
+                    {activeRound ? `🟢 ROUND #${activeRound.roundNumber} — ACTIVE` : "⭕ NO ACTIVE ROUND"}
+                  </div>
+
+                  {activeRound ? (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "20px" }}>
+                        {[
+                          { label: "CURRENT POOL",  value: "$" + fmt2(Number(activeRound.currentPool)),      color: "#27AE60" },
+                          { label: "TARGET",         value: "$" + fmt2(Number(activeRound.prizePoolTarget)),  color: "#FFB800" },
+                          { label: "STARTED",        value: new Date(activeRound.startedAt).toLocaleDateString(), color: "#aaa" },
+                        ].map(({ label, value, color }) => (
+                          <div key={label} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
+                            <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
+                            <div style={{ fontSize: "18px", color }}>{value}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ marginBottom: "20px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "6px" }}>
+                          <span>POOL PROGRESS</span>
+                          <span>{((Number(activeRound.currentPool) / Number(activeRound.prizePoolTarget)) * 100).toFixed(1)}%</span>
+                        </div>
+                        <div style={{ height: "8px", background: "rgba(255,255,255,0.05)", borderRadius: "4px" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${Math.min(100, (Number(activeRound.currentPool) / Number(activeRound.prizePoolTarget)) * 100)}%`,
+                            background: "linear-gradient(90deg, #FF4D00, #FFB800)",
+                            borderRadius: "4px",
+                            transition: "width 0.3s ease",
+                          }} />
+                        </div>
+                      </div>
+
+                      {roundError && <div className={styles.errorMsg}>⚠ {roundError.toUpperCase()}</div>}
+
+                      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                        <button
+                          className={styles.btnFire}
+                          onClick={handleEndRound}
+                          disabled={!!roundAction}
+                        >
+                          {roundAction === "Ending..." ? "ENDING..." : "🏆 END ROUND & PAY WINNER"}
+                        </button>
+                        <button
+                          className={styles.btnDanger}
+                          onClick={handleCancelRound}
+                          disabled={!!roundAction}
+                        >
+                          {roundAction === "Cancelling..." ? "CANCELLING..." : "✕ CANCEL (NO PAYOUT)"}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: "8px", color: "#333", marginTop: "10px", letterSpacing: "1px" }}>
+                        END ROUND: pays the full pool to the #1 leaderboard user now. CANCEL: emergency only — no prize paid.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "20px" }}>
+                        No active round. Create one to start accepting pool contributions from burns.
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>PRIZE POOL TARGET (USDC)</div>
+                          <input
+                            type="number" step={50} min={10}
+                            value={newTarget}
+                            onChange={(e) => setNewTarget(e.target.value)}
+                            style={{
+                              background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)",
+                              borderRadius: "4px", color: "#fff", padding: "10px 14px",
+                              fontFamily: "inherit", fontSize: "16px", letterSpacing: "1px", width: "140px",
+                            }}
+                          />
+                        </div>
+                        <button
+                          className={styles.btnFire}
+                          style={{ alignSelf: "flex-end" }}
+                          onClick={handleCreateRound}
+                          disabled={!!roundAction || parseFloat(newTarget) < 1}
+                        >
+                          {roundAction === "Creating..." ? "CREATING..." : "🏆 CREATE ROUND"}
+                        </button>
+                      </div>
+
+                      {roundError && <div className={styles.errorMsg} style={{ marginTop: "12px" }}>⚠ {roundError.toUpperCase()}</div>}
+                    </>
+                  )}
+                </div>
+
+                {/* Round History */}
+                {roundHistory.length > 0 && (
+                  <div className={styles.panel}>
+                    <div className={styles.panelTitle}>ROUND HISTORY</div>
+                    <table className={styles.txTable}>
+                      <thead>
+                        <tr>
+                          <th>ROUND</th>
+                          <th>STATUS</th>
+                          <th>PRIZE TARGET</th>
+                          <th>FINAL POOL</th>
+                          <th>WINNER</th>
+                          <th>PRIZE PAID</th>
+                          <th>ENDED</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roundHistory.map((r) => (
+                          <tr key={r.id}>
+                            <td style={{ color: "#FFB800" }}>#{r.roundNumber}</td>
+                            <td className={
+                              r.status === "COMPLETED"  ? styles.statusExecuted  :
+                              r.status === "ACTIVE"     ? styles.statusPending   :
+                              styles.statusCancelled
+                            }>{r.status}</td>
+                            <td>${fmt2(Number(r.prizePoolTarget))}</td>
+                            <td style={{ color: "#27AE60" }}>${fmt2(Number(r.currentPool))}</td>
+                            <td>{r.winner?.username ?? (r.winnerId ? r.winnerId.slice(0, 8) + "..." : "—")}</td>
+                            <td style={{ color: r.prizeAmount ? "#27AE60" : "#444" }}>
+                              {r.prizeAmount ? "$" + fmt2(Number(r.prizeAmount)) : "—"}
+                            </td>
+                            <td>{r.endedAt ? new Date(r.endedAt).toLocaleDateString() : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {roundHistory.length === 0 && !activeRound && !roundsLoading && (
+                  <div style={{ color: "#333", fontSize: "9px", letterSpacing: "2px", marginTop: "12px" }}>NO ROUND HISTORY YET</div>
+                )}
               </>
             )}
           </>

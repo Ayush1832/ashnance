@@ -18,9 +18,10 @@ export class WalletService {
     if (!wallet) throw new NotFoundError("Wallet not found");
 
     return {
-      usdcBalance: wallet.usdcBalance,
-      ashBalance: wallet.ashBalance,
-      depositAddress: wallet.depositAddress,
+      usdcBalance:      wallet.usdcBalance,
+      ashBalance:       wallet.ashBalance,
+      cumulativeWeight: wallet.cumulativeWeight,
+      depositAddress:   wallet.depositAddress,
     };
   }
 

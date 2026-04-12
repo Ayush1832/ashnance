@@ -51,17 +51,16 @@ export const config = {
 
   // Game constants (defaults — also stored in PlatformConfig DB table)
   game: {
-    minBurnAmount: 1.0,
-    baseUnit: 4.99,   // weight reference unit — never changes
+    minBurnAmount: 5.0,      // entry fee per round-based spec
+    baseUnit: 4.99,          // weight reference unit — never changes
     constantFactor: 100,
-    rewardPoolSplit: 0.5,   // 50% to reward pool
-    profitPoolSplit: 0.5,   // 50% to profit pool
+    rewardPoolSplit: 0.5,    // 50% to reward/round pool
+    profitPoolSplit: 0.5,    // 50% to profit pool
     referralCommission: 0.1, // 10%
-    ashRewardMin: 200,
-    ashRewardMax: 500,
     vipPrice: 24.99,
     boostCostAsh: 1000,
     boostDurationMs: 3600000, // 1 hour
+    prizePoolTarget: 500,     // default round target
   },
 
   // Owner admin panel
@@ -71,8 +70,6 @@ export const config = {
 
   // Weight bonuses
   weight: {
-    sparkBonus: 0.10,
-    activeAshBonus: 0.25,
     holyFireBonus: 0.50,
     referralBonusPer5: 0.20,
     ashBoostBonus: 0.50,
