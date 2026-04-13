@@ -10,9 +10,9 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.ashnance.com"),
-  title: "Ashnance — Burn to Win ASH Token | Keep Burning, Keep Earning",
+  title: "Ashnance — Burn to Compete | Earn ASH & Win Round Prizes",
   description:
-    "Burn USDC to win grand prizes or earn ASH tokens on the Solana blockchain. A gamified crypto platform where every burn is an instant chance to win.",
+    "Burn USDC to accumulate weight, earn ASH tokens, and compete in prize rounds on the Solana blockchain. The #1 ranked player when the pool hits its target wins the entire prize.",
   keywords: ["Ashnance", "Burn to Win", "ASH Token", "Solana", "USDC", "Crypto Gaming", "Web3", "DeFi"],
   authors: [{ name: "Ashnance Team" }],
   icons: {
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Ashnance — Burn to Win ASH Token",
-    description: "Burn USDC for a chance to win up to $2,500 or earn ASH tokens. Built on Solana.",
+    description: "Burn USDC to accumulate weight, earn ASH, and compete in round-based prize pools. #1 on the leaderboard wins. Built on Solana.",
     url: "https://www.ashnance.com",
     siteName: "Ashnance",
     images: [{ url: "/logo-dark.png", width: 2001, height: 2001 }],
@@ -34,7 +34,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Ashnance — Burn to Win ASH Token",
-    description: "Burn USDC for a chance to win up to $2,500 or earn ASH tokens. Built on Solana.",
+    description: "Burn USDC to accumulate weight, earn ASH, and compete in round-based prize pools. #1 on the leaderboard wins. Built on Solana.",
     images: ["/logo-dark.png"],
     creator: "@Ashnance",
   },

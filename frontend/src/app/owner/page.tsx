@@ -225,8 +225,8 @@ export default function OwnerPage() {
     try {
       const res = (await api.owner.rounds()) as any;
       const data = res.data ?? res;
-      setActiveRound(data.activeRound ?? null);
-      setRoundHistory(data.rounds ?? data.history ?? []);
+      setActiveRound(data.active ?? null);
+      setRoundHistory(data.history ?? data.rounds ?? []);
     } catch (e: any) {
       setRoundError(e.message ?? "Failed to load rounds");
     } finally {
