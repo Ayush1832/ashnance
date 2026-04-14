@@ -5,6 +5,8 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import styles from "./dashboard.module.css";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
 // ---- Types ----
 interface Profile {
   username: string;
@@ -33,17 +35,27 @@ interface Transaction {
   prizeAmount?: number;
 }
 
+interface RoundStatus {
+  id: string;
+  roundNumber: number;
+  currentPool: number;
+  prizePoolTarget: number;
+  progressPercent: number;
+  status: string;
+  startedAt: string;
+}
+
 // ---- Static ticker events (doubled for seamless loop) ----
 const TICKER_ITEMS = [
-  { dot: "win",  name: "Burner#2831", action: "won",    amount: "250 USDC",  cls: "win"  },
-  { dot: "burn", name: "Burner#7492", action: "burned",  amount: "10 USDC",   cls: "burn" },
-  { dot: "ash",  name: "Burner#5614", action: "earned", amount: "300 ASH",   cls: "ash"  },
-  { dot: "win",  name: "Burner#1245", action: "won",    amount: "500 USDC",  cls: "win"  },
+  { dot: "burn", name: "Burner#2831", action: "burned",  amount: "25 USDC",   cls: "burn" },
+  { dot: "ash",  name: "Burner#7492", action: "earned",  amount: "2,500 ASH", cls: "ash"  },
+  { dot: "burn", name: "Burner#5614", action: "burned",  amount: "10 USDC",   cls: "burn" },
+  { dot: "win",  name: "FireStorm",   action: "won round #4!", amount: "500 USDC",  cls: "win"  },
   { dot: "burn", name: "Burner#9021", action: "burned",  amount: "50 USDC",   cls: "burn" },
-  { dot: "win",  name: "Burner#3357", action: "won",    amount: "2500 USDC", cls: "win"  },
-  { dot: "ash",  name: "Burner#8803", action: "earned", amount: "450 ASH",   cls: "ash"  },
-  { dot: "burn", name: "Burner#6678", action: "burned",  amount: "100 USDC",  cls: "burn" },
-  { dot: "win",  name: "Burner#4492", action: "won",    amount: "50 USDC",   cls: "win"  },
+  { dot: "ash",  name: "Burner#3357", action: "earned",  amount: "5,000 ASH", cls: "ash"  },
+  { dot: "burn", name: "Burner#8803", action: "burned",  amount: "100 USDC",  cls: "burn" },
+  { dot: "win",  name: "BlazeMaster", action: "won round #5!", amount: "2,500 USDC", cls: "win" },
+  { dot: "ash",  name: "Burner#4492", action: "earned",  amount: "1,000 ASH", cls: "ash"  },
 ];
 const TICKER_DOUBLE = [...TICKER_ITEMS, ...TICKER_ITEMS];
 
@@ -76,6 +88,9 @@ export default function DashboardPage() {
   const [error,          setError]          = useState<string | null>(null);
   const [onchainBalance, setOnchainBalance] = useState<number | null>(null);
   const [walletAddress,  setWalletAddress]  = useState<string | null>(null);
+  const [round,          setRound]          = useState<RoundStatus | null>(null);
+  const [userRoundRank,  setUserRoundRank]  = useState<number | null>(null);
+  const [userRoundWeight, setUserRoundWeight] = useState<number>(0);
 
   const load = useCallback(async () => {
     try {
@@ -85,10 +100,15 @@ export default function DashboardPage() {
       const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
       if (token) api.setToken(token);
 
-      const [profileRes, walletRes, txRes] = await Promise.allSettled([
+      const authHeaders: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+
+      const [profileRes, walletRes, txRes, roundRes] = await Promise.allSettled([
         api.auth.profile(),
         api.wallet.balance(),
         api.wallet.transactions(undefined, 1, 5),
+        fetch(`${API_BASE}/api/round/current`, { headers: authHeaders }).then(r => r.json()),
       ]);
 
       if (profileRes.status === "fulfilled") {
@@ -103,6 +123,13 @@ export default function DashboardPage() {
         const d = txRes.value as { data: { transactions: Transaction[] } };
         const arr = d.data?.transactions ?? (d as unknown as Transaction[]);
         setTxList(Array.isArray(arr) ? arr.slice(0, 5) : []);
+      }
+      if (roundRes.status === "fulfilled") {
+        const rd = (roundRes.value as { data?: { round?: RoundStatus | null; userRank?: number | null; userWeight?: number } }).data ??
+          (roundRes.value as { round?: RoundStatus | null; userRank?: number | null; userWeight?: number });
+        setRound(rd?.round ?? null);
+        setUserRoundRank(rd?.userRank ?? null);
+        setUserRoundWeight(Number(rd?.userWeight ?? 0));
       }
 
       // Load on-chain balance if wallet is connected
@@ -271,6 +298,77 @@ export default function DashboardPage() {
             <div className="stat-value gold">{cumulativeWeight.toFixed(2)}</div>
             <div className="stat-sub">LEADERBOARD RANK</div>
           </div>
+        </div>
+      )}
+
+      {/* ===== ACTIVE ROUND PANEL ===== */}
+      {!loading && (
+        <div className="panel-box" style={{ marginBottom: "16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+            <div className="panel-title" style={{ margin: 0 }}>
+              🏆 ROUND{round ? ` #${round.roundNumber}` : ""} — PRIZE POOL
+            </div>
+            {round && (
+              <span style={{ fontSize: "9px", color: "var(--usdc-green)", letterSpacing: "2px", background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", padding: "3px 8px" }}>
+                ACTIVE
+              </span>
+            )}
+          </div>
+
+          {!round ? (
+            <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px", padding: "8px 0" }}>
+              NO ACTIVE ROUND — WAITING FOR OWNER TO START ONE
+            </div>
+          ) : (
+            <>
+              {/* Pool numbers */}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", letterSpacing: "1px", marginBottom: "8px" }}>
+                <span style={{ color: "var(--text-dim)" }}>
+                  POOL: <span style={{ color: "var(--usdc-green)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
+                    ${Number(round.currentPool).toFixed(2)}
+                  </span>
+                </span>
+                <span style={{ color: "var(--text-dim)" }}>
+                  TARGET: <span style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
+                    ${Number(round.prizePoolTarget).toFixed(2)}
+                  </span>
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              <div style={{ height: "10px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,140,66,0.15)", overflow: "hidden", marginBottom: "10px" }}>
+                <div style={{
+                  height: "100%",
+                  width: `${Math.min(100, (Number(round.currentPool) / Number(round.prizePoolTarget)) * 100)}%`,
+                  background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
+                  boxShadow: "0 0 8px rgba(255,140,66,0.4)",
+                  transition: "width 0.4s ease",
+                }} />
+              </div>
+
+              {/* Bottom row */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>
+                  {((Number(round.currentPool) / Number(round.prizePoolTarget)) * 100).toFixed(1)}% TO PRIZE
+                  &nbsp;•&nbsp; WINNER = #1 WHEN POOL HITS TARGET
+                </div>
+                <div style={{ display: "flex", gap: "12px", fontSize: "10px", letterSpacing: "1px" }}>
+                  {userRoundRank != null ? (
+                    <span style={{ color: userRoundRank === 1 ? "var(--gold)" : "var(--fire-orange)" }}>
+                      YOUR RANK: <strong>#{userRoundRank}</strong>
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-dim)" }}>BURN TO JOIN ROUND</span>
+                  )}
+                  {userRoundWeight > 0 && (
+                    <span style={{ color: "var(--text-dim)" }}>
+                      WEIGHT: <span style={{ color: "var(--fire-orange)" }}>{userRoundWeight.toFixed(2)}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 
