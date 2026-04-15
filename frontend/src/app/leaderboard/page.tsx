@@ -35,7 +35,7 @@ const MOCK: Record<Tab, { name: string; value: string }[]> = {
     { name: "BurnQueen",   value: "17.50 WEIGHT" },
     { name: "SolanaFire",  value: "15.20 WEIGHT" },
     { name: "EmberKnight", value: "12.00 WEIGHT" },
-    { name: "AshTrader",   value: "8.40 WEIGHT" },
+    { name: "AshTrader",   value: "8.40 WEIGHT"  },
   ],
   winners: [
     { name: "CryptoKing",  value: "$12,500" },
@@ -99,15 +99,31 @@ const navItems = [
   { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
 ];
 
-interface Entry { name: string; value: string; }
+interface Entry { name: string; value: string; distanceToFirst?: number; }
+
+interface RoundMeta {
+  roundNumber: number;
+  currentPool: number;
+  prizePoolTarget: number;
+  progressPercent: number;
+  endsAt?: string | null;
+}
+
+interface UserContext {
+  userRank: number | null;
+  userWeight: number;
+  userDistanceToFirst: number | null;
+}
 
 export default function LeaderboardPage() {
   const pathname = usePathname();
   const router   = useRouter();
 
-  const [activeTab, setActiveTab] = useState<Tab>("round");
-  const [data, setData]           = useState<Entry[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [activeTab,    setActiveTab]    = useState<Tab>("round");
+  const [data,         setData]         = useState<Entry[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [roundMeta,    setRoundMeta]    = useState<RoundMeta | null>(null);
+  const [userCtx,      setUserCtx]      = useState<UserContext>({ userRank: null, userWeight: 0, userDistanceToFirst: null });
 
   useEffect(() => {
     setLoading(true);
@@ -118,20 +134,40 @@ export default function LeaderboardPage() {
     fetch(`${API}${ENDPOINTS[activeTab]}`, { headers })
       .then((r) => r.json())
       .then((json) => {
-        // Round leaderboard returns { data: { leaderboard: [...], round: {...} } }
         if (activeTab === "round") {
-          const leaderboard = json?.data?.leaderboard ?? json?.leaderboard ?? json?.data ?? [];
+          // Enhanced round leaderboard: { data: { leaderboard, round, userRank, userWeight, userDistanceToFirst } }
+          const payload = json?.data ?? json;
+          const leaderboard = payload?.leaderboard ?? payload?.data ?? [];
+          const round = payload?.round ?? null;
+
+          if (round) {
+            setRoundMeta({
+              roundNumber:    round.roundNumber,
+              currentPool:    Number(round.currentPool),
+              prizePoolTarget: Number(round.prizePoolTarget),
+              progressPercent: Number(round.progressPercent ?? 0),
+              endsAt:         round.endsAt ?? null,
+            });
+          }
+
+          setUserCtx({
+            userRank:           payload?.userRank ?? null,
+            userWeight:         Number(payload?.userWeight ?? 0),
+            userDistanceToFirst: payload?.userDistanceToFirst ?? null,
+          });
+
           if (Array.isArray(leaderboard) && leaderboard.length > 0) {
             setData(leaderboard.map((e: Record<string, string | number>) => ({
-              name:  String(e.username ?? e.name ?? "???"),
-              value: `${Number(e.cumulativeWeight ?? e.weight ?? 0).toFixed(2)} WEIGHT`,
+              name:           String(e.username ?? e.name ?? "???"),
+              value:          `${Number(e.cumulativeWeight ?? e.weight ?? 0).toFixed(2)} WEIGHT`,
+              distanceToFirst: Number(e.distanceToFirst ?? 0),
             })));
           } else {
             setData(MOCK[activeTab]);
           }
           return;
         }
-        // Standard leaderboard format
+
         if (Array.isArray(json) && json.length > 0) {
           setData(json.map((e: Record<string, string | number>) => ({
             name:  String(e.username ?? e.name ?? "???"),
@@ -146,12 +182,23 @@ export default function LeaderboardPage() {
   }, [activeTab]);
 
   function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+    }
     router.push("/");
   }
 
   const rankClass = (i: number) => i === 0 ? " gold-rank" : i === 1 ? " silver-rank" : i === 2 ? " bronze-rank" : "";
   const badge     = (i: number) => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : null;
+
+  const timeLeft = roundMeta?.endsAt ? (() => {
+    const diff = new Date(roundMeta.endsAt).getTime() - Date.now();
+    if (diff <= 0) return "ENDING SOON";
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    return `${h}h ${m}m LEFT`;
+  })() : null;
 
   return (
     <div className="dash-layout">
@@ -197,7 +244,7 @@ export default function LeaderboardPage() {
         </div>
 
         {/* Tab buttons */}
-        <div style={{ display: "flex", gap: "6px", marginBottom: "24px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "6px", marginBottom: "20px", flexWrap: "wrap" }}>
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -209,6 +256,89 @@ export default function LeaderboardPage() {
             </button>
           ))}
         </div>
+
+        {/* req #10 — Round Progress Bar (central, for round tab) */}
+        {activeTab === "round" && roundMeta && (
+          <div className="panel-box" style={{ marginBottom: "20px", padding: "20px 24px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontSize: "13px", letterSpacing: "2px", color: "var(--fire-orange)" }}>
+                🏆 ROUND #{roundMeta.roundNumber} — PRIZE POOL PROGRESS
+              </div>
+              <div style={{ display: "flex", gap: "16px", alignItems: "center", fontSize: "10px", letterSpacing: "1px" }}>
+                {timeLeft && (
+                  <span style={{ color: "var(--text-dim)", background: "rgba(255,140,66,0.08)", border: "1px solid rgba(255,140,66,0.2)", padding: "3px 8px" }}>
+                    ⏱ {timeLeft}
+                  </span>
+                )}
+                <span style={{ color: "var(--usdc-green)", fontFamily: "var(--font-display)", fontSize: "13px" }}>
+                  ${roundMeta.currentPool.toFixed(2)}
+                </span>
+                <span style={{ color: "var(--text-dim)" }}>/</span>
+                <span style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)", fontSize: "13px" }}>
+                  ${roundMeta.prizePoolTarget.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar — req #10 central and visually clear */}
+            <div style={{ position: "relative", height: "18px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,140,66,0.2)", overflow: "hidden", borderRadius: "2px" }}>
+              <div style={{
+                height: "100%",
+                width: `${Math.min(100, roundMeta.progressPercent)}%`,
+                background: "linear-gradient(90deg, #ff4500, var(--fire-orange), #FFB800)",
+                boxShadow: "0 0 12px rgba(255,140,66,0.5)",
+                transition: "width 0.6s ease",
+              }} />
+              <div style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontFamily: "var(--font-display)",
+                fontSize: "11px",
+                letterSpacing: "2px",
+                color: "#fff",
+                textShadow: "0 1px 4px rgba(0,0,0,0.8)",
+              }}>
+                {Math.min(100, roundMeta.progressPercent).toFixed(1)}% TO PRIZE
+              </div>
+            </div>
+
+            {/* req #9 — User rank + distance to #1 */}
+            {(userCtx.userRank !== null || userCtx.userWeight > 0) && (
+              <div style={{ display: "flex", gap: "20px", marginTop: "12px", flexWrap: "wrap", fontSize: "10px", letterSpacing: "1px" }}>
+                {userCtx.userRank !== null && (
+                  <span style={{ color: userCtx.userRank === 1 ? "var(--gold)" : "var(--fire-orange)" }}>
+                    YOUR RANK: <strong style={{ fontFamily: "var(--font-display)", fontSize: "13px" }}>
+                      #{userCtx.userRank}
+                    </strong>
+                  </span>
+                )}
+                {userCtx.userWeight > 0 && (
+                  <span style={{ color: "var(--text-dim)" }}>
+                    WEIGHT: <span style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>
+                      {userCtx.userWeight.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+                {userCtx.userDistanceToFirst !== null && userCtx.userRank !== 1 && (
+                  <span style={{ color: "var(--text-dim)" }}>
+                    DISTANCE TO #1:{" "}
+                    <span style={{ color: "#ff6b6b", fontFamily: "var(--font-display)" }}>
+                      -{userCtx.userDistanceToFirst.toFixed(2)}
+                    </span>
+                  </span>
+                )}
+                {userCtx.userRank === 1 && (
+                  <span style={{ color: "var(--gold)", fontFamily: "var(--font-display)", fontSize: "11px", letterSpacing: "2px" }}>
+                    👑 YOU ARE LEADING!
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Top 3 podium */}
         {!loading && data.length >= 3 && (
@@ -262,36 +392,57 @@ export default function LeaderboardPage() {
           </div>
         )}
 
-        {/* Ranked list */}
+        {/* req #9 — Full rankings with distance to #1 column for round tab */}
         <div className="panel-box">
-          <div className="panel-title">📊 FULL RANKINGS</div>
+          <div className="panel-title">
+            📊 FULL RANKINGS {activeTab === "round" ? "— TOP 10" : ""}
+          </div>
           {loading ? (
             <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)", letterSpacing: "2px", fontSize: "11px" }}>
               LOADING...
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {data.map((entry, i) => (
-                <div key={i} className="lb-item">
-                  <div className={`lb-rank${rankClass(i)}`}>
-                    {badge(i) ? (
-                      <span>{badge(i)}</span>
-                    ) : (
-                      <span>{i + 1}</span>
-                    )}
-                  </div>
-                  <div className="lb-name" style={{ flex: 1, fontSize: "12px", letterSpacing: "1px" }}>
-                    {entry.name}
-                  </div>
-                  <div className="lb-val">{entry.value}</div>
-                </div>
-              ))}
-              {data.length === 0 && (
-                <div style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
-                  NO DATA YET
+            <>
+              {/* Column header for round tab */}
+              {activeTab === "round" && data.length > 0 && (
+                <div style={{ display: "flex", fontSize: "9px", color: "var(--text-dim)", letterSpacing: "2px", padding: "4px 0 8px", borderBottom: "1px solid rgba(255,255,255,0.06)", marginBottom: "6px" }}>
+                  <div style={{ width: "44px" }}>RANK</div>
+                  <div style={{ flex: 1 }}>USERNAME</div>
+                  <div style={{ width: "120px", textAlign: "right" }}>WEIGHT</div>
+                  <div style={{ width: "120px", textAlign: "right" }}>-DIST TO #1</div>
                 </div>
               )}
-            </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {data.map((entry, i) => (
+                  <div key={i} className="lb-item" style={{ alignItems: "center" }}>
+                    <div className={`lb-rank${rankClass(i)}`}>
+                      {badge(i) ? <span>{badge(i)}</span> : <span>{i + 1}</span>}
+                    </div>
+                    <div className="lb-name" style={{ flex: 1, fontSize: "12px", letterSpacing: "1px" }}>
+                      {entry.name}
+                    </div>
+                    <div className="lb-val">{entry.value}</div>
+                    {/* req #9 — Distance to #1 column (round tab only, skip #1 itself) */}
+                    {activeTab === "round" && i > 0 && entry.distanceToFirst !== undefined && (
+                      <div style={{ width: "120px", textAlign: "right", fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", fontFamily: "var(--font-display)" }}>
+                        -{entry.distanceToFirst.toFixed(2)}
+                      </div>
+                    )}
+                    {activeTab === "round" && i === 0 && (
+                      <div style={{ width: "120px", textAlign: "right", fontSize: "10px", color: "var(--gold)", letterSpacing: "1px" }}>
+                        LEADING 👑
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {data.length === 0 && (
+                  <div style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
+                    NO DATA YET
+                  </div>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>

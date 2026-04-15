@@ -45,6 +45,12 @@ interface BurnConfig {
   boost_cost_ash: number;
   prize_pool_target: number;
   vip_holy_fire_bonus: number;
+  // Balance requirement configs (req #3, #4, #6, #7, #8)
+  weight_cap: number;
+  referral_weight_cap_pct: number;
+  prize_safety_pct: number;
+  round_time_limit_hours: number;
+  anti_snipe_seconds: number;
 }
 
 interface Stats {
@@ -94,6 +100,11 @@ const DEFAULT_CONFIG: BurnConfig = {
   boost_cost_ash: 1000,
   prize_pool_target: 500,
   vip_holy_fire_bonus: 0.50,
+  weight_cap: 300,
+  referral_weight_cap_pct: 0.40,
+  prize_safety_pct: 0.70,
+  round_time_limit_hours: 24,
+  anti_snipe_seconds: 10,
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -158,6 +169,7 @@ export default function OwnerPage() {
   const [roundAction,   setRoundAction]   = useState<string | null>(null);
   const [roundError,    setRoundError]    = useState<string | null>(null);
   const [newTarget,     setNewTarget]     = useState("500");
+  const [newTimeLimit,  setNewTimeLimit]  = useState("24"); // req #6: time limit in hours
 
   // ── Auth check ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -302,10 +314,12 @@ export default function OwnerPage() {
   async function handleCreateRound() {
     const target = parseFloat(newTarget);
     if (isNaN(target) || target < 1) return;
+    const timeLimitHours = parseFloat(newTimeLimit);
+    if (isNaN(timeLimitHours) || timeLimitHours <= 0) return;
     setRoundAction("Creating...");
     setRoundError(null);
     try {
-      await api.owner.createRound(target);
+      await api.owner.createRound(target, timeLimitHours);
       await loadRounds();
     } catch (e: any) {
       setRoundError(e.message ?? "Failed to create round");
@@ -694,6 +708,96 @@ export default function OwnerPage() {
                   </div>
                 </div>
 
+                {/* BALANCE RULES — req #3, #4, #6, #7, #8 */}
+                <div className={styles.panel}>
+                  <div className={styles.panelTitle}>⚖️ BALANCE RULES</div>
+                  <div style={{ fontSize: "9px", color: "#555", letterSpacing: "1px", marginBottom: "16px" }}>
+                    FAIRNESS AND ANTI-DOMINATION SETTINGS — CHANGE WITH CARE
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                    {/* req #3 — Weight Cap */}
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Weight Cap <span style={{ color: "#FF4D00" }}>(req #3)</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Max effective weight; diminishing returns above this</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={10} min={50}
+                          value={cfg.weight_cap}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v > 0) updateCfg("weight_cap", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>max</span>
+                      </div>
+                    </div>
+                    {/* req #4 — Referral Cap */}
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Referral Weight Cap % <span style={{ color: "#FF4D00" }}>(req #4)</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Max % of total weight from referral bonus</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={5} min={0} max={80}
+                          value={Math.round(cfg.referral_weight_cap_pct * 100)}
+                          onChange={(e) => { const v = parseFloat(e.target.value) / 100; if (!isNaN(v) && v >= 0 && v < 1) updateCfg("referral_weight_cap_pct", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>%</span>
+                      </div>
+                    </div>
+                    {/* req #7 — Prize Safety Limit */}
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Prize Safety Limit % <span style={{ color: "#FF4D00" }}>(req #7)</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Max prize as % of reward pool balance</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={5} min={10} max={100}
+                          value={Math.round(cfg.prize_safety_pct * 100)}
+                          onChange={(e) => { const v = parseFloat(e.target.value) / 100; if (!isNaN(v) && v > 0 && v <= 1) updateCfg("prize_safety_pct", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>%</span>
+                      </div>
+                    </div>
+                    {/* req #6 — Default Round Time Limit */}
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Default Round Time Limit <span style={{ color: "#FF4D00" }}>(req #6)</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Hours before round auto-ends (0 = no limit)</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={1} min={0}
+                          value={cfg.round_time_limit_hours}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) updateCfg("round_time_limit_hours", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>hours</span>
+                      </div>
+                    </div>
+                    {/* req #8 — Anti-Snipe Seconds */}
+                    <div>
+                      <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                        Anti-Snipe Hold (seconds) <span style={{ color: "#FF4D00" }}>(req #8)</span>
+                        <span style={{ color: "#333", marginLeft: "8px" }}>Rank #1 must hold position this long before winning</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="number" step={1} min={0}
+                          value={cfg.anti_snipe_seconds}
+                          onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) updateCfg("anti_snipe_seconds", v); }}
+                          style={{ flex: 1, background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px", color: "#fff", padding: "10px 12px", fontFamily: "inherit", fontSize: "14px", letterSpacing: "1px" }}
+                        />
+                        <span style={{ fontSize: "10px", color: "#555", minWidth: "36px" }}>secs</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Save */}
                 <div style={{ marginTop: "24px", display: "flex", alignItems: "center", gap: "16px" }}>
                   <button
@@ -842,11 +946,18 @@ export default function OwnerPage() {
 
                   {activeRound ? (
                     <>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px", marginBottom: "20px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "16px", marginBottom: "20px" }}>
                         {[
                           { label: "CURRENT POOL",  value: "$" + fmt2(Number(activeRound.currentPool)),      color: "#27AE60" },
                           { label: "TARGET",         value: "$" + fmt2(Number(activeRound.prizePoolTarget)),  color: "#FFB800" },
                           { label: "STARTED",        value: new Date(activeRound.startedAt).toLocaleDateString(), color: "#aaa" },
+                          {
+                            label: "AUTO-ENDS",
+                            value: (activeRound as any).endsAt
+                              ? new Date((activeRound as any).endsAt).toLocaleString()
+                              : "NO LIMIT",
+                            color: (activeRound as any).endsAt ? "#FF4D00" : "#444",
+                          },
                         ].map(({ label, value, color }) => (
                           <div key={label} style={{ background: "#0a0a0a", border: "1px solid rgba(255,255,255,0.05)", borderRadius: "6px", padding: "14px 16px" }}>
                             <div style={{ fontSize: "8px", color: "#444", letterSpacing: "1px", marginBottom: "6px" }}>{label}</div>
@@ -914,11 +1025,27 @@ export default function OwnerPage() {
                             }}
                           />
                         </div>
+                        {/* req #6 — Time limit */}
+                        <div>
+                          <div style={{ fontSize: "9px", color: "#888", letterSpacing: "1px", marginBottom: "6px" }}>
+                            TIME LIMIT (HOURS) <span style={{ color: "#FF4D00" }}>(req #6)</span>
+                          </div>
+                          <input
+                            type="number" step={1} min={1}
+                            value={newTimeLimit}
+                            onChange={(e) => setNewTimeLimit(e.target.value)}
+                            style={{
+                              background: "#0a0a0a", border: "1px solid rgba(255,77,0,0.3)",
+                              borderRadius: "4px", color: "#fff", padding: "10px 14px",
+                              fontFamily: "inherit", fontSize: "16px", letterSpacing: "1px", width: "100px",
+                            }}
+                          />
+                        </div>
                         <button
                           className={styles.btnFire}
                           style={{ alignSelf: "flex-end" }}
                           onClick={handleCreateRound}
-                          disabled={!!roundAction || parseFloat(newTarget) < 1}
+                          disabled={!!roundAction || parseFloat(newTarget) < 1 || parseFloat(newTimeLimit) <= 0}
                         >
                           {roundAction === "Creating..." ? "CREATING..." : "🏆 CREATE ROUND"}
                         </button>

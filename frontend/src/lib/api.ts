@@ -268,8 +268,8 @@ class ApiClient {
       this.request<unknown>("/owner/burn-config", { method: "PUT", body: JSON.stringify(config) }),
     solvency: () => this.request<unknown>("/owner/solvency"),
     rounds: () => this.request<unknown>("/owner/rounds"),
-    createRound: (prizePoolTarget?: number) =>
-      this.request<unknown>("/owner/round", { method: "POST", body: JSON.stringify({ prizePoolTarget }) }),
+    createRound: (prizePoolTarget?: number, timeLimitHours?: number) =>
+      this.request<unknown>("/owner/round", { method: "POST", body: JSON.stringify({ prizePoolTarget, timeLimitHours }) }),
     endRound: (id: string) =>
       this.request<unknown>(`/owner/round/${id}/end`, { method: "POST" }),
     cancelRound: (id: string) =>

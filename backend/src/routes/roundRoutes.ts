@@ -25,14 +25,17 @@ router.get("/current/public", async (_req, res: Response, next: NextFunction) =>
 });
 
 // GET /api/round/leaderboard — leaderboard for the active round
+// req #9: returns top 10 with distanceToFirst, plus caller's rank/weight even if outside top 10
 router.get("/leaderboard", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const round = await RoundService.getActiveRound();
-    if (!round) {
-      return res.json({ success: true, data: { leaderboard: [], round: null } });
-    }
-    const leaderboard = await RoundService.getRoundLeaderboard(round.id);
-    res.json({ success: true, data: { leaderboard, round } });
+    const data = await RoundService.getActiveRoundStatus(req.user!.userId);
+    res.json({ success: true, data: {
+      leaderboard: data.leaderboard,
+      round: data.round,
+      userRank: data.userRank,
+      userWeight: data.userWeight,
+      userDistanceToFirst: data.userDistanceToFirst,
+    }});
   } catch (err) {
     next(err);
   }

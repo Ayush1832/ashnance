@@ -147,7 +147,7 @@ export class BurnService {
 
     // Referral bonus: +0.20 per 5 active referrals
     const activeReferrals = user.referralsMade.length;
-    const referralBonus =
+    const rawReferralBonus =
       Math.floor(activeReferrals / 5) * config.weight.referralBonusPer5;
 
     // Boost bonus — time-based (1 hour)
@@ -155,7 +155,20 @@ export class BurnService {
     const boostActive = !!(user.wallet.boostExpiresAt && user.wallet.boostExpiresAt > now);
     const boostBonus = boostActive ? config.weight.ashBoostBonus : 0;
 
-    const finalWeight = baseWeight + vipBonus + referralBonus + boostBonus;
+    // req #4 — Referral limit: referral bonus ≤ 40% of total weight
+    // maxReferralBonus = (cap / (1 - cap)) × nonReferralWeight
+    const referralCapPct = burnCfg.referral_weight_cap_pct ?? 0.40;
+    const nonReferralWeight = baseWeight + vipBonus + boostBonus;
+    const maxReferralWeight = (referralCapPct / (1 - referralCapPct)) * nonReferralWeight;
+    const referralBonus = Math.min(rawReferralBonus, maxReferralWeight);
+
+    const rawTotalWeight = baseWeight + vipBonus + referralBonus + boostBonus;
+
+    // req #3 — Weight cap: max effective weight = 300, diminishing returns above cap
+    const weightCap = burnCfg.weight_cap ?? 300;
+    const finalWeight = rawTotalWeight <= weightCap
+      ? rawTotalWeight
+      : weightCap + Math.sqrt(rawTotalWeight - weightCap);
 
     // ---- ASH REWARD (all burners receive ASH) ----
     let ashReward = Math.floor(
@@ -292,7 +305,7 @@ export class BurnService {
       }
     }
 
-    // ---- GET USER'S CURRENT ROUND RANK ----
+    // ---- GET USER'S CURRENT ROUND RANK + UPDATE ANTI-SNIPE TRACKER ----
     let userRoundRank: number | null = null;
     const prizePoolTarget = activeRound ? Number(activeRound.prizePoolTarget) : burnCfg.prize_pool_target ?? 500;
     const currentPool = activeRound ? newRoundPool : 0;
@@ -301,6 +314,21 @@ export class BurnService {
       const leaderboard = await RoundService.getRoundLeaderboard(activeRound.id);
       const entry = leaderboard.find((e) => e.userId === userId);
       userRoundRank = entry?.rank ?? null;
+
+      // req #8 — Anti-snipe: track who holds rank #1 and since when
+      if (leaderboard.length > 0) {
+        const newRank1UserId = leaderboard[0].userId;
+        const currentRound = await prisma.round.findUnique({
+          where: { id: activeRound.id },
+          select: { rank1HolderId: true },
+        });
+        if (currentRound?.rank1HolderId !== newRank1UserId) {
+          await prisma.round.update({
+            where: { id: activeRound.id },
+            data: { rank1HolderId: newRank1UserId, rank1SinceAt: new Date() },
+          });
+        }
+      }
     }
 
     return {

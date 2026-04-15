@@ -88,6 +88,18 @@ app.use(errorHandler);
 // ---- WebSocket ----
 initWebSocket(httpServer);
 
+// ---- req #6: Background checker — auto-end time-expired rounds every 60 seconds ----
+import("./services/roundService").then(({ RoundService }) => {
+  setInterval(async () => {
+    try {
+      await RoundService.autoEndExpiredRounds();
+    } catch (err: any) {
+      console.error("[ROUND] Background expiry check failed:", err.message);
+    }
+  }, 60_000);
+  console.log("[ROUND] Background expiry checker started (60s interval)");
+});
+
 // ---- Start Server ----
 httpServer.listen(config.port, () => {
   console.log(`

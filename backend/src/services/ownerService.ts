@@ -16,7 +16,13 @@ const BURN_CONFIG_KEYS = [
   "boost_cost_ash",
   "boost_duration_ms",
   "vip_holy_fire_bonus",
-  "prize_pool_target",  // USDC amount the round pool must reach to end the round
+  "prize_pool_target",        // USDC amount the round pool must reach to end the round
+  // Balance requirement config keys
+  "weight_cap",               // req #3: max effective weight before diminishing returns (default 300)
+  "referral_weight_cap_pct",  // req #4: referral bonus ≤ this fraction of total weight (default 0.40)
+  "prize_safety_pct",         // req #7: prize ≤ this fraction of reward pool balance (default 0.70)
+  "round_time_limit_hours",   // req #6: default round time limit in hours (default 24)
+  "anti_snipe_seconds",       // req #8: rank #1 must hold for this many seconds before winning (default 10)
 ];
 
 const BURN_CONFIG_DEFAULTS: Record<string, number> = {
@@ -25,12 +31,17 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   reward_pool_split: 0.5,
   profit_pool_split: 0.5,
   referral_commission: 0.1,
-  min_burn_amount: 5.0,   // Entry = $5 per round-based spec
-  base_unit: 4.99,        // Weight reference unit — never changes
+  min_burn_amount: 5.0,          // Entry = $5 per round-based spec
+  base_unit: 4.99,               // Weight reference unit — never changes
   boost_cost_ash: 1000,
-  boost_duration_ms: 3600000, // 1 hour
+  boost_duration_ms: 3600000,    // 1 hour
   vip_holy_fire_bonus: 0.50,
-  prize_pool_target: 500, // default: round ends when reward pool reaches $500
+  prize_pool_target: 500,        // default: round ends when reward pool reaches $500
+  weight_cap: 300,               // req #3: weight cap
+  referral_weight_cap_pct: 0.40, // req #4: 40% referral cap
+  prize_safety_pct: 0.70,        // req #7: 70% prize safety limit
+  round_time_limit_hours: 24,    // req #6: 24-hour default time limit
+  anti_snipe_seconds: 10,        // req #8: 10-second anti-snipe hold
 };
 
 export class OwnerService {

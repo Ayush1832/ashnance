@@ -44,6 +44,9 @@ model User {
   lockedUntil     DateTime?
   privacyMode     Boolean   @default(false)
 
+  // Anti-domination cooldown: stores ID of the last round this user won
+  lastWonRoundId  String?
+
   // Relations
   wallet          Wallet?
   burns           Burn[]
@@ -380,12 +383,21 @@ model Round {
   winner           User?        @relation(fields: [winnerId], references: [id])
   prizeAmount      Decimal?     @db.Decimal(18, 6) // actual prize paid out
 
+  // Time limit (req #6)
+  timeLimitHours   Float?       // max round duration in hours; null = no time limit
+  endsAt           DateTime?    // computed deadline = startedAt + timeLimitHours*3600s
+
+  // Anti-snipe tracking (req #8): who is rank #1 and since when
+  rank1HolderId    String?      // userId of current rank #1 holder
+  rank1SinceAt     DateTime?    // timestamp when rank #1 was achieved
+
   burns            Burn[]       // all burns that happened during this round
 
   startedAt        DateTime     @default(now())
   endedAt          DateTime?
 
   @@index([status])
+  @@index([status, endsAt])
   @@map("rounds")
 }
 

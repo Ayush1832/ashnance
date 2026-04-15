@@ -106,15 +106,24 @@ router.post("/round", async (req: AuthRequest, res: Response, next: NextFunction
     if (isNaN(prizePoolTarget) || prizePoolTarget <= 0) {
       return next(new BadRequestError("prizePoolTarget must be a positive number"));
     }
-    const round = await RoundService.createRound(prizePoolTarget);
+    // req #6 — time limit: use provided value, fall back to config default, fall back to 24h
+    const rawLimit = req.body.timeLimitHours;
+    const timeLimitHours = rawLimit !== undefined
+      ? Number(rawLimit)
+      : (burnCfg.round_time_limit_hours ?? 24);
+    if (isNaN(timeLimitHours) || timeLimitHours <= 0) {
+      return next(new BadRequestError("timeLimitHours must be a positive number"));
+    }
+    const round = await RoundService.createRound(prizePoolTarget, timeLimitHours);
     res.json({ success: true, data: round });
   } catch (err) { next(err); }
 });
 
-// POST /api/owner/round/:id/end — manually end a round and pay winner
+// POST /api/owner/round/:id/end — manually end a round and pay winner (force = skip anti-snipe)
 router.post("/round/:id/end", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const result = await RoundService.endRound(req.params.id as string);
+    const force = req.body.force === true;
+    const result = await RoundService.endRound(req.params.id as string, force);
     res.json({ success: true, data: result });
   } catch (err) { next(err); }
 });
