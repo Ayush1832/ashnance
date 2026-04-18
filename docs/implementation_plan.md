@@ -1,185 +1,125 @@
-# Ashnance — Implementation Plan
+# Ashnance — Implementation Status
 
-## Overview
-
-Build the **Ashnance "Burn to Win"** platform — a Solana-based gamified application where users burn USDC for a chance to win prizes or earn ASH tokens. The frontend will be designed using **Stitch MCP** for modern, premium UI designs before implementing in code.
-
-> [!IMPORTANT]
-> This is a large-scale project. We will build in **sprints**, starting with the frontend (landing page + dashboard) and progressively adding features. Each sprint will follow: **Design (Stitch) → Implement → Verify**.
+> This document records what has been built. Updated April 2026.
 
 ---
 
-## User Review Required
+## What Was Built
 
-> [!CAUTION]
-> **Backend & Smart Contracts**: This plan focuses on the **frontend first**. The Solana smart contracts and full backend will be designed and implemented in later phases. For now, we'll use mock data and simulated logic to build a fully functional frontend prototype.
+### Phase 1 — Core Backend + Auth
+- ✅ Express + TypeScript server setup with CORS, rate-limiting, error handling
+- ✅ PostgreSQL + Prisma schema (users, wallets, burns, transactions, rounds, referrals, staking)
+- ✅ JWT auth with refresh token rotation
+- ✅ Email/password registration and login
+- ✅ Email OTP login (6-digit code via Gmail SMTP)
+- ✅ Google OAuth (email link-back for existing accounts)
+- ✅ Phantom wallet authentication (off-chain signature verification)
+- ✅ Link Phantom to existing email account
+- ✅ 2FA (TOTP via Speakeasy, Google Authenticator compatible)
 
-> [!IMPORTANT]
-> **Key Design Decisions:**
-> 1. **Framework**: Next.js 15 with App Router + TypeScript for the frontend
-> 2. **Styling**: Vanilla CSS with CSS custom properties (design tokens)
-> 3. **Animations**: CSS animations + GSAP + Three.js for 3D fire effects
-> 4. **State Management**: Zustand for global state
-> 5. **Design Tool**: Stitch MCP for UI design before coding
-> 6. **Mock Backend**: JSON-based mock data for initial frontend development
+### Phase 2 — Wallets + Blockchain
+- ✅ Unique Solana deposit addresses per user (deterministic HD derivation)
+- ✅ Deposit monitor: polls on-chain every 15s, credits USDC, sweeps to master wallet
+- ✅ Manual deposit: user provides tx hash → verified and credited
+- ✅ Withdrawal: deducts from in-app balance, sends USDC on-chain from master wallet
+- ✅ Withdrawal security: requires 2FA + whitelisted Solana address
+- ✅ Whitelist management: add/remove withdrawal addresses with 24h cooldown
+- ✅ On-chain balance query endpoint for any Solana address
+- ✅ Transaction history with type filtering and pagination
+- ✅ Operating on **Solana devnet**; USDC mint configured via env var
 
----
+### Phase 3 — Burn System + Round Competition
+- ✅ Burn execution: USDC deduction → pool split → weight → ASH reward
+- ✅ Round system: ACTIVE → COMPLETED/CANCELLED lifecycle
+- ✅ Per-round prize pool: 50% of each burn added to active round's pool
+- ✅ Round ends automatically when pool target is reached
+- ✅ Round auto-ends by time limit (background scheduler every 60s)
+- ✅ ASH boost: 1-hour weight bonus activated with 1,000 ASH
+- ✅ Burn history and stats endpoints
 
-## Proposed Changes
+### Phase 4 — 11 Balance Requirements
+- ✅ req #1: Soft reset — non-winner wallets × 0.90 after each round
+- ✅ req #2: Winner reset — winner's cumulativeWeight → 0
+- ✅ req #3: Weight cap — max 300, diminishing returns via √ formula
+- ✅ req #4: Referral limit — referral bonus ≤ 40% of total weight
+- ✅ req #5: Anti-domination — winner of round N cannot win round N+1
+- ✅ req #6: Time limit — configurable hours, auto-ends with force mode
+- ✅ req #7: Prize safety — prize ≤ 70% of reward pool balance
+- ✅ req #8: Anti-snipe — rank #1 must hold for ≥10s before round ends
+- ✅ req #9: Live leaderboard — top 10 + user rank outside top 10 + distanceToFirst
+- ✅ req #10: Progress bar — real-time % fill on leaderboard page
+- ✅ req #11: Admin config — all 5 parameters editable in owner panel
 
-### Sprint 1: Project Setup + Landing Page Design
+### Phase 5 — Referral + VIP + Staking
+- ✅ Referral system: 10% commission per referee burn, credited instantly
+- ✅ Referral weight bonus: +0.20 per 5 active referrals (capped at 40%)
+- ✅ Holy Fire VIP: $24.99/mo from USDC balance, +0.50 weight, +20% ASH
+- ✅ ASH staking: 3 pools (EMBER 8%, FLAME 15%, INFERNO 30%), lock periods, claim rewards
 
-#### [NEW] Project Initialization
-- Initialize Next.js 15 project with TypeScript in `c:\Users\LENOVO\Desktop\ashnance`
-- Configure `package.json` with required dependencies
-- Set up `tsconfig.json`, `next.config.js`
+### Phase 6 — Frontend
+- ✅ Landing page with live ticker, hero, "how it works"
+- ✅ Login page: email/password, OTP, Google OAuth, Phantom wallet
+- ✅ Register page: email/username/password/referral code
+- ✅ Dashboard: balances, round status, recent transactions, on-chain balance
+- ✅ Burn page: amount selector, boost panel, round progress, recent burns
+- ✅ Wallet page: deposit (Phantom), withdraw, balance, deposit address copy
+- ✅ Leaderboard page: round progress bar, top 10, distance-to-#1, user rank
+- ✅ Referrals page: referral link, share buttons, stats, top referrers
+- ✅ Subscribe page: Holy Fire VIP card + subscribe button
+- ✅ Staking page: pool list, stake/claim/unstake, active positions
+- ✅ Transactions page: full history with type filter and search
+- ✅ Settings page: profile, security (2FA, password), connected wallets, whitelist
+- ✅ Admin panel: stats, prize config, pool, users, config management
+- ✅ Owner panel: profit pool, withdrawals, burn config, balance rules, round management
+- ✅ Owner login page: separate login for owner email
 
-#### [NEW] Design System ([styles/globals.css](file:///c:/Users/LENOVO/Desktop/ashnance/frontend/app/globals.css))
-- CSS custom properties for colors (dark theme, fire/ash palette)
-- Typography tokens (Inter font family)
-- Spacing, border-radius, shadow tokens
-- Animation keyframes (fire-glow, ash-fall, explosion)
-
-#### [NEW] Layout Components
-- `components/layout/Navbar.tsx` — Top navigation bar
-- `components/layout/Sidebar.tsx` — Dashboard sidebar
-- `components/layout/Footer.tsx` — Footer with links
-- `app/layout.tsx` — Root layout with dark theme
-
-#### [NEW] Landing Page ([app/(landing)/page.tsx](file:///c:/Users/LENOVO/Desktop/ashnance/frontend/app/(landing)/page.tsx))
-- Hero section: "Burn to Win ASH Token" + "Start Burning" CTA
-- Live Ticker component (mock data initially)
-- How It Works (3 steps with fire-themed icons)
-- Registration/Login CTA buttons
-- Fire/ash visual effects background
-
-**Stitch MCP Usage:**
-1. Create a Stitch project for Ashnance
-2. Generate landing page screen design
-3. Generate dashboard screen design
-4. Apply fire/dark theme design system
-5. Use designs as reference for implementation
-
----
-
-### Sprint 2: Authentication + Dashboard
-
-#### [NEW] Auth Pages
-- `app/(auth)/login/page.tsx` — Login page (Email+OTP, OAuth, Web3)
-- `app/(auth)/register/page.tsx` — Registration with same options
-- `components/auth/OTPInput.tsx` — 6-digit OTP code input
-- `components/auth/WalletConnect.tsx` — Solana wallet connect button
-
-#### [NEW] Dashboard
-- `app/dashboard/page.tsx` — Main dashboard
-- `components/dashboard/BalanceCard.tsx` — USDC + ASH balances
-- `components/dashboard/BurnStats.tsx` — User burn statistics
-- `components/dashboard/QuickActions.tsx` — Deposit, Withdraw, Burn buttons
-- `components/dashboard/LiveTicker.tsx` — Real-time events feed
-
----
-
-### Sprint 3: Core Gameplay — Burn Now
-
-#### [NEW] Burn Interface
-- `app/burn/page.tsx` — Burn Now main page
-- `components/burn/BurnButton.tsx` — Animated burn button
-- `components/burn/AmountSelector.tsx` — 4.99/10/50/Custom buttons
-- `components/burn/LuckMeter.tsx` — Probability visualization
-- `components/burn/BurnResult.tsx` — Win/Lose result display
-
-#### [NEW] Visual Effects
-- `components/effects/FireExplosion.tsx` — 3D explosion for wins
-- `components/effects/AshFall.tsx` — Falling ash for losses
-- `components/effects/ScreenShake.tsx` — Screen shake on big wins
+### Phase 7 — Owner Profit System
+- ✅ Profit pool accumulates 50% of every burn
+- ✅ Two-signature withdrawal: Owner 1 initiates, Owner 2 approves
+- ✅ On-chain payout: Owner 1 gets 60%, Owner 2 gets 40%
+- ✅ Solvency check: on-chain USDC vs DB liabilities
 
 ---
 
-### Sprint 4: Backend Logic (Simulated)
+## What Was Not Built (Planned but Descoped)
 
-#### [NEW] Mock Services
-- `lib/mock/burnService.ts` — Simulated burn logic with weight calculation
-- `lib/mock/prizeService.ts` — Prize table + VRF simulation
-- `lib/mock/poolService.ts` — Reward Pool + Profit Pool management
-- `lib/mock/userData.ts` — Mock user data and balances
-
-#### [NEW] State Management
-- `store/userStore.ts` — User state (balances, burns, VIP)
-- `store/gameStore.ts` — Burn state, results, effects
-- `store/tickerStore.ts` — Live ticker events
-
----
-
-### Sprint 5: Referral + VIP Systems
-
-#### [NEW] Referral System
-- `app/referral/page.tsx` — Referral dashboard
-- `components/referral/ReferralLink.tsx` — Copyable link + share buttons
-- `components/referral/ReferralStats.tsx` — Friends joined, earnings
-- `lib/mock/referralService.ts` — Referral tracking logic
-
-#### [NEW] VIP (Holy Fire) Subscription
-- `app/subscribe/page.tsx` — VIP subscription page
-- `components/vip/SubscriptionCard.tsx` — Price, benefits list
-- `components/vip/VIPBadge.tsx` — Profile badge component
+| Feature | Reason |
+|---------|--------|
+| Anchor smart contracts | Full off-chain system is faster to build and test |
+| Switchboard VRF | No per-burn random outcome in round-based system |
+| Three.js / GSAP fire effects | CSS animations used instead |
+| AI assistant (AshBot) | Deferred |
+| Voice announcements (TTS) | Deferred |
+| Social share cards | Deferred |
+| X/Twitter/Facebook OAuth | Only Google OAuth implemented |
+| Prize tiers (Jackpot/Big/Medium/Small) | Replaced by round winner-takes-all |
+| AI/Gemini integration | Not needed for current system |
 
 ---
 
-### Sprint 6: Social Layer + AI Assistant
+## Database: How to Apply Schema
 
-#### [NEW] Social Features
-- `app/leaderboard/page.tsx` — Leaderboard page
-- `components/social/Leaderboard.tsx` — Top Winners/Burns/Referrals
-- `components/social/ShareMoment.tsx` — Share card for X/TikTok
-- `components/social/LiveTicker.tsx` — Enhanced live ticker
+Using `prisma db push` (not `migrate dev`) because the dev environment does not have
+permission to create the shadow database required by `migrate dev`.
 
-#### [NEW] AI Assistant
-- `components/ai/AshBot.tsx` — Chat popup component
-- `components/ai/AshBotIcon.tsx` — Floating icon
-- `lib/ai/messageEngine.ts` — Dynamic message selection
+```bash
+cd backend
+npx prisma db push      # sync schema to DB
+npx prisma generate     # regenerate Prisma client
+```
 
----
-
-### Sprint 7: Admin Panel
-
-#### [NEW] Admin Interface
-- `app/admin/page.tsx` — Admin dashboard overview
-- `app/admin/prizes/page.tsx` — Prize management
-- `app/admin/referrals/page.tsx` — Referral controls
-- `app/admin/subscriptions/page.tsx` — Holy Fire management
-- `app/admin/reports/page.tsx` — Analytics and reports
-- `app/admin/settings/page.tsx` — Platform settings
+On VPS after each pull, run the same commands before restarting the server.
 
 ---
 
-### Sprint 8: Polish + Launch Prep
+## Known Technical Decisions
 
-#### [MODIFY] All pages
-- Responsive design audit
-- SEO meta tags on all pages
-- Performance optimization (lazy loading, code splitting)
-- Accessibility (ARIA labels, keyboard nav)
-- Final visual polish and animation tuning
-
----
-
-## Verification Plan
-
-### Automated Tests
-- Run `npm run build` after each sprint to verify no build errors
-- Run `npm run lint` to check for code quality issues
-- Run `npx tsc --noEmit` for TypeScript type checking
-
-### Browser Testing (After Each Sprint)
-- Open the dev server at `http://localhost:3000`
-- Navigate through all created pages
-- Verify responsive layout at mobile (375px), tablet (768px), and desktop (1440px)
-- Test all interactive elements (buttons, forms, animations)
-- Take screenshots for verification
-
-### Manual Testing (User)
-- Review Stitch MCP designs before implementation begins
-- Test the landing page hero section and CTA flow
-- Verify fire/ash visual effects look premium and smooth
-- Test dark theme consistency across all pages
-- Confirm the overall "wow factor" of the design
+| Decision | Reason |
+|----------|--------|
+| No Anchor/smart contracts | Game logic is off-chain; Solana used only for USDC I/O |
+| `cumulativeWeight` in wallets table | Persistent meta-game stat; reset each round via raw SQL |
+| Round leaderboard from `burn.finalWeight` sum | Per-round competition; each round starts fresh |
+| `$executeRaw` for soft reset | Prisma `updateMany` doesn't support multiply — raw SQL required |
+| `setInterval` instead of cron library | Simpler; 60s round checker doesn't need precise scheduling |
+| Master keypair as env var | No HSM available on devnet; rotate before mainnet |
+| `db push` not `migrate` | Shadow DB permission error on local PostgreSQL setup |

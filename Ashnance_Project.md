@@ -2,8 +2,17 @@
 **Platform:** Burn to Win ASH Token  
 **Official Tagline:** "Keep Burning, Keep Earning"  
 **Tagline Placement:** Landing Page, Dashboard header, and all promotional materials.  
-**Blockchain:** Solana  
+**Blockchain:** Solana (devnet for testing, mainnet for production)  
 **Currency Used:** USDC (deposits, prizes, referrals) + ASH Token (reward token)
+
+> **Implementation Status (April 2026):** This document is the original product specification.
+> For the actual system mechanics as implemented, see `ASHNANCE_SYSTEM_EXPLAINED.md`.
+> For the architecture and API, see `docs/architecture.md` and `docs/feature_spec.md`.
+> For testing instructions, see `TESTING_GUIDE.md`.
+>
+> **Key implementation note:** The per-burn random win/lose system described in this spec
+> was replaced with a **round-based competitive system** where the highest-weight user wins
+> the entire prize pool when the round target is reached. See ASHNANCE_SYSTEM_EXPLAINED.md §5.
 
 ---
 

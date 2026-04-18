@@ -1,163 +1,182 @@
-# Ashnance — Feature Specification & Section Mapping
+# Ashnance — Feature Specification
 
-## Purpose
-This document maps **every section** from the project doc to specific code components. Reference this before making any change to ensure accuracy.
+> Current as of April 2026. Reflects what is **actually built and running** in the codebase.
+> No per-burn win/lose system. No prize tiers. No smart contracts.
 
 ---
 
 ## Section → Code Mapping
 
-| Section | Frontend Pages/Components | Backend Services | Smart Contract |
-|---------|--------------------------|-----------------|----------------|
-| **1. Landing Page** | `app/(landing)/page.tsx`, `LiveTicker`, Hero | — | — |
-| **2. Registration/Login** | `app/(auth)/*`, `OTPInput`, `WalletConnect` | `authService`, `otpService` | Wallet creation |
-| **3. Deposit/Withdraw** | `app/wallet/*`, `DepositModal`, `WithdrawModal` | `walletService`, `txService` | USDC transfers |
-| **4. Burn Now** | `app/burn/*`, `BurnButton`, `AmountSelector` | `burnService` | Burn execution |
-| **5. Reward Distribution** | (Backend only) | `poolService`, `rewardService` | Pool split logic |
-| **6. Winner Selection** | `BurnResult` component | `vrfService`, `prizeService` | VRF + prize check |
-| **7. Weight Logic** | `LuckMeter` component | `weightService` | Weight calc |
-| **8. Prize Table** | `PrizeTable` (admin) | `prizeConfigService` | On-chain table |
-| **9. Admin Prize Control** | `app/admin/prizes/*` | `adminPrizeService` | Update on-chain |
-| **10. Referral** | `app/referral/*`, `ReferralLink` | `referralService` | Reward transfer |
-| **11. VIP (Holy Fire)** | `app/subscribe/*`, `VIPBadge` | `subscriptionService` | VIP registry |
-| **12. ASH Token** | Balance display, `BoostButton` | `ashTokenService` | SPL token ops |
-| **13. Visual/Audio** | `FireExplosion`, `AshFall`, AI voice | — | — |
-| **14. Social Layer** | `Leaderboard`, `ShareMoment`, `LiveTicker` | `socialService` | — |
-| **15. Admin Panel** | `app/admin/*` (all pages) | `adminService` | Config updates |
-| **16. User Settings** | `app/settings/*` | `settingsService` | — |
-| **17. Transaction History** | `app/wallet/history/*` | `transactionService` | TX queries |
-| **18. AI Assistant** | `AshBot`, `AshBotIcon` | `aiEngine` | — |
-| **19. Staking** | `app/staking/*` (future) | `stakingService` | Staking contract |
-| **20. User Journey** | (Integration of all above) | — | — |
-| **21. Roadmap/Tokenomics** | Landing page section | — | Token mint |
+| Feature | Frontend Page | Backend Service/Route | Status |
+|---------|---------------|----------------------|--------|
+| Landing page | `app/page.tsx` | — | ✅ Built |
+| Registration | `app/(auth)/register/page.tsx` | `authService`, `POST /auth/register` | ✅ Built |
+| Login (email/pass) | `app/(auth)/login/page.tsx` | `authService`, `POST /auth/login` | ✅ Built |
+| Login (OTP) | `app/(auth)/login/page.tsx` | `authService`, `POST /auth/send-otp`, `/auth/verify-otp` | ✅ Built |
+| Login (Google OAuth) | `app/auth/callback/page.tsx` | `authService`, `/auth/google` | ✅ Built |
+| Wallet connect | `app/connect-wallet/page.tsx` | `authService`, `POST /auth/wallet` | ✅ Built |
+| Dashboard | `app/dashboard/page.tsx` | `auth/profile`, `wallet`, `round/current` | ✅ Built |
+| Burn Now | `app/burn/page.tsx` | `burnService`, `POST /burn` | ✅ Built |
+| ASH Boost | `app/burn/page.tsx` (boost panel) | `burnService`, `POST /burn/boost` | ✅ Built |
+| Wallet deposit | `app/wallet/page.tsx` | `walletService`, `POST /wallet/deposit` | ✅ Built |
+| Wallet withdraw | `app/wallet/page.tsx` | `walletService`, `POST /wallet/withdraw` | ✅ Built |
+| Whitelist addresses | `app/settings/page.tsx` (Addresses tab) | `walletService`, `/wallet/whitelist` | ✅ Built |
+| Referral program | `app/referrals/page.tsx` | `referralService`, `leaderboardService` | ✅ Built |
+| VIP subscription | `app/subscribe/page.tsx` | `vipService`, `POST /vip/subscribe` | ✅ Built |
+| Transaction history | `app/transactions/page.tsx` | `walletService`, `GET /wallet/transactions` | ✅ Built |
+| Round leaderboard | `app/leaderboard/page.tsx` | `roundService`, `GET /round/leaderboard` | ✅ Built |
+| Round progress bar | `app/leaderboard/page.tsx` | `roundService`, `GET /round/current` | ✅ Built |
+| ASH Staking | `app/staking/page.tsx` | `stakingService`, `/staking/*` | ✅ Built |
+| 2FA setup | `app/settings/page.tsx` (Security tab) | `twoFAService`, `/2fa/*` | ✅ Built |
+| Profile settings | `app/settings/page.tsx` (Profile tab) | `authService`, `PUT /auth/profile` | ✅ Built |
+| Admin panel | `app/admin/page.tsx` | `adminService`, `/admin/*` | ✅ Built |
+| Owner panel | `app/owner/page.tsx` | `ownerService`, `/owner/*` | ✅ Built |
+| Owner login | `app/owner-login/page.tsx` | email-gated via `requireOwner` | ✅ Built |
+
+**Not built (planned in original spec):** Anchor smart contracts, Switchboard VRF, Three.js 3D fire effects, AI assistant, voice announcements, social share cards, prize tier table.
 
 ---
 
-## Critical Formulas & Constants
+## Weight Calculation (Current Implementation)
 
-### Weight Calculation (Sections 4, 7, 8)
 ```
-BaseUnit = 4.99 USDC
-AmountWeight = BurnAmount / BaseUnit
+baseWeight = burnAmount ÷ base_unit (4.99)
 
-VIP Bonuses:
-  Spark      = +0.10 Weight
-  Active Ash = +0.25 Weight
-  Holy Fire  = +0.50 Weight
+vipBonus = +0.50 if user is Holy Fire VIP and subscription is active
 
-Referral Bonus:
-  Every 5 active referrals = +0.20 Weight
+boostBonus = +0.50 if wallet.boostExpiresAt > now (1-hour ASH boost)
 
-Boost (ASH):
-  1000 ASH burned = +0.50 Weight for 1 hour
+rawReferralBonus = floor(activeReferrals / 5) × 0.20
 
-FinalWeight = AmountWeight + VIP_Bonus + Referral_Bonus + Boost_Bonus
-```
+── Referral Cap (req #4) ──
+referralCapPct = referral_weight_cap_pct (default 0.40)
+nonReferralWeight = baseWeight + vipBonus + boostBonus
+maxReferralBonus = (referralCapPct / (1 - referralCapPct)) × nonReferralWeight
+referralBonus = min(rawReferralBonus, maxReferralBonus)
 
-### Win/Lose Determination (Sections 6, 7)
-```
-ConstantFactor = 100  (configurable by admin)
-EffectiveChance = FinalWeight / (FinalWeight + ConstantFactor)
-RandomNumber = VRF(0, 1)
+rawTotalWeight = baseWeight + vipBonus + referralBonus + boostBonus
 
-IF RandomNumber <= EffectiveChance → WIN
-ELSE → LOSE (receive ASH)
+── Weight Cap (req #3) ──
+weightCap = weight_cap (default 300)
+finalWeight = rawTotalWeight                              (if ≤ weightCap)
+            = weightCap + √(rawTotalWeight − weightCap)  (if > weightCap)
 ```
 
-### Prize Tier Selection (Section 8)
-```
-ON WIN:
-  RandomPrize = VRF(0, 1)
-  
-  Jackpot (2500 USDC)  → RandomPrize <= 0.01  (1%)
-  Big     (500 USDC)   → RandomPrize <= 0.05  (4%)
-  Medium  (200 USDC)   → RandomPrize <= 0.20  (15%)
-  Small   (50 USDC)    → RandomPrize <= 1.00  (80%)
-
-  Prize values are % of Reward Pool (dynamic):
-    Jackpot = 10% of Reward Pool
-    Big     = 5%  of Reward Pool
-    Medium  = 2%  of Reward Pool
-    Small   = 1%  of Reward Pool
-```
-
-### Reward Distribution (Section 5)
-```
-Per Burn:
-  X% → Reward Pool (default 50%)
-  Y% → Profit Pool (default 50%)
-  (Admin configurable)
-
-Reward Pool covers:
-  - Prizes
-  - Referral rewards
-  
-Profit Pool = untouched project profit
-```
-
-### Referral Rewards (Section 10)
-```
-ON each referred user's Burn:
-  Referral Reward = 10% of burn amount
-  Deducted FROM Reward Pool (not Profit Pool)
-  
-  Example: Burn 4.99 → Reward Pool gets 2.50
-  → 10% of 4.99 = 0.49 USDC → sent to referrer
-  → 2.01 USDC → remains for prizes
-```
-
-### ASH Token Distribution (Section 12)
-```
-ON LOSE:
-  Base reward = 200–500 ASH (random)
-  VIP Bonus = +20% extra ASH if Holy Fire subscriber
-
-Total Supply = 1,000,000,000 ASH (1B)
-Distribution stops when 1B is depleted
-```
-
-### VIP Subscription (Section 11)
-```
-Price = 24.99 USDC/month
-Benefits:
-  - VIP Badge
-  - +0.5 Weight Bonus (every burn)
-  - +20% ASH on loss
-  - Weekly raffle entry
-  - Priority AI hints
-  - Beta access
-```
+Code: `backend/src/services/burnService.ts` — `BurnService.executeBurn()`
 
 ---
 
-## Admin-Configurable Values
+## Round Mechanics (Current Implementation)
 
-| Parameter | Default | Location |
-|-----------|---------|----------|
-| Reward/Profit split | 50/50 | Admin Panel → Distribution |
-| Prize table (tiers, values, probabilities) | See above | Admin Panel → Prizes |
-| Daily prize cap | None (unlimited) | Admin Panel → Prizes |
-| Max winners per day | None (unlimited) | Admin Panel → Prizes |
-| Referral commission | 10% | Admin Panel → Referrals |
-| Referral reward type | USDC | Admin Panel → Referrals |
-| Holy Fire price | 24.99 USDC | Admin Panel → Subscriptions |
-| Holy Fire weight bonus | +0.5 | Admin Panel → Subscriptions |
-| ASH loss reward range | 200–500 | Admin Panel → ASH |
-| Boost cost | 1000 ASH | Admin Panel → ASH |
-| Boost duration | 1 hour | Admin Panel → ASH |
-| ConstantFactor | 100 | Admin Panel → Game |
+There is **no per-burn win/lose random outcome**. Burns always:
+1. Deduct USDC from wallet
+2. Increment the round's prize pool (50% of burn)
+3. Add finalWeight to user's per-round rank
+4. Award ASH tokens to the burner
+
+The **winner is determined once**, when the round ends:
+- Winner = ranked #1 by total `burn.finalWeight` accumulated within the round
+- Subject to anti-snipe, anti-domination, and prize safety checks (see below)
+
+### Balance Rules (All Active)
+
+| Rule | Config Key | Default | Code |
+|------|-----------|---------|------|
+| req #1 Soft reset | — | 0.90× | `roundService.endRound` → `$executeRaw` |
+| req #2 Winner reset | — | 0 | `roundService.endRound` → `wallet.update` |
+| req #3 Weight cap | `weight_cap` | 300 | `burnService.executeBurn` |
+| req #4 Referral limit | `referral_weight_cap_pct` | 0.40 | `burnService.executeBurn` |
+| req #5 Anti-domination | — | skip #1 if won prev round | `roundService.endRound` |
+| req #6 Time limit | `round_time_limit_hours` | 24h | `roundService.autoEndExpiredRounds` |
+| req #7 Prize safety | `prize_safety_pct` | 0.70 | `roundService.endRound` |
+| req #8 Anti-snipe | `anti_snipe_seconds` | 10s | `roundService.endRound` |
+| req #9 Live leaderboard | — | top 10 + user rank | `roundService.getRoundLeaderboard` |
+| req #10 Progress bar | — | % overlay | `leaderboard/page.tsx` |
+| req #11 Admin config | — | owner panel | `ownerRoutes.ts` + `owner/page.tsx` |
 
 ---
 
-## Security Requirements Checklist
+## API Routes Reference
 
-- [ ] All withdrawals require 2FA (Google Authenticator or OTP)
-- [ ] 3 failed withdrawal attempts → account freeze
-- [ ] Admin login requires 2FA
-- [ ] All operations logged with TX hash on blockchain
-- [ ] VRF for verifiable randomness (no server-side manipulation)
-- [ ] Rate limiting on all API endpoints
-- [ ] Input validation (Zod) on all user inputs
-- [ ] CORS restricted to platform domain
-- [ ] JWT with refresh token rotation
-- [ ] Whitelisted withdrawal addresses
+### Auth — `/api/auth`
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/register` | Create account (email/username/password/referralCode) |
+| POST | `/login` | Login with email + password |
+| POST | `/send-otp` | Send 6-digit OTP to email |
+| POST | `/verify-otp` | Verify OTP → returns JWT |
+| GET | `/profile` | Get current user profile |
+| PUT | `/profile` | Update username, avatarUrl, privacyMode, country |
+| PUT | `/password` | Change password |
+| POST | `/logout` | Invalidate refresh token |
+| POST | `/wallet` | Login/register via Phantom wallet signature |
+| POST | `/link-wallet` | Link Phantom to existing account |
+| GET | `/google` | Start Google OAuth flow |
+| GET | `/google/callback` | OAuth callback → redirect to frontend |
+
+### Burn — `/api/burn`
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/` | Execute burn: deducts USDC, adds weight, awards ASH |
+| GET | `/history` | Burn history (paginated) |
+| GET | `/stats` | Burn stats (total burns, total burned, weight) |
+| POST | `/boost` | Activate 1-hour ASH boost (costs 1,000 ASH) |
+| GET | `/boost-status` | Current boost status + secondsLeft |
+
+### Wallet — `/api/wallet`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | In-app wallet balances + deposit address |
+| POST | `/deposit` | Verify tx hash + credit USDC |
+| POST | `/withdraw` | Withdraw USDC (requires 2FA + whitelisted address) |
+| GET | `/transactions` | Transaction history (paginated, filterable by type) |
+| GET | `/platform-info` | Platform USDC address |
+| GET | `/onchain/:address` | On-chain USDC balance for any address |
+| GET | `/whitelist` | List whitelisted withdrawal addresses |
+| POST | `/whitelist` | Add withdrawal address |
+| DELETE | `/whitelist/:id` | Remove withdrawal address |
+
+### Round — `/api/round`
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/current` | Active round + caller's rank (auth required) |
+| GET | `/current/public` | Active round status (no auth) |
+| GET | `/leaderboard` | Top 10 + user rank/weight/distanceToFirst |
+| GET | `/history` | Last 10 completed rounds |
+
+### Owner — `/api/owner` (requires OWNER_EMAIL)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/me` | Verify owner access |
+| GET | `/stats` | Platform-wide stats |
+| GET | `/profit-pool` | Profit pool balance + withdrawal history |
+| GET | `/withdrawal/pending` | Current pending withdrawal |
+| POST | `/withdrawal/initiate` | Start 2-of-2 withdrawal |
+| POST | `/withdrawal/approve/:id` | Approve pending withdrawal |
+| POST | `/withdrawal/cancel/:id` | Cancel pending withdrawal |
+| GET | `/burn-config` | All PlatformConfig values |
+| PUT | `/burn-config` | Update config values (body: `{ key: value }`) |
+| GET | `/solvency` | On-chain vs liabilities solvency report |
+| GET | `/rounds` | All rounds (active + history) |
+| POST | `/round` | Create new round (`prizePoolTarget`, `timeLimitHours`) |
+| POST | `/round/:id/end` | Force-end round (`{ "force": true }` to skip anti-snipe) |
+| POST | `/round/:id/cancel` | Cancel round without paying |
+
+### Other
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/leaderboard/winners` | Top 10 round winners all-time |
+| GET | `/api/leaderboard/burners` | Top 10 by total USDC burned |
+| GET | `/api/leaderboard/referrers` | Top 10 by referral earnings |
+| GET | `/api/leaderboard/ash` | Top 10 ASH holders |
+| POST | `/api/2fa/generate` | Generate TOTP secret + QR |
+| POST | `/api/2fa/enable` | Confirm and enable 2FA |
+| POST | `/api/2fa/disable` | Disable 2FA |
+| GET | `/api/vip/status` | Current VIP subscription status |
+| POST | `/api/vip/subscribe` | Subscribe to Holy Fire ($24.99, tier: `"HOLY_FIRE"`) |
+| GET | `/api/staking/pools` | Available staking pools |
+| GET | `/api/staking/positions` | User's staking positions |
+| POST | `/api/staking/stake` | Stake ASH into a pool |
+| POST | `/api/staking/claim/:id` | Claim pending rewards |
+| POST | `/api/staking/unstake/:id` | Unstake (after lock period) |
+| GET | `/api/health` | Server health check |
