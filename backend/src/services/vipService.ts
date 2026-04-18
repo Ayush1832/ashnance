@@ -74,6 +74,14 @@ export class VipService {
         });
       }
 
+      // Route subscription fee to profit pool
+      await tx.profitPool.updateMany({
+        data: {
+          balance:        { increment: tierConfig.price },
+          totalDeposited: { increment: tierConfig.price },
+        },
+      });
+
       // Update user VIP status
       const updatedUser = await tx.user.update({
         where: { id: userId },

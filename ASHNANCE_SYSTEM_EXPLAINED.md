@@ -337,7 +337,7 @@ There is one subscription plan: **HOLY FIRE** at **$24.99 USDC/month**.
 | Raffle entry | Weekly exclusive raffle             |
 | VIP badge    | Special marker on profile           |
 
-- Paid from your in-app USDC balance at subscription time.
+- Paid from your in-app USDC balance at subscription time. The $24.99 fee goes directly to the **profit pool** (owner revenue), consistent with the 50% profit split from burns.
 - Active for 30 days.
 - Backend tier value: `"HOLY_FIRE"` (uppercase).
 
