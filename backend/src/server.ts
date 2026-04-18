@@ -88,6 +88,14 @@ app.use(errorHandler);
 // ---- WebSocket ----
 initWebSocket(httpServer);
 
+// ---- Deposit Monitor — restart all wallet pollers on server start ----
+import("./services/depositMonitorService").then(({ startAllDepositMonitors }) => {
+  startAllDepositMonitors().catch((err: any) =>
+    console.error("[DepositMonitor] Startup failed:", err.message)
+  );
+  console.log("[DepositMonitor] All deposit monitors started");
+});
+
 // ---- req #6: Background checker — auto-end time-expired rounds every 60 seconds ----
 import("./services/roundService").then(({ RoundService }) => {
   setInterval(async () => {

@@ -79,7 +79,7 @@ export default function SubscribePage() {
       const res = await fetch(`${API}/api/vip/subscribe`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ tier: selected }),
+        body: JSON.stringify({ tier: selected.toUpperCase() }),
       });
       const data = await res.json();
       if (res.ok) {
