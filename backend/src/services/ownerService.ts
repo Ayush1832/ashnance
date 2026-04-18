@@ -90,6 +90,21 @@ export class OwnerService {
       throw new UnauthorizedError("Owner access required");
     }
 
+    // Validate owner wallets are configured
+    if (!config.owner1Wallet || !config.owner2Wallet) {
+      throw new BadRequestError(
+        "Owner wallets not configured. Set OWNER_1_WALLET and OWNER_2_WALLET in backend/.env before initiating a withdrawal."
+      );
+    }
+    if (
+      !BlockchainService.validateSolanaAddress(config.owner1Wallet) ||
+      !BlockchainService.validateSolanaAddress(config.owner2Wallet)
+    ) {
+      throw new BadRequestError(
+        "OWNER_1_WALLET or OWNER_2_WALLET in .env is not a valid Solana address."
+      );
+    }
+
     // Only 1 pending request at a time
     const existing = await prisma.ownerWithdrawalRequest.findFirst({
       where: { status: "PENDING" },

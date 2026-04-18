@@ -5,6 +5,7 @@ import { OwnerService } from "../services/ownerService";
 import { RoundService } from "../services/roundService";
 import { BadRequestError } from "../utils/errors";
 import { AuthRequest } from "../middleware/auth";
+import { BlockchainService } from "../services/blockchainService";
 
 const router = Router();
 
@@ -133,6 +134,19 @@ router.post("/round/:id/cancel", async (req: AuthRequest, res: Response, next: N
   try {
     const result = await RoundService.cancelRound(req.params.id as string);
     res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
+// POST /api/owner/devnet-airdrop — airdrop 2 SOL to master wallet (devnet only)
+// The master wallet needs SOL to pay transaction fees for prizes and withdrawals.
+router.post("/devnet-airdrop", async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    if (process.env.NODE_ENV === "production") {
+      return next(new BadRequestError("Devnet airdrop not available in production"));
+    }
+    const sig = await BlockchainService.requestDevnetAirdrop(2_000_000_000);
+    const masterWallet = BlockchainService.getMasterWalletAddress();
+    res.json({ success: true, data: { signature: sig, masterWallet, message: "2 SOL airdropped to master wallet" } });
   } catch (err) { next(err); }
 });
 

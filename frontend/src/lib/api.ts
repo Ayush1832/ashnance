@@ -267,6 +267,7 @@ class ApiClient {
     saveBurnConfig: (config: Record<string, number>) =>
       this.request<unknown>("/owner/burn-config", { method: "PUT", body: JSON.stringify(config) }),
     solvency: () => this.request<unknown>("/owner/solvency"),
+    devnetAirdrop: () => this.request<unknown>("/owner/devnet-airdrop", { method: "POST" }),
     rounds: () => this.request<unknown>("/owner/rounds"),
     createRound: (prizePoolTarget?: number, timeLimitHours?: number) =>
       this.request<unknown>("/owner/round", { method: "POST", body: JSON.stringify({ prizePoolTarget, timeLimitHours }) }),

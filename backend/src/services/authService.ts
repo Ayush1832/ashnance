@@ -84,6 +84,15 @@ export class AuthService {
       return newUser;
     });
 
+    // Generate deposit address outside the transaction (async blockchain call)
+    const depositAddress = await BlockchainService.generateDepositAddress(user.id);
+    await prisma.wallet.update({
+      where: { userId: user.id },
+      data: { depositAddress },
+    });
+    const { watchDepositAddress } = await import("./depositMonitorService");
+    watchDepositAddress(user.id, depositAddress);
+
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
 
@@ -347,6 +356,12 @@ export class AuthService {
         await tx.wallet.create({ data: { userId: newUser.id } });
         return newUser;
       });
+
+      // Generate deposit address for new Google user
+      const depositAddress = await BlockchainService.generateDepositAddress(googleUserId);
+      await prisma.wallet.update({ where: { userId: googleUserId }, data: { depositAddress } });
+      const { watchDepositAddress: watchGoogle } = await import("./depositMonitorService");
+      watchGoogle(googleUserId, depositAddress);
     }
 
     if (!user) throw new Error("Failed to create user");
@@ -405,6 +420,12 @@ export class AuthService {
         await tx.wallet.create({ data: { userId: newUser.id } });
         return newUser;
       });
+
+      // Generate deposit address for new wallet user
+      const depositAddress = await BlockchainService.generateDepositAddress(walletUserId);
+      await prisma.wallet.update({ where: { userId: walletUserId }, data: { depositAddress } });
+      const { watchDepositAddress: watchWallet } = await import("./depositMonitorService");
+      watchWallet(walletUserId, depositAddress);
     }
 
     if (!user) throw new Error("Failed to create user");

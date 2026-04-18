@@ -161,6 +161,8 @@ export default function OwnerPage() {
   const [stats,     setStats]     = useState<Stats | null>(null);
   const [solvency,  setSolvency]  = useState<Solvency | null>(null);
   const [solvLoading, setSolvLoading] = useState(false);
+  const [airdropMsg, setAirdropMsg] = useState<string | null>(null);
+  const [airdropLoading, setAirdropLoading] = useState(false);
 
   // Rounds state
   const [activeRound,   setActiveRound]   = useState<Round | null>(null);
@@ -229,6 +231,22 @@ export default function OwnerPage() {
       setSolvLoading(false);
     }
   }, []);
+
+  // ── Devnet airdrop ──────────────────────────────────────────────────────
+  async function handleDevnetAirdrop() {
+    setAirdropLoading(true);
+    setAirdropMsg(null);
+    try {
+      const res = (await api.owner.devnetAirdrop()) as any;
+      const sig = res.data?.signature ?? res.signature ?? "ok";
+      setAirdropMsg(`✅ 2 SOL airdropped — sig: ${String(sig).slice(0, 20)}...`);
+      loadSolvency();
+    } catch (e: any) {
+      setAirdropMsg(`❌ ${e.message ?? "Airdrop failed"}`);
+    } finally {
+      setAirdropLoading(false);
+    }
+  }
 
   // ── Load rounds ─────────────────────────────────────────────────────────
   const loadRounds = useCallback(async () => {
@@ -1201,6 +1219,24 @@ export default function OwnerPage() {
                   <div style={{ fontSize: "11px", color: "#555", fontFamily: "monospace", letterSpacing: "0.5px", wordBreak: "break-all" }}>
                     {solvency.masterWallet}
                   </div>
+                </div>
+
+                {/* Devnet SOL airdrop */}
+                <div style={{ marginTop: "16px", padding: "16px", background: "rgba(255,165,0,0.05)", border: "1px solid rgba(255,165,0,0.15)", borderRadius: "6px" }}>
+                  <div style={{ fontSize: "8px", color: "#888", letterSpacing: "2px", marginBottom: "10px" }}>DEVNET TOOLING — NOT AVAILABLE IN PRODUCTION</div>
+                  <button
+                    className={styles.btnGhost}
+                    onClick={handleDevnetAirdrop}
+                    disabled={airdropLoading}
+                    style={{ marginBottom: airdropMsg ? "10px" : 0 }}
+                  >
+                    {airdropLoading ? "AIRDROPPING..." : "⚡ AIRDROP 2 SOL TO MASTER WALLET"}
+                  </button>
+                  {airdropMsg && (
+                    <div style={{ fontSize: "10px", color: airdropMsg.startsWith("✅") ? "#4ade80" : "#FF4D00", letterSpacing: "0.5px", marginTop: "6px" }}>
+                      {airdropMsg}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
