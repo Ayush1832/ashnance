@@ -1,6 +1,20 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+// Fail fast in production if critical secrets are missing
+if (process.env.NODE_ENV === "production") {
+  const required = ["JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL"];
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    throw new Error(
+      `[Config] Missing required environment variables in production: ${missing.join(", ")}`
+    );
+  }
+  if (process.env.JWT_SECRET === "dev-jwt-secret" || process.env.JWT_REFRESH_SECRET === "dev-refresh-secret") {
+    throw new Error("[Config] Dev JWT secrets must not be used in production.");
+  }
+}
+
 export const config = {
   // Server
   port: parseInt(process.env.PORT || "4000", 10),

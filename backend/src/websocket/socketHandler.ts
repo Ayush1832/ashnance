@@ -10,7 +10,7 @@ let io: SocketServer | null = null;
 export function initWebSocket(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: {
-      origin: config.frontendUrl,
+      origin: config.corsOrigins,
       methods: ["GET", "POST"],
     },
     transports: ["websocket", "polling"],

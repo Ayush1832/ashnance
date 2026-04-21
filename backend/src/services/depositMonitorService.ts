@@ -8,6 +8,7 @@
 import { prisma } from "../utils/prisma";
 import { BlockchainService } from "./blockchainService";
 import { WalletService } from "./walletService";
+import { broadcastDepositEvent } from "../websocket/socketHandler";
 
 /**
  * Start polling for a single deposit address.
@@ -22,6 +23,8 @@ export function watchDepositAddress(userId: string, depositAddress: string): voi
         console.log(
           `[DepositMonitor] Credited ${amount} USDC → user ${userId} (tx: ${txHash.slice(0, 16)}...)`
         );
+        // Notify the user via WebSocket so the UI updates immediately
+        try { broadcastDepositEvent(userId, amount); } catch { /* non-critical */ }
         // Sweep the deposited USDC from the deposit address to the master wallet
         // so the master wallet has funds to pay prizes and withdrawals
         BlockchainService.sweepDepositToMaster(userId, depositAddress).then((sweepTx) => {

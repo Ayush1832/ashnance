@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import crypto from "crypto";
 import { prisma } from "../utils/prisma";
+import { config } from "../config";
 
 // In-memory OTP store (use Redis in production)
 const otpStore = new Map<string, { otp: string; expiresAt: Date; attempts: number }>();
@@ -30,10 +31,10 @@ export class EmailService {
       console.log(`\n[DEV] OTP for ${email}: ${otp}\n`);
     }
 
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    if (config.email.user && config.email.pass) {
       try {
         await EmailService.transporter.sendMail({
-          from: `"Ashnance 🔥" <${process.env.SMTP_USER}>`,
+          from: `"Ashnance 🔥" <${config.email.from}>`,
           to: email,
           subject: "Your Ashnance Login Code",
           html: `
@@ -89,11 +90,11 @@ export class EmailService {
    * Send withdrawal confirmation email
    */
   static async sendWithdrawalAlert(email: string, amount: number, currency: string, address: string): Promise<void> {
-    if (!process.env.SMTP_USER) return;
+    if (!config.email.user) return;
 
     try {
       await EmailService.transporter.sendMail({
-        from: `"Ashnance 🔥" <${process.env.SMTP_USER}>`,
+        from: `"Ashnance 🔥" <${config.email.from}>`,
         to: email,
         subject: "Withdrawal Processed — Ashnance",
         html: `
@@ -113,11 +114,11 @@ export class EmailService {
    * Send win celebration email
    */
   static async sendWinEmail(email: string, username: string, amount: number, tier: string): Promise<void> {
-    if (!process.env.SMTP_USER) return;
+    if (!config.email.user) return;
 
     try {
       await EmailService.transporter.sendMail({
-        from: `"Ashnance 🔥" <${process.env.SMTP_USER}>`,
+        from: `"Ashnance 🔥" <${config.email.from}>`,
         to: email,
         subject: `🏆 YOU WON ${amount} USDC — Ashnance`,
         html: `

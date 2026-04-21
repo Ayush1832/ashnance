@@ -102,6 +102,7 @@ export class AuthService {
         email: user.email,
         username: user.username,
         referralCode: user.referralCode,
+        role: user.role,
       },
       ...tokens,
     };
@@ -156,6 +157,7 @@ export class AuthService {
         isVip: user.isVip,
         vipTier: user.vipTier,
         referralCode: user.referralCode,
+        role: user.role,
       },
       ...tokens,
     };

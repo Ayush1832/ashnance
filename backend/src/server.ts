@@ -108,6 +108,21 @@ import("./services/roundService").then(({ RoundService }) => {
   console.log("[ROUND] Background expiry checker started (60s interval)");
 });
 
+// ---- VIP auto-renewal — check expired VIP subscriptions every hour ----
+import("./services/vipService").then(({ VipService }) => {
+  setInterval(async () => {
+    try {
+      const result = await VipService.processAutoRenewals();
+      if (result.renewed > 0 || result.expired > 0) {
+        console.log(`[VIP] Auto-renewal: renewed=${result.renewed}, expired=${result.expired}`);
+      }
+    } catch (err: any) {
+      console.error("[VIP] Auto-renewal check failed:", err.message);
+    }
+  }, 60 * 60 * 1000); // every hour
+  console.log("[VIP] Auto-renewal scheduler started (1h interval)");
+});
+
 // ---- Start Server ----
 httpServer.listen(config.port, () => {
   console.log(`

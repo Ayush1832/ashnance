@@ -17,8 +17,8 @@ router.get("/status", authenticate, async (req: AuthRequest, res: Response, next
 router.post("/subscribe", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { tier } = req.body;
-    if (!tier || !["SPARK", "ACTIVE_ASH", "HOLY_FIRE"].includes(tier)) {
-      throw new BadRequestError("Invalid tier. Choose: SPARK, ACTIVE_ASH, or HOLY_FIRE");
+    if (!tier || !["HOLY_FIRE"].includes(tier)) {
+      throw new BadRequestError("Invalid tier. Currently only HOLY_FIRE is available.");
     }
     const data = await VipService.subscribe(req.user!.userId, tier as VipTier);
     res.json({ success: true, data });

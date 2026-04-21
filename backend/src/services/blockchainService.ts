@@ -61,12 +61,23 @@ function getMasterKeypair(): Keypair {
       const secretArray = JSON.parse(secretEnv) as number[];
       return Keypair.fromSecretKey(Uint8Array.from(secretArray));
     } catch {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error(
+          "[BlockchainService] MASTER_KEYPAIR_SECRET is set but could not be parsed. " +
+          "Refusing to start with insecure fallback in production."
+        );
+      }
       console.warn(
         "[BlockchainService] Could not parse MASTER_KEYPAIR_SECRET — using deterministic fallback"
       );
     }
+  } else if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[BlockchainService] MASTER_KEYPAIR_SECRET is not set. " +
+      "This is required in production to prevent loss of funds."
+    );
   }
-  // Deterministic fallback for development (do NOT use in production)
+  // Deterministic fallback for development only (do NOT use in production)
   const seed = Buffer.alloc(32);
   seed.write("ashnance-dev-master-seed-v1", "utf8");
   return Keypair.fromSeed(seed);

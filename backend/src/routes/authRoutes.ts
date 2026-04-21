@@ -202,7 +202,7 @@ const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 router.get("/google", (_req: Request, res: Response) => {
   const params = new URLSearchParams({
     client_id:     config.google.clientId,
-    redirect_uri:  `${process.env.BACKEND_URL || "http://localhost:4000"}/api/auth/google/callback`,
+    redirect_uri:  `${config.backendUrl}/api/auth/google/callback`,
     response_type: "code",
     scope:         "openid email profile",
     access_type:   "offline",
@@ -228,7 +228,7 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
         code:          code as string,
         client_id:     config.google.clientId,
         client_secret: config.google.clientSecret,
-        redirect_uri:  `${process.env.BACKEND_URL || "http://localhost:4000"}/api/auth/google/callback`,
+        redirect_uri:  `${config.backendUrl}/api/auth/google/callback`,
         grant_type:    "authorization_code",
       }),
     });
