@@ -32,8 +32,24 @@ class ApiClient {
     }
   }
 
+  private isTokenExpired(token: string): boolean {
+    try {
+      const payload = JSON.parse(atob(token.split(".")[1]));
+      return payload.exp * 1000 - Date.now() < 30_000;
+    } catch {
+      return false;
+    }
+  }
+
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const token = this.getToken();
+    let token = this.getToken();
+
+    // Proactively refresh before sending if token is expired/expiring
+    if (token && this.isTokenExpired(token)) {
+      await this.refreshToken();
+      token = this.getToken();
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
@@ -51,7 +67,7 @@ class ApiClient {
     const data = await response.json();
 
     if (!response.ok) {
-      // Try to refresh token on 401
+      // Fallback: reactive refresh if proactive check missed (e.g. clock skew)
       if (response.status === 401 && token) {
         const refreshed = await this.refreshToken();
         if (refreshed) {
@@ -60,7 +76,11 @@ class ApiClient {
             ...options,
             headers,
           });
-          return retryResponse.json();
+          const retryData = await retryResponse.json();
+          if (!retryResponse.ok) {
+            throw new Error(retryData.error || "API request failed");
+          }
+          return retryData;
         }
       }
       throw new Error(data.error || "API request failed");

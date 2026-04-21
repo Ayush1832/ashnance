@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import type { WalletProvider } from "@/lib/wallets";
 import styles from "./wallet.module.css";
 
 // ---- Types ----
@@ -80,13 +81,13 @@ function DepositModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
 
   useEffect(() => {
     import("@/lib/wallets").then(({ detectWallets }) => setWallets(detectWallets()));
-    api.wallet.platformInfo().then((res: any) => {
-      const d = res.data ?? res;
+    api.wallet.platformInfo().then((res) => {
+      const d = (res as { data?: { masterWallet?: string }; masterWallet?: string }).data ?? (res as { masterWallet?: string });
       if (d.masterWallet) setMasterWallet(d.masterWallet);
     }).catch(() => {});
   }, []);
 
-  async function handleDeposit(walletProvider: any, walletName: string) {
+  async function handleDeposit(walletProvider: WalletProvider["provider"], walletName: string) {
     setError(null);
     const amt = parseFloat(amount);
     if (!amt || amt < 1) { setError("MINIMUM DEPOSIT IS 1 USDC"); return; }
@@ -312,7 +313,7 @@ function WithdrawModal({
                 WITHDRAWAL SUBMITTED
               </div>
               <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>
-                PROCESSING IN 10–30 MINUTES
+                FUNDS SENT TO YOUR WALLET ON-CHAIN
               </div>
             </div>
             <button className="btn btn-ghost" style={{ width: "100%", marginTop: "20px" }} onClick={onClose}>
