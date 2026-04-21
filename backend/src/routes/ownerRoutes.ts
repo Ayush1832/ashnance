@@ -141,8 +141,9 @@ router.post("/round/:id/cancel", async (req: AuthRequest, res: Response, next: N
 // The master wallet needs SOL to pay transaction fees for prizes and withdrawals.
 router.post("/devnet-airdrop", async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    if (process.env.NODE_ENV === "production") {
-      return next(new BadRequestError("Devnet airdrop not available in production"));
+    const rpc = process.env.SOLANA_RPC_URL || "";
+    if (!rpc.includes("devnet")) {
+      return next(new BadRequestError("Devnet airdrop only available on Solana devnet"));
     }
     const sig = await BlockchainService.requestDevnetAirdrop(2_000_000_000);
     const masterWallet = BlockchainService.getMasterWalletAddress();

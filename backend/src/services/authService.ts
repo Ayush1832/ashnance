@@ -302,7 +302,12 @@ export class AuthService {
     // Verify signature
     const msgBytes = new TextEncoder().encode(data.message);
     const sigBytes = new Uint8Array(data.signature);
-    const isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    let isValid = false;
+    try {
+      isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    } catch {
+      // nacl throws on wrong-length signature bytes
+    }
     if (!isValid) throw new UnauthorizedError("Invalid wallet signature");
 
     // Check if address already linked to another account
@@ -398,7 +403,12 @@ export class AuthService {
     // Verify signature using nacl
     const msgBytes = new TextEncoder().encode(data.message);
     const sigBytes = new Uint8Array(data.signature);
-    const isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    let isValid = false;
+    try {
+      isValid = nacl.sign.detached.verify(msgBytes, sigBytes, pubKey.toBytes());
+    } catch {
+      // nacl throws on wrong-length signature bytes
+    }
     if (!isValid) throw new UnauthorizedError("Invalid wallet signature");
 
     // Find or create user by solana address
