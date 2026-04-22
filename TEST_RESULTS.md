@@ -25,13 +25,13 @@
 | 2FA | 7 | 7 | 0 | 0 |
 | Leaderboards | 5 | 5 | 0 | 0 |
 | WebSocket | 6 | 3 | 0 | 3 |
-| Admin Panel | 5 | 2 | 0 | 3 |
+| Admin Panel | 10 | 10 | 0 | 0 |
 | Owner Panel | 8 | 8 | 0 | 0 |
 | Blockchain | 4 | 2 | 0 | 2 |
 | Token & Session | 4 | 4 | 0 | 0 |
 | Error Handling | 10 | 8 | 0 | 2 |
 | Security | 10 | 10 | 0 | 0 |
-| **TOTAL** | **167** | **118** | **0** | **49** |
+| **TOTAL** | **177** | **128** | **0** | **49** |
 
 **SKIPs** are tests that require a funded Solana account (Phantom deposit) or browser-based events.  
 **0 hard FAILs remaining** — BUG-004 fixed+deployed, BUG-002 guard fixed (devnet faucet rate-limit is external).  
@@ -291,13 +291,18 @@
 
 | TC | Test | Result | Notes |
 |----|------|--------|-------|
-| TC-ADMIN-001 | Non-admin rejected | ✅ PASS | `403: Admin access required` |
-| TC-ADMIN-002 | Promote user to admin | ⏭ SKIP | Owner role doesn't grant admin; need to set via DB |
-| TC-ADMIN-003 | Platform stats | ⏭ SKIP | Needs admin role |
-| TC-ADMIN-004 | Update platform config | ⏭ SKIP | Needs admin role |
-| TC-ADMIN-005 | Paginated user list | ⏭ SKIP | Needs admin role |
+| TC-ADMIN-001 | Non-admin rejected | ✅ PASS | `403: Admin access required` for USER role |
+| TC-ADMIN-002 | Platform stats | ✅ PASS | Returns totalUsers:17, totalBurns:12, rewardPoolBalance, totalBurned |
+| TC-ADMIN-003 | Get platform config | ✅ PASS | Returns 28 config entries (min_burn_amount, ASH rates, etc.) |
+| TC-ADMIN-004 | Update platform config | ✅ PASS | `PUT /api/admin/config/:key` updates value — min_burn_amount confirmed |
+| TC-ADMIN-005 | Paginated user list | ✅ PASS | Returns 5/page, pagination metadata correct (17 users, 4 pages) |
+| TC-ADMIN-006 | Prize tiers | ✅ PASS | 4 tiers returned (JACKPOT, BIG, MEDIUM, SMALL) |
+| TC-ADMIN-007 | Promote user to ADMIN | ✅ PASS | Role updated to ADMIN via `PUT /api/admin/users/:id/role` |
+| TC-ADMIN-008 | Demote user to USER | ✅ PASS | Role downgraded back to USER correctly |
+| TC-ADMIN-009 | Invalid role value | ✅ PASS | `400: Invalid role` for unrecognised role string |
+| TC-ADMIN-010 | Reward pool view | ✅ PASS | Returns pool balance, totalPaidOut, updatedAt |
 
-> **Note:** Owner and Admin are separate roles. Owner email in OWNER_EMAILS does NOT grant ADMIN role. Admin role must be set via DB: `UPDATE "User" SET role='ADMIN' WHERE email='...'`
+> **Note:** Owner and Admin are separate roles. Owner email in OWNER_EMAILS does NOT grant ADMIN role. Admin role set via: `psql "postgresql://ashnance_user:pass@localhost:5433/ashnance" -c "UPDATE users SET role='ADMIN' WHERE email='...';"` (table is lowercase `users`, port 5433)
 
 ---
 
