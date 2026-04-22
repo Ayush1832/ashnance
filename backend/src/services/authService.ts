@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nacl from "tweetnacl";
+import speakeasy from "speakeasy";
 import { PublicKey } from "@solana/web3.js";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
@@ -111,7 +112,7 @@ export class AuthService {
   /**
    * Login with email + password
    */
-  static async login(email: string, password: string) {
+  static async login(email: string, password: string, twoFaCode?: string) {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.passwordHash) {
       throw new UnauthorizedError("Invalid email or password");
@@ -138,6 +139,22 @@ export class AuthService {
 
       await prisma.user.update({ where: { id: user.id }, data: lockData });
       throw new UnauthorizedError("Invalid email or password");
+    }
+
+    // Enforce 2FA if enabled
+    if (user.twoFaEnabled && user.twoFaSecret) {
+      if (!twoFaCode) {
+        throw new UnauthorizedError("2FA code required");
+      }
+      const valid = speakeasy.totp.verify({
+        secret: user.twoFaSecret,
+        encoding: "base32",
+        token: twoFaCode,
+        window: 1,
+      });
+      if (!valid) {
+        throw new UnauthorizedError("Invalid 2FA code");
+      }
     }
 
     // Reset failed attempts on success

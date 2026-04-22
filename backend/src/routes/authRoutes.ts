@@ -72,7 +72,8 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
     if (!data.password) {
       throw new BadRequestError("Password is required for email login");
     }
-    const result = await AuthService.login(data.email, data.password);
+    const twoFaCode = req.body.twoFaCode as string | undefined;
+    const result = await AuthService.login(data.email, data.password, twoFaCode);
 
     res.json({
       success: true,
