@@ -529,7 +529,7 @@ export class BlockchainService {
    * Required so the master wallet can pay transaction fees.
    */
   static async requestDevnetAirdrop(lamports: number = 2_000_000_000): Promise<string | null> {
-    if (process.env.NODE_ENV === "production") return null;
+    if (!(process.env.SOLANA_RPC_URL || "").includes("devnet")) return null;
     try {
       const connection = getConnection();
       const master = getMasterKeypair();
