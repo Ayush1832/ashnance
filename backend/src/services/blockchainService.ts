@@ -35,10 +35,10 @@ export const USDC_MINT_DEVNET = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 const RPC_URL =
   process.env.SOLANA_RPC_URL || clusterApiUrl("devnet");
 
-// Prefer explicit env var; fall back to network-based selection
+// Prefer explicit env var; fall back to RPC URL to detect network
 const USDC_MINT =
   process.env.USDC_MINT ||
-  (process.env.NODE_ENV === "production" ? USDC_MINT_MAINNET : USDC_MINT_DEVNET);
+  (RPC_URL.includes("mainnet") ? USDC_MINT_MAINNET : USDC_MINT_DEVNET);
 
 // ---- Active polling handles (address -> NodeJS.Timeout) ----
 const _monitorHandles = new Map<string, ReturnType<typeof setInterval>>();
