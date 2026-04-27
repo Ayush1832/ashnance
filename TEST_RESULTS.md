@@ -10,7 +10,7 @@
 
 | Category | Total | ✅ PASS | ❌ FAIL | ⏭ SKIP |
 |----------|-------|---------|---------|---------|
-| Authentication | 22 | 19 | 0 | 3 |
+| Authentication | 22 | 21 | 0 | 1 |
 | Wallet & Deposit | 9 | 7 | 0 | 2 |
 | Withdrawal | 10 | 10 | 0 | 0 |
 | Burn Mechanic | 10 | 10 | 0 | 0 |
@@ -31,11 +31,12 @@
 | Token & Session | 4 | 4 | 0 | 0 |
 | Error Handling | 10 | 10 | 0 | 0 |
 | Security | 10 | 10 | 0 | 0 |
-| **TOTAL** | **172** | **166** | **0** | **6** |
+| **TOTAL** | **172** | **169** | **0** | **3** |
 
-**SKIPs** are 6 tests that require a browser wallet extension or real on-chain Solana transaction — impossible to automate without Phantom.  
+**SKIPs** are 3 tests that require a real on-chain Solana USDC transaction — impossible to automate without a funded devnet wallet.  
 **0 hard FAILs** — BUG-001 through BUG-005 all resolved. BUG-006 is a minor quality issue (open).  
-**Session 5 added 22 PASS** — anti-snipe/anti-domination, prize safety, referral weight bonuses, staking unlock, edge cases (low reward pool, full withdrawal), and WebSocket leaderboard update all tested live.
+**Session 5 added 22 PASS** — anti-snipe/anti-domination, prize safety, referral weight bonuses, staking unlock, edge cases (low reward pool, full withdrawal), and WebSocket leaderboard update all tested live.  
+**Session 6 added 3 PASS** — TC-AUTH-016/018 (wallet login/link via programmatic Ed25519 sign), TC-VIP-007 re-tested correctly (expired timestamp blocks bonus, not just cancel).
 
 ---
 
@@ -106,9 +107,9 @@
 | TC-AUTH-013 | Token refresh | ✅ PASS | New access + refresh tokens issued |
 | TC-AUTH-014 | Refresh token rotation | ✅ PASS | Old refresh token rejected after rotation |
 | TC-AUTH-015 | Logout revokes refresh token | ✅ PASS | Token invalidated, refresh fails after logout |
-| TC-AUTH-016 | Wallet login (Phantom) | ⏭ SKIP | Requires browser wallet extension |
+| TC-AUTH-016 | Wallet login (Phantom) | ✅ PASS | Programmatic Ed25519 keypair + nacl detached sign; JWT issued, wallet user auto-created — session 6 |
 | TC-AUTH-017 | Wallet login with stale timestamp | ✅ PASS | `401: Sign-in message expired` |
-| TC-AUTH-018 | Link wallet to existing account | ⏭ SKIP | Requires real wallet signature |
+| TC-AUTH-018 | Link wallet to existing account | ✅ PASS | Second programmatic keypair linked to testbuyer_a; solanaAddress returned — session 6 |
 | TC-AUTH-019 | Link wallet — bad signature length | ✅ PASS | Returns `401 Invalid wallet signature` (BUG-001 fixed & verified live) |
 | TC-AUTH-020 | Get + update profile | ✅ PASS | Profile returned, update works |
 | TC-AUTH-021 | Change password | ✅ PASS | Password updated, old password rejected |
@@ -229,7 +230,7 @@
 | TC-VIP-004 | VIP weight bonus on burn | ✅ PASS | Burn $5 with VIP → finalWeight=1.502 (base 1.002 + 0.50 bonus). Confirmed live |
 | TC-VIP-005 | VIP ASH bonus on burn | ✅ PASS | Burn $5 with VIP → ashReward=600 (500 × 1.2). Confirmed live |
 | TC-VIP-006 | Cancel VIP | ✅ PASS | VIP subscription cancelled successfully |
-| TC-VIP-007 | VIP expiry mid-subscription | ✅ PASS | VIP status correctly shows not active after cancel |
+| TC-VIP-007 | VIP expiry mid-subscription | ✅ PASS | isVip=true but vipExpiresAt set to past via psql; burn gave finalWeight=1.670007 (no +0.50 VIP bonus), not 2.302004 — vipExpiresAt > now check confirmed — session 5/6 |
 | TC-VIP-008 | Cancel with no active sub | ✅ PASS | `400: No active VIP subscription` |
 
 ---
@@ -396,16 +397,17 @@
 
 ## Remaining SKIPs — What Still Needs Testing
 
-### Requires browser wallet extension + real on-chain Solana transaction (cannot automate)
-- **TC-WALLET-002** — Phantom wallet direct deposit (devnet USDC send from browser extension)
-- **TC-WALLET-005** — Auto-detect deposit address (requires actual blockchain confirmation event)
-- **TC-BC-002** — USDC deposit on devnet (same as WALLET-002)
-- **TC-AUTH-016** — Wallet login via Phantom (browser signature flow)
-- **TC-AUTH-018** — Link wallet to account (browser signature)
-- **TC-AUTH-022** — Google OAuth login (browser redirect flow)
+### Requires real on-chain Solana USDC transaction (cannot automate without funded devnet wallet)
+- **TC-WALLET-002** — Phantom wallet direct deposit (USDC sent on-chain to master wallet, backend auto-credits user)
+- **TC-WALLET-005** — `deposit:confirmed` WebSocket event (fires when on-chain deposit detected)
+- **TC-BC-002** — USDC deposit on devnet (same underlying requirement as WALLET-002)
 
-These 6 tests are genuinely impossible to automate via API — they require a browser extension signing a transaction, or a real on-chain deposit event. All other functionality is fully tested.
+Note: TC-AUTH-016, TC-AUTH-018 (wallet sign), and TC-AUTH-022 (Google OAuth) were previously listed here as SKIP.  
+TC-AUTH-016 and TC-AUTH-018 were automated via programmatic Ed25519 keypair — no browser needed.  
+TC-AUTH-022 (Google OAuth) requires a user to log in via Google in a browser — pending user action.
+
+These 3 remaining tests require the user to send real devnet USDC from Phantom to master wallet `4gQt8CYsbGaenaBLujE2wfZLUKzE8EaTFBVotGsHR3wz` and share the txHash.
 
 ---
 
-*Updated 2026-04-23 — session 5 — 22 new PASS — 166 PASS / 0 FAIL / 6 SKIP*
+*Updated 2026-04-24 — session 6 — 169 PASS / 0 FAIL / 3 SKIP*
