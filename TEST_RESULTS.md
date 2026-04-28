@@ -34,7 +34,7 @@
 | **TOTAL** | **172** | **171** | **0** | **1** |
 
 **1 SKIP** — TC-WALLET-005 (`deposit:confirmed` WebSocket event): code path verified correct; devnet RPC on VPS prevents reliable auto-detection.  
-**0 hard FAILs** — BUG-001 through BUG-005 all resolved. BUG-006 is a minor quality issue (open).  
+**0 hard FAILs** — BUG-001 through BUG-006 all resolved.  
 **Session 5 added 22 PASS** — anti-snipe/anti-domination, prize safety, referral weight bonuses, staking unlock, edge cases (low reward pool, full withdrawal), and WebSocket leaderboard update all tested live.  
 **Session 6 added 3 PASS** — TC-AUTH-016/018 (wallet login/link via programmatic Ed25519 sign), TC-VIP-007 re-tested correctly (expired timestamp blocks bonus, not just cancel).  
 **Session 7 added 2 PASS** — TC-WALLET-002 and TC-BC-002 confirmed PASS (real Phantom devnet USDC deposit verified and credited).
@@ -83,7 +83,7 @@
 - **Cause:** The CORS origin callback calls `callback(new Error(...))`, which Express treats as an unhandled error
 - **Impact:** Minor — CORS is blocked correctly (no credentials leak), but the 500 status may confuse monitoring
 - **Fix:** Pass `callback(null, false)` instead of `callback(new Error(...))` in the CORS origin function, or catch the error in `errorHandler`
-- **Status:** ⚠️ Open — low priority, no security impact
+- **Status:** ✅ Fixed — pre-flight middleware now returns `403` for disallowed origins; CORS callback uses `callback(null, false)`
 
 ---
 

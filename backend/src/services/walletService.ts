@@ -52,7 +52,7 @@ export class WalletService {
     const verified = await BlockchainService.verifyDepositTransaction(txHash);
     if (!verified) {
       throw new BadRequestError(
-        "Could not verify transaction. Make sure you sent USDC to the platform wallet on Solana devnet and the transaction is confirmed."
+        "Could not verify transaction. Make sure you sent USDC to the platform wallet on Solana and the transaction is confirmed."
       );
     }
 

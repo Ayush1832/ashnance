@@ -28,11 +28,19 @@ const httpServer = createServer(app);
 app.set("trust proxy", 1);
 
 // ---- Global Middleware ----
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && !config.corsOrigins.includes(origin)) {
+    res.status(403).json({ success: false, error: "CORS: origin not allowed" });
+    return;
+  }
+  next();
+});
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
     if (config.corsOrigins.includes(origin)) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
+    callback(null, false);
   },
   credentials: true,
 }));
