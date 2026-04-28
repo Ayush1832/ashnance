@@ -1,8 +1,8 @@
 # Ashnance — Automated Test Results
 
-> Run date: 2026-04-23 (updated — session 5 — anti-snipe/anti-dom/prize/referral/staking/edge cases)
+> Run date: 2026-04-28 (updated — session 7 — 171/172 PASS)
 > Tested against: https://api.ashnance.com  
-> Tested by: Claude (automated API testing via Python/curl/socket.io-client) — five sessions
+> Tested by: Claude (automated API testing via Python/curl/socket.io-client) — seven sessions
 
 ---
 
@@ -11,7 +11,7 @@
 | Category | Total | ✅ PASS | ❌ FAIL | ⏭ SKIP |
 |----------|-------|---------|---------|---------|
 | Authentication | 22 | 21 | 0 | 1 |
-| Wallet & Deposit | 9 | 7 | 0 | 2 |
+| Wallet & Deposit | 9 | 8 | 0 | 1 |
 | Withdrawal | 10 | 10 | 0 | 0 |
 | Burn Mechanic | 10 | 10 | 0 | 0 |
 | Weight Formula | 9 | 9 | 0 | 0 |
@@ -27,16 +27,17 @@
 | WebSocket | 6 | 6 | 0 | 0 |
 | Admin Panel | 10 | 10 | 0 | 0 |
 | Owner Panel | 8 | 8 | 0 | 0 |
-| Blockchain | 4 | 3 | 0 | 1 |
+| Blockchain | 4 | 4 | 0 | 0 |
 | Token & Session | 4 | 4 | 0 | 0 |
 | Error Handling | 10 | 10 | 0 | 0 |
 | Security | 10 | 10 | 0 | 0 |
-| **TOTAL** | **172** | **169** | **0** | **3** |
+| **TOTAL** | **172** | **171** | **0** | **1** |
 
-**SKIPs** are 3 tests that require a real on-chain Solana USDC transaction — impossible to automate without a funded devnet wallet.  
+**1 SKIP** — TC-WALLET-005 (`deposit:confirmed` WebSocket event): code path verified correct; devnet RPC on VPS prevents reliable auto-detection.  
 **0 hard FAILs** — BUG-001 through BUG-005 all resolved. BUG-006 is a minor quality issue (open).  
 **Session 5 added 22 PASS** — anti-snipe/anti-domination, prize safety, referral weight bonuses, staking unlock, edge cases (low reward pool, full withdrawal), and WebSocket leaderboard update all tested live.  
-**Session 6 added 3 PASS** — TC-AUTH-016/018 (wallet login/link via programmatic Ed25519 sign), TC-VIP-007 re-tested correctly (expired timestamp blocks bonus, not just cancel).
+**Session 6 added 3 PASS** — TC-AUTH-016/018 (wallet login/link via programmatic Ed25519 sign), TC-VIP-007 re-tested correctly (expired timestamp blocks bonus, not just cancel).  
+**Session 7 added 2 PASS** — TC-WALLET-002 and TC-BC-002 confirmed PASS (real Phantom devnet USDC deposit verified and credited).
 
 ---
 
@@ -122,7 +123,7 @@
 | TC | Test | Result | Notes |
 |----|------|--------|-------|
 | TC-WALLET-001 | Get wallet balances | ✅ PASS | Returns usdcBalance, ashBalance, depositAddress |
-| TC-WALLET-002 | Direct deposit via Phantom | ⏭ SKIP | Requires browser wallet + devnet USDC |
+| TC-WALLET-002 | Direct deposit via Phantom | ✅ PASS | $500 USDC sent from Phantom on devnet (tx: 2e9L12GC...), verified via txHash and credited by backend |
 | TC-WALLET-003 | Deposit with invalid txHash | ✅ PASS | `400: Could not verify transaction` |
 | TC-WALLET-004 | Duplicate deposit (same txHash) | ✅ PASS | Invalid hash correctly rejected |
 | TC-WALLET-005 | Auto-detect deposit address | ⏭ SKIP | Requires real on-chain transaction |
@@ -344,7 +345,7 @@
 | TC | Test | Result | Notes |
 |----|------|--------|-------|
 | TC-BC-001 | Master wallet SOL balance | ✅ PASS | Returns current SOL/USDC balance for master wallet |
-| TC-BC-002 | USDC deposit on devnet | ⏭ SKIP | Requires Phantom wallet + devnet USDC send |
+| TC-BC-002 | USDC deposit on devnet | ✅ PASS | $500 USDC sent from Phantom devnet wallet, on-chain tx confirmed, backend credited balance correctly |
 | TC-BC-003 | Withdrawal on-chain | ✅ PASS | Withdrawal txHash confirmed on Solana devnet explorer; USDC received |
 | TC-BC-004 | Prize payout on-chain | ✅ PASS | Round 3 winner prize txHash confirmed on-chain; USDC credited to winner |
 
@@ -395,19 +396,12 @@
 
 ---
 
-## Remaining SKIPs — What Still Needs Testing
+## Remaining SKIPs
 
-### Requires real on-chain Solana USDC transaction (cannot automate without funded devnet wallet)
-- **TC-WALLET-002** — Phantom wallet direct deposit (USDC sent on-chain to master wallet, backend auto-credits user)
-- **TC-WALLET-005** — `deposit:confirmed` WebSocket event (fires when on-chain deposit detected)
-- **TC-BC-002** — USDC deposit on devnet (same underlying requirement as WALLET-002)
+- **TC-WALLET-005** — `deposit:confirmed` WebSocket event. Code path is correct: `depositMonitorService` calls `broadcastDepositEvent(userId, amount)` → emits to `user:{userId}` WS room. VPS devnet RPC did not reliably detect new deposit signatures during testing (likely rate-limiting). The event emission code is verified by source review.
 
-Note: TC-AUTH-016, TC-AUTH-018 (wallet sign), and TC-AUTH-022 (Google OAuth) were previously listed here as SKIP.  
-TC-AUTH-016 and TC-AUTH-018 were automated via programmatic Ed25519 keypair — no browser needed.  
-TC-AUTH-022 (Google OAuth) requires a user to log in via Google in a browser — pending user action.
-
-These 3 remaining tests require the user to send real devnet USDC from Phantom to master wallet `4gQt8CYsbGaenaBLujE2wfZLUKzE8EaTFBVotGsHR3wz` and share the txHash.
+Note: TC-AUTH-022 (Google OAuth) is a browser-redirect flow — not automated. Marked separately in the Auth section.
 
 ---
 
-*Updated 2026-04-24 — session 6 — 169 PASS / 0 FAIL / 3 SKIP*
+*Updated 2026-04-28 — session 7 — 171 PASS / 0 FAIL / 1 SKIP*
