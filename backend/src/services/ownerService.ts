@@ -2,6 +2,7 @@ import { prisma } from "../utils/prisma";
 import { config } from "../config";
 import { BadRequestError, NotFoundError, UnauthorizedError } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
+import { EmailService } from "./emailService";
 
 /** ASH token price in USD — used to convert burn value to ASH tokens on loss */
 export const ASH_TOKEN_PRICE_USD = 0.01;
@@ -193,11 +194,9 @@ export class OwnerService {
           totalWithdrawn: { increment: Number(request.owner1Amount) },
         },
       });
-      console.error(
-        `[CRITICAL] Owner withdrawal PARTIAL: owner1 paid txHash=${txHash1}, ` +
-        `owner2 transfer failed. requestId=${requestId}`,
-        err
-      );
+      const criticalMsg = `Owner withdrawal PARTIAL: owner1 paid txHash=${txHash1}, owner2 transfer failed.\nrequestId=${requestId}\nerror=${err}`;
+      console.error("[CRITICAL]", criticalMsg);
+      EmailService.sendCriticalAlert("Owner withdrawal PARTIAL — owner2 not paid", criticalMsg).catch(() => {});
       throw new Error(
         `Owner1 (${request.owner1Wallet}) was paid (${txHash1}). ` +
         `Owner2 transfer failed — please send $${Number(request.owner2Amount).toFixed(2)} ` +

@@ -7,7 +7,10 @@ import {
   ConflictError,
 } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
+import { EmailService } from "./emailService";
 import speakeasy from "speakeasy";
+
+const WHITELIST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export class WalletService {
   /**
@@ -175,13 +178,20 @@ export class WalletService {
       throw new InsufficientBalanceError();
     }
 
-    // Check whitelisted address
-    const isWhitelisted = user.whitelistAddrs.some(
+    // Check whitelisted address (must be verified AND past 24-hour security cooldown)
+    const matchingAddr = user.whitelistAddrs.find(
       (addr: any) => addr.address === address && addr.isVerified
     );
-    if (!isWhitelisted) {
+    if (!matchingAddr) {
       throw new BadRequestError(
-        "Address not whitelisted. Add and verify it in Settings before withdrawing."
+        "Address not whitelisted. Add it in Settings before withdrawing."
+      );
+    }
+    const cooldownRemaining = WHITELIST_COOLDOWN_MS - (Date.now() - new Date(matchingAddr.createdAt).getTime());
+    if (cooldownRemaining > 0) {
+      const hours = Math.ceil(cooldownRemaining / 3_600_000);
+      throw new BadRequestError(
+        `New whitelist addresses have a 24-hour security cooldown. This address will be ready in ~${hours} hour${hours === 1 ? "" : "s"}.`
       );
     }
 
@@ -234,11 +244,9 @@ export class WalletService {
       // CRITICAL: on-chain transfer succeeded but DB update failed.
       // The user received USDC but their in-app balance was not decremented.
       // Requires manual reconciliation.
-      console.error(
-        `[CRITICAL] Withdrawal DB update failed after successful on-chain transfer. ` +
-        `userId=${userId} amount=${amount} txHash=${txHash} address=${address}`,
-        dbErr
-      );
+      const criticalMsg = `Withdrawal DB update failed after successful on-chain transfer.\nuserId=${userId}\namount=${amount}\ntxHash=${txHash}\naddress=${address}\nerror=${dbErr}`;
+      console.error("[CRITICAL]", criticalMsg);
+      EmailService.sendCriticalAlert("Withdrawal DB failure — manual reconciliation required", criticalMsg).catch(() => {});
       throw new BadRequestError(
         "Withdrawal sent on-chain but our records failed to update. " +
         "Please contact support with your transaction hash: " + txHash

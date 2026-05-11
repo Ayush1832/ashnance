@@ -134,4 +134,57 @@ export class EmailService {
       console.error("Email send error:", err);
     }
   }
+
+  /**
+   * Send a CRITICAL alert to all owner emails.
+   * Used for: withdrawal DB failure after on-chain success, partial owner withdrawal, etc.
+   */
+  static async sendCriticalAlert(subject: string, body: string): Promise<void> {
+    const recipients = config.ownerEmails;
+    if (!config.email.user || !recipients.length) return;
+    try {
+      await EmailService.transporter.sendMail({
+        from: `"Ashnance ALERT" <${config.email.from}>`,
+        to: recipients.join(","),
+        subject: `[CRITICAL] ${subject}`,
+        html: `
+          <div style="background:#1a0000;color:#ffcccc;font-family:monospace;padding:32px;max-width:600px;border:2px solid #cc0000;">
+            <h2 style="color:#ff4444;margin:0 0 16px;">[CRITICAL] ${subject}</h2>
+            <pre style="font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all;">${body}</pre>
+            <p style="color:#ff8888;font-size:11px;margin-top:24px;">This requires immediate manual review.</p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      console.error("[EmailService] Failed to send critical alert:", err);
+    }
+  }
+
+  /**
+   * Send a low-balance warning to all owner emails.
+   */
+  static async sendLowBalanceAlert(asset: string, balance: number, threshold: number): Promise<void> {
+    const recipients = config.ownerEmails;
+    if (!config.email.user || !recipients.length) return;
+    try {
+      await EmailService.transporter.sendMail({
+        from: `"Ashnance ALERT" <${config.email.from}>`,
+        to: recipients.join(","),
+        subject: `[WARNING] Master wallet ${asset} balance low`,
+        html: `
+          <div style="background:#1a1000;color:#ffe0aa;font-family:monospace;padding:32px;max-width:480px;border:2px solid #cc8800;">
+            <h2 style="color:#ffaa00;margin:0 0 16px;">Low Balance Warning</h2>
+            <p style="font-size:14px;">Master wallet <strong>${asset}</strong> balance has dropped below the alert threshold.</p>
+            <table style="margin:16px 0;font-size:13px;">
+              <tr><td style="padding:4px 16px 4px 0;color:#888;">Current balance:</td><td style="color:#ffaa00;font-weight:700;">${balance.toFixed(4)} ${asset}</td></tr>
+              <tr><td style="padding:4px 16px 4px 0;color:#888;">Alert threshold:</td><td>${threshold} ${asset}</td></tr>
+            </table>
+            <p style="color:#cc8800;font-size:11px;">Top up the master wallet to avoid failed prize payouts or user withdrawals.</p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      console.error("[EmailService] Failed to send low balance alert:", err);
+    }
+  }
 }

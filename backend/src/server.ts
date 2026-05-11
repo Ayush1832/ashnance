@@ -116,6 +116,11 @@ import("./services/roundService").then(({ RoundService }) => {
   console.log("[ROUND] Background expiry checker started (60s interval)");
 });
 
+// ---- Balance monitoring — alert owners when master wallet SOL/USDC is low ----
+import("./services/monitoringService").then(({ startBalanceMonitoring }) => {
+  startBalanceMonitoring();
+});
+
 // ---- VIP auto-renewal — check expired VIP subscriptions every hour ----
 import("./services/vipService").then(({ VipService }) => {
   setInterval(async () => {
