@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "./page.module.css";
+import HeroCoinsScene from "@/components/effects/HeroCoins";
 
 const tickerData = [
   { name: "Burner#7492",  action: "burned 10 USDC",          win: false },
@@ -57,7 +58,8 @@ export default function LandingPage() {
       </div>
 
       {/* ========== HERO ========== */}
-      <section className={styles.hero}>
+      <section className={styles.hero} style={{ position: "relative", overflow: "hidden" }}>
+        <HeroCoinsScene />
         <p className={styles.tagline}>🔥 Keep Burning, Keep Earning 🔥</p>
         <h1 className={styles.heroTitle}>
           BURN<br />

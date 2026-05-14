@@ -278,24 +278,24 @@ export default function DashboardPage() {
       {/* ===== STAT GRID ===== */}
       {!loading && (
         <div className="stat-grid">
-          <div className="stat-card clip-card">
-            <div className="stat-label">USDC BALANCE</div>
-            <div className="stat-value usdc">${usdcBalance.toFixed(2)}</div>
+          <div className="stat-card clip-card card-gradient-border">
+            <div className="stat-label">💵 USDC BALANCE</div>
+            <div className="stat-value usdc stat-number">${usdcBalance.toFixed(2)}</div>
             <div className="stat-sub">AVAILABLE TO BURN</div>
           </div>
-          <div className="stat-card clip-card">
-            <div className="stat-label">ASH BALANCE</div>
-            <div className="stat-value ash">{ashBalance.toLocaleString()}</div>
+          <div className="stat-card clip-card card-gradient-border">
+            <div className="stat-label">🪙 ASH BALANCE</div>
+            <div className="stat-value ash stat-number">{ashBalance.toLocaleString()}</div>
             <div className="stat-sub">USE FOR BOOSTS</div>
           </div>
-          <div className="stat-card clip-card">
-            <div className="stat-label">TOTAL BURNS</div>
-            <div className="stat-value fire">{totalBurns}</div>
+          <div className="stat-card clip-card card-gradient-border">
+            <div className="stat-label">🔥 TOTAL BURNS</div>
+            <div className="stat-value fire stat-number">{totalBurns}</div>
             <div className="stat-sub">LIFETIME BURNS</div>
           </div>
-          <div className="stat-card clip-card">
-            <div className="stat-label">CURRENT WEIGHT</div>
-            <div className="stat-value gold">{cumulativeWeight.toFixed(2)}</div>
+          <div className="stat-card clip-card card-gradient-border">
+            <div className="stat-label">⚖ CURRENT WEIGHT</div>
+            <div className="stat-value gold stat-number">{cumulativeWeight.toFixed(2)}</div>
             <div className="stat-sub">LEADERBOARD RANK</div>
           </div>
         </div>
@@ -336,14 +336,18 @@ export default function DashboardPage() {
               </div>
 
               {/* Progress bar */}
-              <div style={{ height: "10px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,140,66,0.15)", overflow: "hidden", marginBottom: "10px" }}>
+              <div style={{ height: "10px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,140,66,0.15)", overflow: "visible", marginBottom: "10px", position: "relative" }}>
                 <div style={{
                   height: "100%",
                   width: `${Math.min(100, (Number(round.currentPool) / Number(round.prizePoolTarget)) * 100)}%`,
                   background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
                   boxShadow: "0 0 8px rgba(255,140,66,0.4)",
                   transition: "width 0.4s ease",
-                }} />
+                  position: "relative",
+                }}>
+                  {/* Glowing pulse dot at bar end */}
+                  <div className={styles.progressPulseDot} />
+                </div>
               </div>
 
               {/* Bottom row */}
@@ -374,8 +378,14 @@ export default function DashboardPage() {
 
       {/* ===== QUICK ACTIONS ===== */}
       <div className={styles.quickActions}>
-        <Link href="/burn" className="btn btn-fire">🔥 BURN NOW</Link>
-        <Link href="/wallet" className="btn btn-ghost">💳 DEPOSIT</Link>
+        <Link href="/burn" className={`btn btn-fire ${styles.quickActionBtn}`}>
+          <span className={styles.quickActionIcon}>🔥</span>
+          BURN NOW
+        </Link>
+        <Link href="/wallet" className={`btn btn-ghost ${styles.quickActionBtn}`}>
+          <span className={styles.quickActionIcon}>💳</span>
+          DEPOSIT
+        </Link>
       </div>
 
       {/* ===== BOTTOM GRID ===== */}

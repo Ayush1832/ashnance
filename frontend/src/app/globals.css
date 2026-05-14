@@ -618,3 +618,87 @@ ul, ol { list-style: none; }
   .stat-grid { grid-template-columns: 1fr; }
   .social-login { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   DESIGN SYSTEM EXTENSIONS — v2
+   ============================================================ */
+
+/* ---- GRADIENT BORDER CARD ---- */
+.card-gradient-border {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(135deg, #FF4D00, #FFB800, #2A1F10) border-box;
+}
+
+/* ---- GLASSMORPHISM PANEL ---- */
+.glass-panel {
+  background: rgba(22, 16, 8, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 77, 0, 0.15);
+}
+
+/* ---- FIRE TEXT GRADIENT ---- */
+.text-fire {
+  background: linear-gradient(135deg, #FF4D00, #FFB800);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ---- ANIMATED STAT NUMBER ---- */
+.stat-number {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+/* ---- IMPROVED CARD HOVER ---- */
+.card:hover {
+  border-color: rgba(255, 77, 0, 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(255, 77, 0, 0.12);
+  transition: all 0.25s ease;
+}
+
+/* ---- SHINE ANIMATION (VIP badges, gold elements) ---- */
+@keyframes shine {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+.shine {
+  background: linear-gradient(
+    90deg,
+    var(--gold) 0%,
+    #fff9c4 30%,
+    var(--gold) 50%,
+    #FF8800 70%,
+    var(--gold) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shine 3s linear infinite;
+}
+
+/* ---- FIRE INPUT ---- */
+.input-fire {
+  width: 100%;
+  background: var(--black);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 16px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  letter-spacing: 1px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-fire:focus {
+  border-color: var(--fire-orange);
+  box-shadow: 0 0 0 2px rgba(255, 77, 0, 0.15), 0 0 12px rgba(255, 77, 0, 0.2);
+}
+.input-fire::placeholder { color: var(--text-dim); }

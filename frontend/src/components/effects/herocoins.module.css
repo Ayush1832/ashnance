@@ -1,0 +1,142 @@
+/* ============================================================
+   HERO COINS SCENE — CSS Module
+   ============================================================ */
+
+/* ---- SCENE CONTAINER ---- */
+.heroCoinsScene {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+}
+
+/* ---- INDIVIDUAL COIN WRAPPER ---- */
+.heroCoin {
+  position: absolute;
+  perspective: 600px;
+  perspective-origin: 50% 50%;
+}
+
+/* ---- 3D COIN BASE ---- */
+.heroCoinInner {
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  position: relative;
+}
+
+/* ---- COIN FACE (shared) ---- */
+.heroCoinFace {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.heroCoinFace::before {
+  content: '';
+  position: absolute;
+  top: 8%;
+  left: 15%;
+  width: 35%;
+  height: 30%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.3) 0%, transparent 80%);
+  border-radius: 50%;
+}
+
+/* ---- USDC HERO FACE ---- */
+.heroCoinUsdc {
+  background: radial-gradient(circle at 35% 30%, #6eff9e 0%, #4ade80 20%, #27AE60 55%, #1a6e3f 100%);
+  box-shadow:
+    inset 0 3px 10px rgba(255, 255, 255, 0.2),
+    inset 0 -3px 10px rgba(0, 0, 0, 0.25),
+    3px 0 0 #1a5c33,
+    0 0 30px rgba(39, 174, 96, 0.3);
+}
+
+/* ---- SOL HERO FACE ---- */
+.heroCoinSol {
+  background: radial-gradient(circle at 35% 30%, #c084fc 0%, #a855f7 25%, #7c3aed 60%, #4c1d95 100%);
+  box-shadow:
+    inset 0 3px 10px rgba(255, 255, 255, 0.2),
+    inset 0 -3px 10px rgba(0, 0, 0, 0.25),
+    3px 0 0 #3b0f7a,
+    0 0 30px rgba(168, 85, 247, 0.3);
+}
+
+/* ---- SYMBOL ---- */
+.heroCoinSymbol {
+  font-family: 'Bebas Neue', sans-serif;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  position: relative;
+  z-index: 1;
+}
+
+.heroCoinLabel {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.65);
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- BOB ANIMATIONS (each coin gets a different one) ---- */
+@keyframes heroBob0 {
+  0%, 100% { transform: translateY(0px) rotateY(0deg); }
+  50%       { transform: translateY(-18px) rotateY(180deg); }
+}
+
+@keyframes heroBob1 {
+  0%, 100% { transform: translateY(-10px) rotateY(30deg); }
+  50%       { transform: translateY(10px) rotateY(210deg); }
+}
+
+@keyframes heroBob2 {
+  0%, 100% { transform: translateY(5px) rotateY(0deg); }
+  50%       { transform: translateY(-22px) rotateY(180deg); }
+}
+
+@keyframes heroBob3 {
+  0%, 100% { transform: translateY(-8px) rotateY(60deg); }
+  50%       { transform: translateY(12px) rotateY(240deg); }
+}
+
+@keyframes heroBob4 {
+  0%, 100% { transform: translateY(0px) rotateY(20deg); }
+  50%       { transform: translateY(-15px) rotateY(200deg); }
+}
+
+/* ---- FIRE AURA PULSE (CSS-only, no canvas) ---- */
+@keyframes coinFireAura {
+  0%, 100% {
+    box-shadow:
+      inset 0 3px 10px rgba(255, 255, 255, 0.2),
+      0 0 20px rgba(255, 77, 0, 0.2),
+      0 0 40px rgba(255, 77, 0, 0.08);
+  }
+  50% {
+    box-shadow:
+      inset 0 3px 10px rgba(255, 255, 255, 0.25),
+      0 0 35px rgba(255, 77, 0, 0.4),
+      0 0 70px rgba(255, 184, 0, 0.15);
+  }
+}
+
+.heroCoinFire {
+  animation: coinFireAura 2.5s ease-in-out infinite;
+}
+
+/* ---- RESPONSIVE: hide some coins on mobile ---- */
+@media (max-width: 767px) {
+  .heroCoin:not(.heroCoinMobileShow) {
+    display: none;
+  }
+}

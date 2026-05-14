@@ -1,0 +1,249 @@
+/* ============================================================
+   COIN BURN 3D — CSS Module
+   ============================================================ */
+
+/* ---- OUTER CONTAINER ---- */
+.coinContainer {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.coinContainer.disabled {
+  cursor: not-allowed;
+}
+
+/* ---- PERSPECTIVE WRAPPER ---- */
+.coinWrapper {
+  perspective: 800px;
+  perspective-origin: 50% 50%;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---- FIRE GLOW AURA (pulsing background) ---- */
+.coinAura {
+  position: absolute;
+  inset: -30px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 77, 0, 0.15) 0%, transparent 70%);
+  animation: auraPulse 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ---- COIN DIV (3D spin object) ---- */
+.coin {
+  position: relative;
+  border-radius: 50%;
+  transform-style: preserve-3d;
+  transition: transform 0.4s ease, filter 0.4s ease, opacity 0.3s ease;
+  z-index: 1;
+}
+
+/* ---- COIN FACES ---- */
+.coinFront,
+.coinBack {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.coinFront {
+  transform: rotateY(0deg);
+}
+
+.coinBack {
+  transform: rotateY(180deg);
+}
+
+/* ---- USDC FACE ---- */
+.usdcFront {
+  background: radial-gradient(circle at 35% 30%, #6eff9e 0%, #4ade80 20%, #27AE60 55%, #1a6e3f 100%);
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.25),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+    4px 0 0 #1a5c33,
+    8px 2px 0 rgba(0, 0, 0, 0.2),
+    0 0 40px rgba(39, 174, 96, 0.4);
+}
+
+.usdcBack {
+  background: radial-gradient(circle at 35% 30%, #2d8a50 0%, #1f7a42 40%, #156030 100%);
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.1),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.4),
+    -4px 0 0 #0f4020,
+    0 0 20px rgba(39, 174, 96, 0.2);
+}
+
+/* ---- SOL FACE ---- */
+.solFront {
+  background: radial-gradient(circle at 35% 30%, #c084fc 0%, #a855f7 25%, #7c3aed 60%, #4c1d95 100%);
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.25),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+    4px 0 0 #3b0f7a,
+    8px 2px 0 rgba(0, 0, 0, 0.2),
+    0 0 40px rgba(168, 85, 247, 0.4);
+}
+
+.solBack {
+  background: radial-gradient(circle at 35% 30%, #7c3aed 0%, #5b21b6 40%, #3b0f7a 100%);
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.1),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.4),
+    -4px 0 0 #2e0b60,
+    0 0 20px rgba(168, 85, 247, 0.2);
+}
+
+/* ---- COIN SURFACE SHINE ---- */
+.coinFront::before {
+  content: '';
+  position: absolute;
+  top: 8%;
+  left: 15%;
+  width: 35%;
+  height: 30%;
+  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.35) 0%, transparent 80%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ---- COIN SYMBOL ---- */
+.coinSymbol {
+  font-family: 'Bebas Neue', sans-serif;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 1;
+  position: relative;
+}
+
+.coinCurrency {
+  font-family: 'Bebas Neue', sans-serif;
+  font-weight: 400;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.7);
+  z-index: 1;
+  position: relative;
+}
+
+.coinAmount {
+  font-family: 'Bebas Neue', sans-serif;
+  font-weight: 400;
+  color: #FFB800;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+  position: relative;
+}
+
+/* ---- BACK FACE CONTENT ---- */
+.coinBackContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  opacity: 0.8;
+}
+
+/* ---- PHASE: IDLE ---- */
+.coin--idle {
+  animation: coinSpinIdle 4s linear infinite;
+}
+
+/* ---- PHASE: BURNING ---- */
+.coin--burning {
+  animation: coinSpinFast 0.25s linear infinite;
+  filter: sepia(1) saturate(3) hue-rotate(-20deg) brightness(1.3);
+  transform: scale(1.05);
+}
+
+/* Burning glow override */
+.coin--burning .usdcFront,
+.coin--burning .solFront {
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.1),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+    4px 0 0 #7a2200,
+    0 0 60px rgba(255, 77, 0, 0.8),
+    0 0 120px rgba(255, 184, 0, 0.3);
+}
+
+/* ---- PHASE: DONE ---- */
+.coin--done {
+  animation: none !important;
+  transform: scale(0) !important;
+  opacity: 0 !important;
+  transition: transform 0.3s ease, opacity 0.3s ease !important;
+}
+
+/* ---- PHASE: DISABLED ---- */
+.coin--disabled {
+  animation: none !important;
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ---- HOVER (idle only) ---- */
+.coinWrapper:not(.disabled):hover .coin--idle {
+  animation: none;
+  transform: rotateY(30deg) rotateX(-10deg) scale(1.05);
+}
+
+.coinWrapper:not(.disabled):hover .usdcFront {
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.35),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+    4px 0 0 #1a5c33,
+    0 0 70px rgba(39, 174, 96, 0.6),
+    0 0 120px rgba(39, 174, 96, 0.2);
+}
+
+.coinWrapper:not(.disabled):hover .solFront {
+  box-shadow:
+    inset 0 4px 12px rgba(255, 255, 255, 0.35),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.3),
+    4px 0 0 #3b0f7a,
+    0 0 70px rgba(168, 85, 247, 0.6),
+    0 0 120px rgba(168, 85, 247, 0.2);
+}
+
+/* ---- CANVAS (fire particles) ---- */
+.fireCanvas {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---- ANIMATIONS ---- */
+@keyframes coinSpinIdle {
+  0%   { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
+
+@keyframes coinSpinFast {
+  0%   { transform: rotateY(0deg) scale(1.05); }
+  100% { transform: rotateY(360deg) scale(1.05); }
+}
+
+@keyframes auraPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.1); }
+}

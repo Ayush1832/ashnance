@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import styles from "./burn.module.css";
+import CoinBurn3D from "@/components/effects/CoinBurn3D";
 
 // ---- Types ----
 type BurnPhase = "idle" | "burning" | "result";
@@ -335,7 +336,7 @@ export default function BurnPage() {
               {PRESETS.map((p, i) => (
                 <button
                   key={i}
-                  className={`${styles.amountBtn}${presetIdx === i ? " " + styles.selected : ""}`}
+                  className={`${styles.amountBtn}${presetIdx === i ? " " + styles.selected + " " + styles.selectedFireBorder : ""}`}
                   onClick={() => {
                     setPresetIdx(i);
                     if (i !== 3) setCustomAmt("");
@@ -375,6 +376,15 @@ export default function BurnPage() {
                   className={styles.luckFill}
                   style={{ width: `${fillPct}%` }}
                 />
+                {/* Flame marker at current fill position */}
+                {fillPct > 0 && (
+                  <span
+                    className={styles.luckFlame}
+                    style={{ left: `${fillPct}%` }}
+                  >
+                    🔥
+                  </span>
+                )}
               </div>
               <div className={styles.luckMeta}>
                 <span style={{ color: "var(--fire-orange)" }}>
@@ -387,26 +397,32 @@ export default function BurnPage() {
               </div>
             </div>
 
-            {/* Circular Burn Button */}
+            {/* 3D Coin Burn Button */}
             <div className={styles.burnBtnWrap}>
-              <button
-                className={styles.burnCircle}
+              {/* Radial fire glow behind coin */}
+              <div className={styles.coinGlowBg} />
+              <CoinBurn3D
+                currency="USDC"
+                amount={amount >= 5.0 && !statsLoading ? amount : undefined}
+                size={200}
+                phase={
+                  phase === "burning"
+                    ? "burning"
+                    : phase === "result"
+                    ? "done"
+                    : "idle"
+                }
                 onClick={handleBurn}
                 disabled={!canBurn}
-              >
-                <span className={styles.burnCircleEmoji}>🔥</span>
-                <span className={styles.burnCircleLabel}>
-                  {statsLoading ? "..." : "BURN"}
-                </span>
-                {!statsLoading && amount >= 5.0 && (
-                  <span className={styles.burnCircleAmt}>
-                    ${amount.toFixed(2)}
-                  </span>
-                )}
-              </button>
+              />
               {!statsLoading && amount >= 5.0 && usdcBalance < amount && phase === "idle" && (
                 <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
                   INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
+                </div>
+              )}
+              {!statsLoading && !canBurn && amount < 5.0 && phase === "idle" && (
+                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
+                  SELECT AN AMOUNT TO BURN
                 </div>
               )}
             </div>
@@ -544,6 +560,12 @@ export default function BurnPage() {
       {/* ===== RESULT OVERLAY ===== */}
       {phase === "result" && result && (
         <div className={styles.resultOverlay}>
+          {/* CSS particle burst decorations */}
+          <div className={styles.resultBurst} aria-hidden="true">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className={styles.burstParticle} style={{ "--burst-i": i } as React.CSSProperties} />
+            ))}
+          </div>
           <div className={styles.resultCard}>
             {result.roundEnded ? (
               <>

@@ -102,17 +102,19 @@
 }
 .luckLabel span { color: var(--fire-orange); }
 .luckBar {
-  height: 8px;
+  height: 12px;
   background: var(--border);
   margin-bottom: 8px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  border-radius: 2px;
 }
 .luckFill {
   height: 100%;
   background: linear-gradient(90deg, var(--fire-red), var(--fire-orange), var(--gold));
   transition: width 0.4s ease;
   position: relative;
+  border-radius: 2px;
 }
 .luckFill::after {
   content: '';
@@ -120,11 +122,22 @@
   right: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: var(--gold);
-  box-shadow: 0 0 10px rgba(255, 184, 0, 0.8);
+  box-shadow: 0 0 12px rgba(255, 184, 0, 0.9), 0 0 24px rgba(255, 184, 0, 0.4);
+}
+/* Flame marker at current bar position */
+.luckFlame {
+  position: absolute;
+  top: -16px;
+  transform: translateX(-50%);
+  font-size: 16px;
+  pointer-events: none;
+  transition: left 0.4s ease;
+  filter: drop-shadow(0 0 4px rgba(255, 77, 0, 0.8));
+  animation: luckFlameDance 0.6s ease-in-out infinite alternate;
 }
 .luckMeta {
   font-size: 10px;
@@ -133,41 +146,48 @@
 }
 .luckMeta span { color: var(--fire-orange); }
 
-/* ---- CIRCULAR BURN BUTTON ---- */
+/* ---- COIN BURN BUTTON WRAP ---- */
 .burnBtnWrap {
-  display: flex;
-  justify-content: center;
-  margin: 28px 0;
-}
-.burnCircle {
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, var(--gold) 0%, var(--fire-orange) 35%, var(--fire-red) 70%, #1a0000 100%);
-  border: none;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  animation: burnPulse 2s ease-in-out infinite;
-  transition: transform 0.2s, opacity 0.2s;
-  font-family: var(--font-display);
-  color: white;
-  letter-spacing: 4px;
-  gap: 4px;
+  margin: 28px 0;
   position: relative;
 }
-.burnCircle:hover { transform: scale(1.06); }
-.burnCircle:active { transform: scale(0.97); }
-.burnCircle:disabled {
-  opacity: 0.35;
-  animation: none;
-  cursor: not-allowed;
+
+/* Radial fire glow pulsing behind the coin */
+.coinGlowBg {
+  position: absolute;
+  width: 300px;
+  height: 200px;
+  background: radial-gradient(ellipse 300px 200px at center, rgba(255, 77, 0, 0.08), transparent);
+  pointer-events: none;
+  animation: coinGlowPulse 3s ease-in-out infinite;
+  z-index: 0;
+}
+
+/* Keep legacy burnCircle for fallback references (unused now) */
+.burnCircle {
+  display: none;
 }
 .burnCircleEmoji { font-size: 40px; }
 .burnCircleLabel { font-size: 22px; }
 .burnCircleAmt   { font-size: 16px; color: var(--gold); }
+
+/* ---- SELECTED PRESET FIRE BORDER ---- */
+.selectedFireBorder {
+  border-color: transparent !important;
+  background-clip: padding-box;
+  position: relative;
+}
+.selectedFireBorder::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, #FF4D00, #FFB800, #FF4D00);
+  z-index: -1;
+}
 
 /* ---- DISCLAIMER ---- */
 .disclaimer {
@@ -329,6 +349,29 @@
   margin-bottom: 12px;
 }
 
+/* ---- RESULT BURST PARTICLES ---- */
+.resultBurst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 501;
+}
+.burstParticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--fire-orange);
+  transform-origin: 0 0;
+  animation: burstOut 0.8s ease-out forwards;
+  animation-delay: calc(var(--burst-i) * 0.05s);
+  opacity: 0;
+}
+.burstParticle:nth-child(odd) { background: var(--gold); width: 8px; height: 8px; }
+.burstParticle:nth-child(3n) { background: #FF2200; }
+
 /* ---- RESPONSIVE ---- */
 @media (max-width: 900px) {
   .burnLayout { grid-template-columns: 1fr; }
@@ -336,5 +379,29 @@
 }
 @media (max-width: 480px) {
   .amountGrid { grid-template-columns: 1fr 1fr; }
-  .burnCircle { width: 160px; height: 160px; }
 }
+
+/* ---- NEW ANIMATIONS ---- */
+@keyframes luckFlameDance {
+  from { transform: translateX(-50%) scale(1) rotate(-5deg); }
+  to   { transform: translateX(-50%) scale(1.15) rotate(5deg); }
+}
+
+@keyframes coinGlowPulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%       { opacity: 1;   transform: scale(1.15); }
+}
+
+@keyframes burstOut {
+  0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--bx, 140px), var(--by, -140px)) scale(0.3); }
+}
+/* Individual burst directions */
+.burstParticle:nth-child(1) { --bx:  140px; --by: -60px; }
+.burstParticle:nth-child(2) { --bx:  100px; --by: -120px; }
+.burstParticle:nth-child(3) { --bx:    0px; --by: -150px; }
+.burstParticle:nth-child(4) { --bx: -100px; --by: -120px; }
+.burstParticle:nth-child(5) { --bx: -140px; --by:  -60px; }
+.burstParticle:nth-child(6) { --bx: -100px; --by:   60px; }
+.burstParticle:nth-child(7) { --bx:    0px; --by:  120px; }
+.burstParticle:nth-child(8) { --bx:  100px; --by:   60px; }
