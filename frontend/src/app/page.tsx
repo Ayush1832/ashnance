@@ -58,7 +58,7 @@ export default function LandingPage() {
       </div>
 
       {/* ========== HERO ========== */}
-      <section className={styles.hero} style={{ position: "relative", overflow: "hidden" }}>
+      <section className={styles.hero} style={{ position: "relative" }}>
         <HeroCoinsScene />
         <p className={styles.tagline}>🔥 Keep Burning, Keep Earning 🔥</p>
         <h1 className={styles.heroTitle}>

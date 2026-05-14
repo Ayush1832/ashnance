@@ -18,10 +18,10 @@ interface CoinConfig {
 const COINS: CoinConfig[] = [
   {
     currency: "USDC",
-    size: 80,
-    top: "15%",
-    left: "6%",
-    opacity: 0.78,
+    size: 88,
+    top: "10%",
+    left: "5%",
+    opacity: 0.82,
     bobAnimation: "heroBob0",
     bobDuration: "5.8s",
     bobDelay: "0s",
@@ -29,10 +29,10 @@ const COINS: CoinConfig[] = [
   },
   {
     currency: "SOL",
-    size: 60,
-    top: "55%",
-    left: "10%",
-    opacity: 0.72,
+    size: 64,
+    top: "58%",
+    left: "8%",
+    opacity: 0.74,
     bobAnimation: "heroBob1",
     bobDuration: "7.2s",
     bobDelay: "-1.5s",
@@ -40,10 +40,10 @@ const COINS: CoinConfig[] = [
   },
   {
     currency: "USDC",
-    size: 100,
-    top: "20%",
-    right: "5%",
-    opacity: 0.8,
+    size: 96,
+    top: "12%",
+    right: "7%",
+    opacity: 0.82,
     bobAnimation: "heroBob2",
     bobDuration: "6.5s",
     bobDelay: "-2.8s",
@@ -51,10 +51,10 @@ const COINS: CoinConfig[] = [
   },
   {
     currency: "SOL",
-    size: 70,
-    top: "60%",
-    right: "9%",
-    opacity: 0.75,
+    size: 72,
+    top: "62%",
+    right: "6%",
+    opacity: 0.76,
     bobAnimation: "heroBob3",
     bobDuration: "8.1s",
     bobDelay: "-0.7s",
@@ -62,10 +62,10 @@ const COINS: CoinConfig[] = [
   },
   {
     currency: "USDC",
-    size: 90,
-    top: "42%",
-    left: "3%",
-    opacity: 0.77,
+    size: 76,
+    top: "38%",
+    left: "2.5%",
+    opacity: 0.70,
     bobAnimation: "heroBob4",
     bobDuration: "6.9s",
     bobDelay: "-3.2s",
@@ -96,8 +96,8 @@ function SingleHeroCoin({ coin }: { coin: CoinConfig }) {
   };
 
   const faceClass = isUSDC
-    ? `${styles.heroCoinFace} ${styles.heroCoinUsdc} ${styles.heroCoinFire}`
-    : `${styles.heroCoinFace} ${styles.heroCoinSol} ${styles.heroCoinFire}`;
+    ? `${styles.heroCoinFace} ${styles.heroCoinUsdc}`
+    : `${styles.heroCoinFace} ${styles.heroCoinSol}`;
 
   return (
     <div
