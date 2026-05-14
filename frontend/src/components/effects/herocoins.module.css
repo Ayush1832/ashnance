@@ -2,7 +2,6 @@
    HERO FIREBALLS SCENE — CSS Module
    ============================================================ */
 
-/* ---- SCENE CONTAINER ---- */
 .heroCoinsScene {
   position: absolute;
   inset: 0;
@@ -10,252 +9,78 @@
   z-index: 0;
 }
 
-/* ---- FIREBALL WRAPPER (position anchor) ---- */
 .fireballWrap {
   position: absolute;
 }
 
-/* ---- FLOAT ANIMATION TARGET ---- */
 .fireballFloat {
-  position: relative;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
+  /* animation name/duration/delay set inline; keyframes live here */
 }
 
-/* ---- OUTER CORONA BLUR RING ---- */
-.corona {
-  position: absolute;
-  inset: -35%;
-  border-radius: 50%;
-  filter: blur(22px);
-  animation: coronaPulse 2.6s ease-in-out infinite;
-  pointer-events: none;
-}
-
-.coronaUsdc {
-  background: radial-gradient(
-    ellipse,
-    rgba(255, 170, 0, 0.65) 0%,
-    rgba(255, 80, 0, 0.4) 40%,
-    transparent 70%
-  );
-}
-
-.coronaSol {
-  background: radial-gradient(
-    ellipse,
-    rgba(200, 80, 255, 0.65) 0%,
-    rgba(100, 20, 230, 0.4) 40%,
-    transparent 70%
-  );
-}
-
-/* ---- MAIN FIREBALL SPHERE ---- */
-.fireball {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.fireballUsdc {
-  background: radial-gradient(
-    circle at 42% 32%,
-    #fffbe0 0%,
-    #ffe033 10%,
-    #ff9500 30%,
-    #ff4200 58%,
-    #a31200 82%,
-    #3a0500 100%
-  );
-  animation: usdcFlicker 1.9s ease-in-out infinite;
-}
-
-.fireballSol {
-  background: radial-gradient(
-    circle at 42% 32%,
-    #fdf0ff 0%,
-    #e0b0ff 10%,
-    #a855f7 30%,
-    #6d28d9 58%,
-    #3b1080 82%,
-    #130035 100%
-  );
-  animation: solFlicker 2.2s ease-in-out infinite;
-}
-
-/* ---- INNER HOT-CORE GLOW ---- */
-.fireCore {
-  position: absolute;
-  top: 12%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 50%;
-  height: 42%;
-  border-radius: 50%;
-  background: radial-gradient(
-    ellipse,
-    rgba(255, 255, 230, 0.9) 0%,
-    rgba(255, 230, 100, 0.55) 50%,
-    transparent 100%
-  );
-  filter: blur(5px);
-  pointer-events: none;
-}
-
-/* ---- SURFACE TURBULENCE LAYER ---- */
-.fireSurface {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background:
-    radial-gradient(ellipse at 28% 62%, rgba(255, 255, 255, 0.09) 0%, transparent 48%),
-    radial-gradient(ellipse at 72% 78%, rgba(255, 210, 0, 0.13) 0%, transparent 42%),
-    radial-gradient(ellipse at 50% 38%, rgba(255, 90, 0, 0.11) 0%, transparent 55%);
-  animation: surfaceTurbulence 1.3s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-
-/* ---- CURRENCY LABEL ---- */
-.fireLabel {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin-top: 6%;
-}
-
+/* ---- CURRENCY TEXT ---- */
 .fireSymbol {
   font-family: 'Bebas Neue', sans-serif;
   color: rgba(255, 255, 255, 0.96);
   line-height: 1;
   text-shadow:
-    0 0 10px rgba(255, 255, 210, 0.95),
-    0 2px 14px rgba(0, 0, 0, 0.65);
+    0 0 12px rgba(255, 255, 200, 0.95),
+    0 0 24px rgba(255, 180, 0, 0.6),
+    0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
 .fireCurrency {
   font-family: 'Bebas Neue', sans-serif;
-  letter-spacing: 2px;
-  color: rgba(255, 255, 255, 0.72);
+  letter-spacing: 3px;
+  color: rgba(255, 255, 255, 0.78);
   line-height: 1;
   margin-top: 2px;
   text-shadow:
-    0 0 7px rgba(255, 210, 0, 0.75),
-    0 1px 8px rgba(0, 0, 0, 0.55);
+    0 0 8px rgba(255, 200, 0, 0.8),
+    0 1px 6px rgba(0, 0, 0, 0.7);
 }
 
-/* ============================================================
-   BOB ANIMATIONS — gentle vertical float with slight wobble
-   ============================================================ */
-
+/* ---- BOB ANIMATIONS ---- */
 @keyframes heroBob0 {
-  0%   { transform: translateY(0px)   rotate(0deg);    }
-  25%  { transform: translateY(-14px) rotate(1.4deg);  }
-  50%  { transform: translateY(-20px) rotate(0deg);    }
-  75%  { transform: translateY(-10px) rotate(-1.4deg); }
-  100% { transform: translateY(0px)   rotate(0deg);    }
+  0%   { transform: translateY(0px);   }
+  30%  { transform: translateY(-16px); }
+  60%  { transform: translateY(-22px); }
+  80%  { transform: translateY(-12px); }
+  100% { transform: translateY(0px);   }
 }
 
 @keyframes heroBob1 {
-  0%   { transform: translateY(-8px)  rotate(-1.2deg); }
-  25%  { transform: translateY(6px)   rotate(0.4deg);  }
-  50%  { transform: translateY(12px)  rotate(1.2deg);  }
-  75%  { transform: translateY(2px)   rotate(-0.4deg); }
-  100% { transform: translateY(-8px)  rotate(-1.2deg); }
+  0%   { transform: translateY(-6px);  }
+  25%  { transform: translateY(8px);   }
+  55%  { transform: translateY(14px);  }
+  80%  { transform: translateY(4px);   }
+  100% { transform: translateY(-6px);  }
 }
 
 @keyframes heroBob2 {
-  0%   { transform: translateY(4px)   rotate(0.8deg);  }
-  25%  { transform: translateY(-16px) rotate(1.8deg);  }
-  50%  { transform: translateY(-24px) rotate(0.4deg);  }
-  75%  { transform: translateY(-12px) rotate(-1deg);   }
-  100% { transform: translateY(4px)   rotate(0.8deg);  }
+  0%   { transform: translateY(4px);   }
+  28%  { transform: translateY(-18px); }
+  55%  { transform: translateY(-26px); }
+  80%  { transform: translateY(-14px); }
+  100% { transform: translateY(4px);   }
 }
 
 @keyframes heroBob3 {
-  0%   { transform: translateY(-6px)  rotate(-0.8deg); }
-  25%  { transform: translateY(8px)   rotate(0.5deg);  }
-  50%  { transform: translateY(14px)  rotate(1.3deg);  }
-  75%  { transform: translateY(4px)   rotate(-0.5deg); }
-  100% { transform: translateY(-6px)  rotate(-0.8deg); }
+  0%   { transform: translateY(-4px);  }
+  30%  { transform: translateY(10px);  }
+  58%  { transform: translateY(16px);  }
+  82%  { transform: translateY(6px);   }
+  100% { transform: translateY(-4px);  }
 }
 
 @keyframes heroBob4 {
-  0%   { transform: translateY(2px)   rotate(0.6deg);  }
-  25%  { transform: translateY(-12px) rotate(1.6deg);  }
-  50%  { transform: translateY(-18px) rotate(0deg);    }
-  75%  { transform: translateY(-8px)  rotate(-1.2deg); }
-  100% { transform: translateY(2px)   rotate(0.6deg);  }
+  0%   { transform: translateY(2px);   }
+  32%  { transform: translateY(-14px); }
+  60%  { transform: translateY(-20px); }
+  83%  { transform: translateY(-8px);  }
+  100% { transform: translateY(2px);   }
 }
 
-/* ============================================================
-   FLICKER ANIMATIONS — box-shadow intensity oscillation
-   ============================================================ */
-
-@keyframes usdcFlicker {
-  0%, 100% {
-    box-shadow:
-      0 0 28px rgba(255, 120, 0, 0.85),
-      0 0 58px rgba(255, 55, 0, 0.55),
-      0 0 100px rgba(255, 130, 0, 0.28);
-  }
-  28% {
-    box-shadow:
-      0 0 42px rgba(255, 170, 0, 1),
-      0 0 85px rgba(255, 90, 0, 0.8),
-      0 0 150px rgba(255, 130, 0, 0.4);
-  }
-  62% {
-    box-shadow:
-      0 0 18px rgba(255, 90, 0, 0.65),
-      0 0 38px rgba(255, 35, 0, 0.45),
-      0 0 70px rgba(255, 90, 0, 0.2);
-  }
-}
-
-@keyframes solFlicker {
-  0%, 100% {
-    box-shadow:
-      0 0 28px rgba(168, 85, 247, 0.85),
-      0 0 58px rgba(109, 40, 217, 0.55),
-      0 0 100px rgba(180, 100, 255, 0.28);
-  }
-  33% {
-    box-shadow:
-      0 0 45px rgba(210, 110, 255, 1),
-      0 0 90px rgba(145, 65, 235, 0.8),
-      0 0 155px rgba(170, 85, 255, 0.4);
-  }
-  67% {
-    box-shadow:
-      0 0 18px rgba(135, 55, 215, 0.65),
-      0 0 38px rgba(90, 28, 175, 0.45),
-      0 0 68px rgba(130, 55, 195, 0.2);
-  }
-}
-
-/* ============================================================
-   SUPPORTING KEYFRAMES
-   ============================================================ */
-
-@keyframes coronaPulse {
-  0%, 100% { opacity: 0.65; transform: scale(1);    }
-  50%       { opacity: 1;    transform: scale(1.1);  }
-}
-
-@keyframes surfaceTurbulence {
-  0%   { opacity: 0.55; }
-  100% { opacity: 1;    }
-}
-
-/* ---- RESPONSIVE: hide some fireballs on mobile ---- */
+/* ---- RESPONSIVE ---- */
 @media (max-width: 767px) {
   .fireballWrap:not(.mobileShow) {
     display: none;
