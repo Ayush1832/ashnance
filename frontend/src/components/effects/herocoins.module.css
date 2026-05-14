@@ -1,5 +1,5 @@
 /* ============================================================
-   HERO COINS SCENE — CSS Module
+   HERO FIREBALLS SCENE — CSS Module
    ============================================================ */
 
 /* ---- SCENE CONTAINER ---- */
@@ -8,210 +8,256 @@
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  /* No overflow:hidden here — the hero has it, but we want coins to breathe */
 }
 
-/* ---- INDIVIDUAL COIN WRAPPER ---- */
-.heroCoin {
+/* ---- FIREBALL WRAPPER (position anchor) ---- */
+.fireballWrap {
   position: absolute;
-  perspective: 500px;
-  perspective-origin: 50% 50%;
 }
 
-/* ---- 3D COIN INNER (bob + spin wrapper) ---- */
-.heroCoinInner {
-  border-radius: 50%;
-  transform-style: preserve-3d;
+/* ---- FLOAT ANIMATION TARGET ---- */
+.fireballFloat {
   position: relative;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
 }
 
-/* ---- COIN FACE (shared) ---- */
-.heroCoinFace {
+/* ---- OUTER CORONA BLUR RING ---- */
+.corona {
+  position: absolute;
+  inset: -35%;
+  border-radius: 50%;
+  filter: blur(22px);
+  animation: coronaPulse 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.coronaUsdc {
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 170, 0, 0.65) 0%,
+    rgba(255, 80, 0, 0.4) 40%,
+    transparent 70%
+  );
+}
+
+.coronaSol {
+  background: radial-gradient(
+    ellipse,
+    rgba(200, 80, 255, 0.65) 0%,
+    rgba(100, 20, 230, 0.4) 40%,
+    transparent 70%
+  );
+}
+
+/* ---- MAIN FIREBALL SPHERE ---- */
+.fireball {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
 }
 
-/* Specular highlight — upper-left sheen */
-.heroCoinFace::before {
-  content: '';
+.fireballUsdc {
+  background: radial-gradient(
+    circle at 42% 32%,
+    #fffbe0 0%,
+    #ffe033 10%,
+    #ff9500 30%,
+    #ff4200 58%,
+    #a31200 82%,
+    #3a0500 100%
+  );
+  animation: usdcFlicker 1.9s ease-in-out infinite;
+}
+
+.fireballSol {
+  background: radial-gradient(
+    circle at 42% 32%,
+    #fdf0ff 0%,
+    #e0b0ff 10%,
+    #a855f7 30%,
+    #6d28d9 58%,
+    #3b1080 82%,
+    #130035 100%
+  );
+  animation: solFlicker 2.2s ease-in-out infinite;
+}
+
+/* ---- INNER HOT-CORE GLOW ---- */
+.fireCore {
   position: absolute;
-  top: 8%;
-  left: 12%;
-  width: 38%;
-  height: 32%;
-  background: radial-gradient(ellipse, rgba(255, 255, 255, 0.38) 0%, transparent 75%);
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50%;
+  height: 42%;
   border-radius: 50%;
+  background: radial-gradient(
+    ellipse,
+    rgba(255, 255, 230, 0.9) 0%,
+    rgba(255, 230, 100, 0.55) 50%,
+    transparent 100%
+  );
+  filter: blur(5px);
   pointer-events: none;
 }
 
-/* Bottom shadow to reinforce 3D depth */
-.heroCoinFace::after {
-  content: '';
+/* ---- SURFACE TURBULENCE LAYER ---- */
+.fireSurface {
   position: absolute;
-  bottom: 6%;
-  left: 20%;
-  width: 60%;
-  height: 20%;
-  background: radial-gradient(ellipse, rgba(0, 0, 0, 0.3) 0%, transparent 80%);
+  inset: 0;
   border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 28% 62%, rgba(255, 255, 255, 0.09) 0%, transparent 48%),
+    radial-gradient(ellipse at 72% 78%, rgba(255, 210, 0, 0.13) 0%, transparent 42%),
+    radial-gradient(ellipse at 50% 38%, rgba(255, 90, 0, 0.11) 0%, transparent 55%);
+  animation: surfaceTurbulence 1.3s ease-in-out infinite alternate;
   pointer-events: none;
 }
 
-/* ---- USDC HERO FACE ---- */
-.heroCoinUsdc {
-  background: radial-gradient(circle at 35% 28%, #7affa8 0%, #4ade80 18%, #27AE60 50%, #1a6e3f 85%, #0d3d22 100%);
-  box-shadow:
-    inset 0 4px 14px rgba(255, 255, 255, 0.28),
-    inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-    5px 3px 0 #155c2a,
-    8px 5px 2px rgba(0,0,0,0.2),
-    0 0 28px rgba(39, 174, 96, 0.45),
-    0 0 56px rgba(39, 174, 96, 0.15);
+/* ---- CURRENCY LABEL ---- */
+.fireLabel {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6%;
 }
 
-/* ---- SOL HERO FACE ---- */
-.heroCoinSol {
-  background: radial-gradient(circle at 35% 28%, #d8b4fe 0%, #a855f7 20%, #7c3aed 55%, #4c1d95 85%, #2d0f5e 100%);
-  box-shadow:
-    inset 0 4px 14px rgba(255, 255, 255, 0.28),
-    inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-    5px 3px 0 #3b0f7a,
-    8px 5px 2px rgba(0,0,0,0.2),
-    0 0 28px rgba(168, 85, 247, 0.45),
-    0 0 56px rgba(168, 85, 247, 0.15);
-}
-
-/* ---- SYMBOL ---- */
-.heroCoinSymbol {
+.fireSymbol {
   font-family: 'Bebas Neue', sans-serif;
-  color: rgba(255, 255, 255, 0.92);
+  color: rgba(255, 255, 255, 0.96);
   line-height: 1;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-  position: relative;
-  z-index: 1;
+  text-shadow:
+    0 0 10px rgba(255, 255, 210, 0.95),
+    0 2px 14px rgba(0, 0, 0, 0.65);
 }
 
-.heroCoinLabel {
+.fireCurrency {
   font-family: 'Bebas Neue', sans-serif;
-  letter-spacing: 3px;
-  color: rgba(255, 255, 255, 0.65);
-  position: relative;
-  z-index: 1;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1;
   margin-top: 2px;
+  text-shadow:
+    0 0 7px rgba(255, 210, 0, 0.75),
+    0 1px 8px rgba(0, 0, 0, 0.55);
 }
 
-/* ---- BOB ANIMATIONS
-   Each coin bobs vertically while slowly spinning on Y axis
-   to show off the 3D depth. Spin period much longer (8-12s)
-   so it feels like a floating coin, not a spinning top.
-   ---- */
+/* ============================================================
+   BOB ANIMATIONS — gentle vertical float with slight wobble
+   ============================================================ */
+
 @keyframes heroBob0 {
-  0%   { transform: translateY(0px)   rotateY(0deg)   rotateX(8deg); }
-  25%  { transform: translateY(-14px) rotateY(90deg)  rotateX(4deg); }
-  50%  { transform: translateY(-20px) rotateY(180deg) rotateX(0deg); }
-  75%  { transform: translateY(-10px) rotateY(270deg) rotateX(4deg); }
-  100% { transform: translateY(0px)   rotateY(360deg) rotateX(8deg); }
+  0%   { transform: translateY(0px)   rotate(0deg);    }
+  25%  { transform: translateY(-14px) rotate(1.4deg);  }
+  50%  { transform: translateY(-20px) rotate(0deg);    }
+  75%  { transform: translateY(-10px) rotate(-1.4deg); }
+  100% { transform: translateY(0px)   rotate(0deg);    }
 }
 
 @keyframes heroBob1 {
-  0%   { transform: translateY(-8px)  rotateY(40deg)  rotateX(-6deg); }
-  25%  { transform: translateY(6px)   rotateY(130deg) rotateX(-2deg); }
-  50%  { transform: translateY(12px)  rotateY(220deg) rotateX(2deg); }
-  75%  { transform: translateY(2px)   rotateY(310deg) rotateX(-4deg); }
-  100% { transform: translateY(-8px)  rotateY(400deg) rotateX(-6deg); }
+  0%   { transform: translateY(-8px)  rotate(-1.2deg); }
+  25%  { transform: translateY(6px)   rotate(0.4deg);  }
+  50%  { transform: translateY(12px)  rotate(1.2deg);  }
+  75%  { transform: translateY(2px)   rotate(-0.4deg); }
+  100% { transform: translateY(-8px)  rotate(-1.2deg); }
 }
 
 @keyframes heroBob2 {
-  0%   { transform: translateY(4px)   rotateY(20deg)  rotateX(10deg); }
-  25%  { transform: translateY(-16px) rotateY(110deg) rotateX(5deg); }
-  50%  { transform: translateY(-24px) rotateY(200deg) rotateX(0deg); }
-  75%  { transform: translateY(-12px) rotateY(290deg) rotateX(5deg); }
-  100% { transform: translateY(4px)   rotateY(380deg) rotateX(10deg); }
+  0%   { transform: translateY(4px)   rotate(0.8deg);  }
+  25%  { transform: translateY(-16px) rotate(1.8deg);  }
+  50%  { transform: translateY(-24px) rotate(0.4deg);  }
+  75%  { transform: translateY(-12px) rotate(-1deg);   }
+  100% { transform: translateY(4px)   rotate(0.8deg);  }
 }
 
 @keyframes heroBob3 {
-  0%   { transform: translateY(-6px)  rotateY(60deg)  rotateX(-8deg); }
-  25%  { transform: translateY(8px)   rotateY(150deg) rotateX(-3deg); }
-  50%  { transform: translateY(14px)  rotateY(240deg) rotateX(2deg); }
-  75%  { transform: translateY(4px)   rotateY(330deg) rotateX(-5deg); }
-  100% { transform: translateY(-6px)  rotateY(420deg) rotateX(-8deg); }
+  0%   { transform: translateY(-6px)  rotate(-0.8deg); }
+  25%  { transform: translateY(8px)   rotate(0.5deg);  }
+  50%  { transform: translateY(14px)  rotate(1.3deg);  }
+  75%  { transform: translateY(4px)   rotate(-0.5deg); }
+  100% { transform: translateY(-6px)  rotate(-0.8deg); }
 }
 
 @keyframes heroBob4 {
-  0%   { transform: translateY(2px)   rotateY(10deg)  rotateX(6deg); }
-  25%  { transform: translateY(-12px) rotateY(100deg) rotateX(2deg); }
-  50%  { transform: translateY(-18px) rotateY(190deg) rotateX(-2deg); }
-  75%  { transform: translateY(-8px)  rotateY(280deg) rotateX(2deg); }
-  100% { transform: translateY(2px)   rotateY(370deg) rotateX(6deg); }
+  0%   { transform: translateY(2px)   rotate(0.6deg);  }
+  25%  { transform: translateY(-12px) rotate(1.6deg);  }
+  50%  { transform: translateY(-18px) rotate(0deg);    }
+  75%  { transform: translateY(-8px)  rotate(-1.2deg); }
+  100% { transform: translateY(2px)   rotate(0.6deg);  }
 }
 
-/* ---- FIRE AURA PULSE
-   Applied as a separate ::after pseudo-element animation
-   so it doesn't override the coin-specific color glows.
-   ---- */
-.heroCoinUsdc {
-  animation: usdcFireAura 3s ease-in-out infinite;
-}
+/* ============================================================
+   FLICKER ANIMATIONS — box-shadow intensity oscillation
+   ============================================================ */
 
-.heroCoinSol {
-  animation: solFireAura 3s ease-in-out infinite;
-}
-
-@keyframes usdcFireAura {
+@keyframes usdcFlicker {
   0%, 100% {
     box-shadow:
-      inset 0 4px 14px rgba(255, 255, 255, 0.28),
-      inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-      5px 3px 0 #155c2a,
-      8px 5px 2px rgba(0,0,0,0.2),
-      0 0 28px rgba(39, 174, 96, 0.45),
-      0 0 56px rgba(39, 174, 96, 0.15);
+      0 0 28px rgba(255, 120, 0, 0.85),
+      0 0 58px rgba(255, 55, 0, 0.55),
+      0 0 100px rgba(255, 130, 0, 0.28);
   }
-  50% {
+  28% {
     box-shadow:
-      inset 0 4px 14px rgba(255, 255, 255, 0.35),
-      inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-      5px 3px 0 #155c2a,
-      8px 5px 2px rgba(0,0,0,0.2),
-      0 0 45px rgba(39, 174, 96, 0.7),
-      0 0 90px rgba(255, 77, 0, 0.2),
-      0 0 120px rgba(255, 184, 0, 0.08);
+      0 0 42px rgba(255, 170, 0, 1),
+      0 0 85px rgba(255, 90, 0, 0.8),
+      0 0 150px rgba(255, 130, 0, 0.4);
+  }
+  62% {
+    box-shadow:
+      0 0 18px rgba(255, 90, 0, 0.65),
+      0 0 38px rgba(255, 35, 0, 0.45),
+      0 0 70px rgba(255, 90, 0, 0.2);
   }
 }
 
-@keyframes solFireAura {
+@keyframes solFlicker {
   0%, 100% {
     box-shadow:
-      inset 0 4px 14px rgba(255, 255, 255, 0.28),
-      inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-      5px 3px 0 #3b0f7a,
-      8px 5px 2px rgba(0,0,0,0.2),
-      0 0 28px rgba(168, 85, 247, 0.45),
-      0 0 56px rgba(168, 85, 247, 0.15);
+      0 0 28px rgba(168, 85, 247, 0.85),
+      0 0 58px rgba(109, 40, 217, 0.55),
+      0 0 100px rgba(180, 100, 255, 0.28);
   }
-  50% {
+  33% {
     box-shadow:
-      inset 0 4px 14px rgba(255, 255, 255, 0.35),
-      inset 0 -4px 14px rgba(0, 0, 0, 0.3),
-      5px 3px 0 #3b0f7a,
-      8px 5px 2px rgba(0,0,0,0.2),
-      0 0 45px rgba(168, 85, 247, 0.7),
-      0 0 90px rgba(255, 77, 0, 0.2),
-      0 0 120px rgba(255, 184, 0, 0.08);
+      0 0 45px rgba(210, 110, 255, 1),
+      0 0 90px rgba(145, 65, 235, 0.8),
+      0 0 155px rgba(170, 85, 255, 0.4);
+  }
+  67% {
+    box-shadow:
+      0 0 18px rgba(135, 55, 215, 0.65),
+      0 0 38px rgba(90, 28, 175, 0.45),
+      0 0 68px rgba(130, 55, 195, 0.2);
   }
 }
 
-/* ---- RESPONSIVE: hide some coins on mobile ---- */
+/* ============================================================
+   SUPPORTING KEYFRAMES
+   ============================================================ */
+
+@keyframes coronaPulse {
+  0%, 100% { opacity: 0.65; transform: scale(1);    }
+  50%       { opacity: 1;    transform: scale(1.1);  }
+}
+
+@keyframes surfaceTurbulence {
+  0%   { opacity: 0.55; }
+  100% { opacity: 1;    }
+}
+
+/* ---- RESPONSIVE: hide some fireballs on mobile ---- */
 @media (max-width: 767px) {
-  .heroCoin:not(.heroCoinMobileShow) {
+  .fireballWrap:not(.mobileShow) {
     display: none;
   }
 }
