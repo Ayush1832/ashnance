@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import styles from "./herocoins.module.css";
 
+// ─── Config ───────────────────────────────────────────────────────────────────
+
 interface FireballConfig {
   currency: "USDC" | "SOL";
   size: number;
@@ -23,72 +25,88 @@ const FIREBALLS: FireballConfig[] = [
   { currency: "USDC", size: 78,  top: "38%", left: "2%",  bobAnimation: "heroBob4", bobDuration: "6.9s", bobDelay: "-3.2s", showOnMobile: false },
 ];
 
-// Canvas simulation dimensions (small = fast, scaled up by CSS)
-const CW = 64;
-const CH = 96; // taller than wide so flames rise above sphere
-const SPHERE_CX = CW * 0.5;
-const SPHERE_CY = CH * 0.72;
-const SPHERE_R  = CW * 0.44;
+// ─── Fire Simulation Constants ────────────────────────────────────────────────
 
-// Build RGBA palette (intensity 0-255 → color)
-// Stored as Uint32 in little-endian ABGR format for ImageData.
-function buildPalette(type: "USDC" | "SOL"): Uint32Array {
-  const p = new Uint32Array(256);
+const CW  = 64;        // canvas pixel width
+const CH  = 96;        // canvas pixel height (extra room above sphere for flames)
+const SCX = CW / 2;    // sphere centre X
+const SCY = CH * 0.72; // sphere centre Y — sits in lower portion of canvas
+const SR  = CW * 0.44; // sphere radius in canvas pixels
+
+// ─── Module-level precomputes (run once, shared by all instances) ─────────────
+
+// Spatial alpha mask:
+//   inside sphere        → 1.0  (always fully visible)
+//   above sphere centre  → gradual fade outward  (flame tongues escape upward)
+//   below sphere centre  → very fast fade         (no fire drips downward)
+const ALPHA = new Float32Array(CW * CH);
+for (let y = 0; y < CH; y++) {
+  for (let x = 0; x < CW; x++) {
+    const d = Math.sqrt((x - SCX) ** 2 + (y - SCY) ** 2);
+    let a: number;
+    if (d <= SR) {
+      a = 1;
+    } else if (y < SCY) {
+      // above sphere centre — allow flame tongues to escape
+      a = Math.max(0, 1 - (d - SR) / (SR * 1.05));
+    } else {
+      // below sphere centre — clip off fast
+      a = Math.max(0, 1 - (d - SR) / (SR * 0.2));
+    }
+    ALPHA[y * CW + x] = a;
+  }
+}
+
+// Sphere core (pixels kept permanently hot) and rim (maximum heat — fire source)
+const IN_CORE = new Uint8Array(CW * CH);
+const ON_RIM  = new Uint8Array(CW * CH);
+for (let y = 0; y < CH; y++) {
+  for (let x = 0; x < CW; x++) {
+    const d = Math.sqrt((x - SCX) ** 2 + (y - SCY) ** 2);
+    if (d < SR * 0.82)                  IN_CORE[y * CW + x] = 1;
+    if (d >= SR * 0.82 && d < SR + 2)  ON_RIM[y * CW + x]  = 1;
+  }
+}
+
+// Flat RGB palette — index i → [R, G, B] stored at [i*3, i*3+1, i*3+2]
+function buildPalette(type: "USDC" | "SOL"): Uint8Array {
+  const p = new Uint8Array(256 * 3);
   for (let i = 1; i < 256; i++) {
     const t = i / 255;
     let r = 0, g = 0, b = 0;
-    // alpha: transparent at low end, opaque quickly
-    const a = Math.min(255, i < 24 ? i * 9 : 230 + Math.round(t * 25));
-
     if (type === "USDC") {
-      // Classic fire: black → red → orange → yellow → white
+      // black → deep red → orange → bright yellow → near-white
       if (t < 0.33) {
-        r = Math.round((t / 0.33) * 255); g = 0; b = 0;
+        r = Math.round((t / 0.33) * 255);
       } else if (t < 0.66) {
         const s = (t - 0.33) / 0.33;
-        r = 255; g = Math.round(s * 185); b = 0;
+        r = 255; g = Math.round(s * 190);
       } else {
         const s = (t - 0.66) / 0.34;
-        r = 255; g = Math.round(185 + s * 70); b = Math.round(s * 255);
+        r = 255; g = Math.round(190 + s * 65); b = Math.round(s * 200);
       }
     } else {
-      // SOL plasma: black → indigo → violet → bright purple → pale lavender
+      // black → deep indigo → vivid violet → bright purple → pale lavender
       if (t < 0.33) {
         const s = t / 0.33;
-        r = Math.round(s * 80); g = 0; b = Math.round(s * 210);
+        r = Math.round(s * 80); b = Math.round(s * 220);
       } else if (t < 0.66) {
         const s = (t - 0.33) / 0.33;
-        r = Math.round(80 + s * 170); g = Math.round(s * 55); b = Math.min(255, Math.round(210 + s * 45));
+        r = Math.round(80 + s * 175); g = Math.round(s * 50); b = Math.min(255, Math.round(220 + s * 35));
       } else {
         const s = (t - 0.66) / 0.34;
-        r = 255; g = Math.round(55 + s * 165); b = 255;
+        r = 255; g = Math.round(50 + s * 170); b = 255;
       }
     }
-    p[i] = ((a & 0xff) << 24) | ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff);
+    p[i * 3] = r; p[i * 3 + 1] = g; p[i * 3 + 2] = b;
   }
   return p;
 }
 
-// Pre-compute sphere masks (shared for all fireballs — same CW/CH/params)
-const _inCore: Uint8Array = (() => {
-  const m = new Uint8Array(CW * CH);
-  for (let y = 0; y < CH; y++)
-    for (let x = 0; x < CW; x++) {
-      const d = Math.sqrt((x - SPHERE_CX) ** 2 + (y - SPHERE_CY) ** 2);
-      if (d < SPHERE_R * 0.86) m[y * CW + x] = 1;
-    }
-  return m;
-})();
+const PAL_USDC = buildPalette("USDC");
+const PAL_SOL  = buildPalette("SOL");
 
-const _onRim: Uint8Array = (() => {
-  const m = new Uint8Array(CW * CH);
-  for (let y = 0; y < CH; y++)
-    for (let x = 0; x < CW; x++) {
-      const d = Math.sqrt((x - SPHERE_CX) ** 2 + (y - SPHERE_CY) ** 2);
-      if (d >= SPHERE_R * 0.86 && d < SPHERE_R + 2) m[y * CW + x] = 1;
-    }
-  return m;
-})();
+// ─── Canvas Fire Component ────────────────────────────────────────────────────
 
 function FireCanvas({ currency, displaySize }: { currency: "USDC" | "SOL"; displaySize: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,41 +120,55 @@ function FireCanvas({ currency, displaySize }: { currency: "USDC" | "SOL"; displ
     canvas.width  = CW;
     canvas.height = CH;
 
-    const pal  = buildPalette(currency);
+    const pal  = currency === "USDC" ? PAL_USDC : PAL_SOL;
     const grid = new Uint8Array(CW * CH);
     const img  = ctx.createImageData(CW, CH);
-    const px32 = new Uint32Array(img.data.buffer);
+    const data = img.data; // RGBA Uint8ClampedArray
 
-    // Seed sphere hot to avoid cold startup
+    // Seed sphere hot so there's no cold-start period
     for (let i = 0; i < CW * CH; i++) {
-      if (_inCore[i] || _onRim[i])
-        grid[i] = 200 + Math.floor(Math.random() * 55);
+      if (IN_CORE[i] || ON_RIM[i]) grid[i] = 200 + ((Math.random() * 55) | 0);
     }
 
     let rafId = 0;
     const tick = () => {
-      // Doom fire: each pixel receives a decayed, slightly drifted value from the row below
+      // ── Doom fire propagation ──────────────────────────────────────────────
+      // Each pixel inherits a decayed, slightly drifted value from the row below.
       for (let y = 1; y < CH; y++) {
         for (let x = 0; x < CW; x++) {
-          const decay = Math.floor(Math.random() * 3);      // 0-2
+          const decay = (Math.random() * 3) | 0;            // 0, 1, or 2
           const src   = grid[y * CW + x];
-          const dst   = src > decay ? src - decay : 0;
-          const nx    = Math.max(0, Math.min(CW - 1, x + Math.floor(Math.random() * 3) - 1));
-          grid[(y - 1) * CW + nx] = dst;
+          const nx    = Math.max(0, Math.min(CW - 1, x + ((Math.random() * 3) | 0) - 1));
+          grid[(y - 1) * CW + nx] = src > decay ? src - decay : 0;
         }
       }
 
-      // Hold sphere core and rim hot (fire source)
+      // ── Hold sphere core and rim permanently hot ───────────────────────────
       for (let i = 0; i < CW * CH; i++) {
-        if (_inCore[i]) {
-          if (grid[i] < 178) grid[i] = 178 + Math.floor(Math.random() * 77);
-        } else if (_onRim[i]) {
-          grid[i] = 228 + Math.floor(Math.random() * 27);
+        if (IN_CORE[i]) {
+          if (grid[i] < 180) grid[i] = 180 + ((Math.random() * 75) | 0);
+        } else if (ON_RIM[i]) {
+          grid[i] = 228 + ((Math.random() * 27) | 0);
         }
       }
 
-      // Render pixels
-      for (let i = 0; i < CW * CH; i++) px32[i] = pal[grid[i]];
+      // ── Render: map intensity → RGBA, apply spatial alpha mask ────────────
+      for (let i = 0; i < CW * CH; i++) {
+        const v = grid[i];
+        const j = i * 4;
+        if (v === 0 || ALPHA[i] === 0) {
+          data[j] = data[j + 1] = data[j + 2] = data[j + 3] = 0;
+          continue;
+        }
+        const pi = v * 3;
+        data[j]     = pal[pi];
+        data[j + 1] = pal[pi + 1];
+        data[j + 2] = pal[pi + 2];
+        // alpha: fade in at very low intensities, then full; modulated by spatial mask
+        const baseA = v < 24 ? v * 9 : 230;
+        data[j + 3] = Math.min(255, (baseA * ALPHA[i]) | 0);
+      }
+
       ctx.putImageData(img, 0, 0);
       rafId = requestAnimationFrame(tick);
     };
@@ -154,27 +186,24 @@ function FireCanvas({ currency, displaySize }: { currency: "USDC" | "SOL"; displ
   );
 }
 
+// ─── Fireball ─────────────────────────────────────────────────────────────────
+
 function Fireball({ ball }: { ball: FireballConfig }) {
-  const isUSDC    = ball.currency === "USDC";
-  const displayH  = Math.round(ball.size * (CH / CW));
-  // Sphere centre in CSS pixels within the canvas element
-  const labelTop  = Math.round(displayH * (SPHERE_CY / CH) - ball.size * 0.2);
-
-  const posStyle: React.CSSProperties = {
-    position: "absolute",
-    top: ball.top,
-    ...(ball.left  ? { left: ball.left }   : {}),
-    ...(ball.right ? { right: ball.right } : {}),
-  };
-
-  const glowFilter = isUSDC
-    ? "drop-shadow(0 0 16px rgba(255,110,0,0.95)) drop-shadow(0 0 38px rgba(255,55,0,0.55))"
-    : "drop-shadow(0 0 16px rgba(175,70,255,0.95)) drop-shadow(0 0 38px rgba(110,30,220,0.55))";
+  const isUSDC   = ball.currency === "USDC";
+  const displayH = Math.round(ball.size * (CH / CW));
+  // Sphere centre in CSS pixels relative to the canvas element top
+  const sphereCY = Math.round(displayH * (SCY / CH));
+  const labelTop = sphereCY - Math.round(ball.size * 0.2);
 
   return (
     <div
       className={`${styles.fireballWrap}${ball.showOnMobile ? " " + styles.mobileShow : ""}`}
-      style={posStyle}
+      style={{
+        position: "absolute",
+        top: ball.top,
+        ...(ball.left  ? { left: ball.left }   : {}),
+        ...(ball.right ? { right: ball.right } : {}),
+      }}
     >
       <div
         className={styles.fireballFloat}
@@ -187,12 +216,14 @@ function Fireball({ ball }: { ball: FireballConfig }) {
           animationDelay: ball.bobDelay,
           animationTimingFunction: "ease-in-out",
           animationIterationCount: "infinite",
-          filter: glowFilter,
+          filter: isUSDC
+            ? "drop-shadow(0 0 12px rgba(255,100,0,0.95)) drop-shadow(0 0 28px rgba(255,50,0,0.5))"
+            : "drop-shadow(0 0 12px rgba(160,50,255,0.95)) drop-shadow(0 0 28px rgba(100,20,220,0.5))",
         }}
       >
         <FireCanvas currency={ball.currency} displaySize={ball.size} />
 
-        {/* Label centred on sphere */}
+        {/* Currency label centred on sphere */}
         <div
           style={{
             position: "absolute",
@@ -216,6 +247,8 @@ function Fireball({ ball }: { ball: FireballConfig }) {
     </div>
   );
 }
+
+// ─── Scene ────────────────────────────────────────────────────────────────────
 
 export default function HeroCoinsScene() {
   return (
