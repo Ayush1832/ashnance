@@ -116,6 +116,20 @@ router.delete("/whitelist/:id", authenticate, async (req: AuthRequest, res: Resp
   }
 });
 
+// POST /api/wallet/claim-ash — Transfer accumulated ASH balance to user's on-chain wallet
+router.post("/claim-ash", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { toAddress } = req.body;
+    if (!toAddress || typeof toAddress !== "string") {
+      return next(new BadRequestError("toAddress is required"));
+    }
+    const result = await WalletService.claimAsh(req.user!.userId, toAddress);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/wallet/onchain/:address — Get on-chain USDC balance for any Solana address
 router.get("/onchain/:address", async (req, res: Response, next: NextFunction) => {
   try {

@@ -23,7 +23,7 @@ router.post("/verify-otp", async (req: Request, res: Response, next: NextFunctio
   try {
     const { email, otp } = req.body;
     if (!email || !otp) throw new BadRequestError("Email and OTP required");
-    const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+    const valid = await EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
     if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
     res.json({ success: true, message: "OTP verified" });
   } catch (error) { next(error); }
@@ -36,7 +36,7 @@ router.post("/register", async (req: Request, res: Response, next: NextFunction)
     if (req.body.otp && !req.body.password) {
       const { email, username, otp, referralCode } = req.body;
       if (!email || !username || !otp) throw new BadRequestError("Email, username, and OTP required");
-      const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+      const valid = await EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
       if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
       const result = await AuthService.register({ email: email.toLowerCase().trim(), username, referralCode });
       return res.status(201).json({ success: true, data: result });
@@ -63,7 +63,7 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
     if (req.body.otp && !req.body.password) {
       const { email, otp } = req.body;
       if (!email || !otp) throw new BadRequestError("Email and OTP required");
-      const valid = EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
+      const valid = await EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
       if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
       const result = await AuthService.loginByEmail(email.toLowerCase().trim());
       return res.json({ success: true, data: result });

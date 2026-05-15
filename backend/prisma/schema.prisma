@@ -44,6 +44,11 @@ model User {
   lockedUntil     DateTime?
   privacyMode     Boolean   @default(false)
 
+  // OTP (email verification)
+  pendingOtp      String?
+  otpExpiresAt    DateTime?
+  otpAttempts     Int       @default(0)
+
   // Anti-domination cooldown: stores ID of the last round this user won
   lastWonRoundId  String?
 

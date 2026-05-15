@@ -153,6 +153,20 @@ router.put("/users/:id/role", async (req: AuthRequest, res: Response, next: Next
   } catch (error) { next(error); }
 });
 
+// PUT /api/admin/users/:id/ban — ban or unban a user
+router.put("/users/:id/ban", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { ban } = req.body;
+    const user = await prisma.user.update({
+      where: { id },
+      data: { lockedUntil: ban ? new Date("2099-01-01") : null },
+      select: { id: true, username: true, lockedUntil: true },
+    });
+    res.json({ success: true, data: user });
+  } catch (error) { next(error); }
+});
+
 // ============== REWARD POOL ==============
 
 // GET /api/admin/pool

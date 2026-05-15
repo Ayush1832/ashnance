@@ -91,6 +91,8 @@ export default function DashboardPage() {
   const [round,          setRound]          = useState<RoundStatus | null>(null);
   const [userRoundRank,  setUserRoundRank]  = useState<number | null>(null);
   const [userRoundWeight, setUserRoundWeight] = useState<number>(0);
+  const [claimingAsh,   setClaimingAsh]    = useState(false);
+  const [claimMsg,      setClaimMsg]       = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -150,6 +152,34 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleClaimAsh = async () => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    const addr  = typeof window !== "undefined" ? localStorage.getItem("walletAddress") : null;
+    if (!token || !addr) {
+      setClaimMsg("Connect a wallet first to receive ASH on-chain.");
+      setTimeout(() => setClaimMsg(null), 4000);
+      return;
+    }
+    setClaimingAsh(true);
+    setClaimMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/wallet/claim-ash`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ toAddress: addr }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Claim failed");
+      setClaimMsg(`Claimed ${data.data?.claimed ?? ""} ASH! TX: ${(data.data?.txHash ?? "").slice(0, 12)}...`);
+      load();
+    } catch (e: unknown) {
+      setClaimMsg(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setClaimingAsh(false);
+      setTimeout(() => setClaimMsg(null), 6000);
+    }
+  };
 
   const usdcBalance = Number(wallet?.usdcBalance ?? 0);
   const ashBalance  = Number(wallet?.ashBalance  ?? profile?.ashBalance ?? 0);
@@ -386,7 +416,23 @@ export default function DashboardPage() {
           <span className={styles.quickActionIcon}>💳</span>
           DEPOSIT
         </Link>
+        {ashBalance > 0 && (
+          <button
+            className={`btn btn-ghost ${styles.quickActionBtn}`}
+            onClick={handleClaimAsh}
+            disabled={claimingAsh}
+            style={{ opacity: claimingAsh ? 0.6 : 1 }}
+          >
+            <span className={styles.quickActionIcon}>🪙</span>
+            {claimingAsh ? "CLAIMING..." : "CLAIM ASH"}
+          </button>
+        )}
       </div>
+      {claimMsg && (
+        <div style={{ fontSize: "11px", letterSpacing: "1px", color: claimMsg.startsWith("Claimed") ? "var(--usdc-green)" : "#ff6b6b", padding: "8px 0", textAlign: "center" }}>
+          {claimMsg}
+        </div>
+      )}
 
       {/* ===== BOTTOM GRID ===== */}
       {!loading && (

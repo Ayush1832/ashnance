@@ -40,7 +40,7 @@ export default function SettingsPage() {
   // Security
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
   const [showQR, setShowQR]             = useState(false);
-  const [qrSecret, setQrSecret]         = useState("JBSW Y3DP EHPK 3PXP");
+  const [qrSecret, setQrSecret]         = useState("");
   const [totpCode, setTotpCode]         = useState("");
   const [currentPass, setCurrentPass]   = useState("");
   const [newPass, setNewPass]           = useState("");

@@ -30,13 +30,16 @@ const MOCK_PRIZES = [
   { tier: "SMALL",   value: 50,   poolPercent: 1,  probability: 80, active: true  },
 ];
 
-const MOCK_USERS = [
-  { username: "CryptoKing",  email: "king@x.io",    burns: 1450, status: "ACTIVE",  vip: true  },
-  { username: "BlazeMaster", email: "blaze@x.io",   burns: 1890, status: "ACTIVE",  vip: true  },
-  { username: "MoonBurn",    email: "moon@x.io",    burns: 870,  status: "ACTIVE",  vip: false },
-  { username: "AshLord",     email: "ash@x.io",     burns: 1200, status: "ACTIVE",  vip: true  },
-  { username: "SuspiciousX", email: "sus@anon.com", burns: 12,   status: "FLAGGED", vip: false },
-];
+interface AdminUser {
+  id: string;
+  username: string;
+  email: string;
+  isVip: boolean;
+  role: string;
+  createdAt: string;
+  _count: { burns: number };
+  lockedUntil?: string | null;
+}
 
 const MOCK_AUDIT = [
   { time: "14:32", admin: "Admin1", action: "Updated JACKPOT prize probability",      type: "PRIZE"  },
@@ -58,6 +61,9 @@ export default function AdminPage() {
   const [saveMsg, setSaveMsg]         = useState("");
   const [editPrize, setEditPrize]     = useState<number | null>(null);
   const [editVals, setEditVals]       = useState<Partial<Prize>>({});
+  const [adminUsers, setAdminUsers]   = useState<AdminUser[]>([]);
+  const [usersError, setUsersError]   = useState<string | null>(null);
+  const [statsError, setStatsError]   = useState<string | null>(null);
 
   useEffect(() => {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
@@ -67,16 +73,17 @@ export default function AdminPage() {
     fetch(`${API}/api/admin/stats`, { headers })
       .then((r) => r.json())
       .then((data) => {
-        if (data?.totalBurns !== undefined) {
+        const d = data?.data ?? data;
+        if (d?.totalBurns !== undefined) {
           setStats([
-            { label: "TOTAL BURNS",    value: String(data.totalBurns),    sub: "+today", cls: "fire" },
-            { label: "REWARD POOL",    value: `$${data.rewardPool}`,      sub: "+today", cls: "usdc" },
-            { label: "PROFIT POOL",    value: `$${data.profitPool}`,      sub: "+today", cls: "gold" },
-            { label: "ACTIVE PLAYERS", value: String(data.activePlayers), sub: "+today", cls: "fire" },
+            { label: "TOTAL BURNS",    value: String(d.totalBurns),    sub: "", cls: "fire" },
+            { label: "REWARD POOL",    value: `$${d.rewardPoolBalance ?? 0}`, sub: "", cls: "usdc" },
+            { label: "TOTAL BURNED",   value: `$${d.totalBurned ?? 0}`,  sub: "", cls: "gold" },
+            { label: "ACTIVE VIPS",    value: String(d.activeVips ?? 0), sub: "", cls: "fire" },
           ]);
         }
       })
-      .catch(() => {});
+      .catch(() => { setStatsError("Failed to load platform stats"); });
 
     fetch(`${API}/api/admin/prizes`, { headers })
       .then((r) => r.json())
@@ -91,7 +98,32 @@ export default function AdminPage() {
         if (data?.referralPercent !== undefined) setRefPct(data.referralPercent);
       })
       .catch(() => {});
+
+    fetch(`${API}/api/admin/users?limit=50`, { headers })
+      .then((r) => r.json())
+      .then((data) => {
+        const users = data?.data?.users ?? data?.users;
+        if (Array.isArray(users)) setAdminUsers(users);
+        else setUsersError("Failed to load users");
+      })
+      .catch(() => { setUsersError("Failed to load users"); });
   }, []);
+
+  async function handleBanUser(userId: string, ban: boolean) {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    try {
+      await fetch(`${API}/api/admin/users/${userId}/ban`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ ban }),
+      });
+      setAdminUsers((prev) =>
+        prev.map((u) => u.id === userId ? { ...u, lockedUntil: ban ? "2099-01-01" : null } : u)
+      );
+    } catch {}
+  }
 
   async function handleSavePool() {
     setSaveMsg("");
@@ -193,6 +225,11 @@ export default function AdminPage() {
             <div className="dash-title" style={{ marginBottom: "24px" }}>
               PLATFORM <span>OVERVIEW</span>
             </div>
+            {statsError && (
+              <div style={{ color: "var(--fire-red)", fontSize: "11px", letterSpacing: "1px", marginBottom: "16px" }}>
+                ⚠ {statsError} — showing cached values
+              </div>
+            )}
             <div className="stat-grid">
               {stats.map((s) => (
                 <div key={s.label} className="stat-card">
@@ -352,6 +389,11 @@ export default function AdminPage() {
             <div className="dash-title" style={{ marginBottom: "24px" }}>
               USER <span>MANAGEMENT</span>
             </div>
+            {usersError && (
+              <div style={{ color: "var(--fire-red)", fontSize: "11px", letterSpacing: "1px", marginBottom: "16px" }}>
+                ⚠ {usersError}
+              </div>
+            )}
             <div className="panel-box">
               <table className="ash-table" style={{ width: "100%" }}>
                 <thead>
@@ -362,39 +404,50 @@ export default function AdminPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_USERS.map((u) => (
-                    <tr key={u.username}>
-                      <td style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "1px" }}>{u.username}</td>
-                      <td style={{ fontSize: "10px", color: "var(--text-dim)" }}>{u.email}</td>
-                      <td style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>{u.burns}</td>
-                      <td>
-                        <span style={{
-                          fontSize: "9px",
-                          letterSpacing: "1px",
-                          padding: "2px 8px",
-                          background: u.status === "ACTIVE" ? "rgba(39,174,96,0.1)" : "rgba(204,17,0,0.1)",
-                          border: `1px solid ${u.status === "ACTIVE" ? "rgba(39,174,96,0.3)" : "rgba(204,17,0,0.3)"}`,
-                          color: u.status === "ACTIVE" ? "var(--usdc-green)" : "var(--fire-red)",
-                        }}>
-                          {u.status}
-                        </span>
-                      </td>
-                      <td style={{ color: u.vip ? "var(--gold)" : "var(--text-dim)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
-                        {u.vip ? "YES" : "—"}
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: "6px" }}>
-                          <button className="btn-ghost btn" style={{ padding: "3px 10px", fontSize: "9px" }}>VIEW</button>
-                          <button
-                            className="btn-ghost btn"
-                            style={{ padding: "3px 10px", fontSize: "9px", borderColor: "var(--fire-red)", color: "var(--fire-red)" }}
-                          >
-                            BAN
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {adminUsers.length === 0 && !usersError && (
+                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "11px", padding: "24px" }}>LOADING...</td></tr>
+                  )}
+                  {adminUsers.map((u) => {
+                    const isBanned = u.lockedUntil && new Date(u.lockedUntil) > new Date("2090-01-01");
+                    return (
+                      <tr key={u.id}>
+                        <td style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "1px" }}>{u.username}</td>
+                        <td style={{ fontSize: "10px", color: "var(--text-dim)" }}>{u.email}</td>
+                        <td style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>{u._count?.burns ?? 0}</td>
+                        <td>
+                          <span style={{
+                            fontSize: "9px", letterSpacing: "1px", padding: "2px 8px",
+                            background: isBanned ? "rgba(204,17,0,0.1)" : "rgba(39,174,96,0.1)",
+                            border: `1px solid ${isBanned ? "rgba(204,17,0,0.3)" : "rgba(39,174,96,0.3)"}`,
+                            color: isBanned ? "var(--fire-red)" : "var(--usdc-green)",
+                          }}>
+                            {isBanned ? "BANNED" : "ACTIVE"}
+                          </span>
+                        </td>
+                        <td style={{ color: u.isVip ? "var(--gold)" : "var(--text-dim)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
+                          {u.isVip ? "YES" : "—"}
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <a
+                              href={`/admin/users/${u.id}`}
+                              className="btn-ghost btn"
+                              style={{ padding: "3px 10px", fontSize: "9px", textDecoration: "none" }}
+                            >
+                              VIEW
+                            </a>
+                            <button
+                              className="btn-ghost btn"
+                              style={{ padding: "3px 10px", fontSize: "9px", borderColor: isBanned ? "var(--usdc-green)" : "var(--fire-red)", color: isBanned ? "var(--usdc-green)" : "var(--fire-red)" }}
+                              onClick={() => handleBanUser(u.id, !isBanned)}
+                            >
+                              {isBanned ? "UNBAN" : "BAN"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

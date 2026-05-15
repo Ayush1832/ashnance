@@ -267,19 +267,6 @@ export default function RegisterPage() {
               </svg>
               <span>Google</span>
             </button>
-            <button className={styles["social-btn-branded"]} type="button">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="12" fill="#26A5E4"/>
-                <path d="M5.5 11.5l12-5-4 13-3-4-5 3 3-4.5 7-4.5-8.5 4.5-4.5 1.5z" fill="white" fillOpacity="0.9"/>
-              </svg>
-              <span>Telegram</span>
-            </button>
-            <button className={styles["social-btn-branded"]} type="button">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-              </svg>
-              <span>Twitter</span>
-            </button>
             <button
               className={styles["social-btn-branded"]}
               type="button"

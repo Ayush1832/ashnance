@@ -35,7 +35,6 @@ export const config = {
   // Solana
   solana: {
     rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
-    privateKey: process.env.SOLANA_PRIVATE_KEY || "",
     ashMintAddress: process.env.ASH_MINT_ADDRESS || "",
   },
 
@@ -60,9 +59,6 @@ export const config = {
   // corsOrigins = all allowed origins for CORS (comma-separated)
   corsOrigins: (process.env.FRONTEND_URL || "http://localhost:3000").split(",").map(o => o.trim()).filter(Boolean),
   backendUrl:  process.env.BACKEND_URL  || "http://localhost:4000",
-
-  // Redis
-  redisUrl: process.env.REDIS_URL || "redis://localhost:6379",
 
   // Game constants (defaults — also stored in PlatformConfig DB table)
   game: {

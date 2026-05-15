@@ -77,7 +77,7 @@ export default function TransactionsPage() {
 
   const [filter, setFilter]   = useState<TxType>("ALL");
   const [search, setSearch]   = useState("");
-  const [txList, setTxList]   = useState<Tx[]>(MOCK_TXS);
+  const [txList, setTxList]   = useState<Tx[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {

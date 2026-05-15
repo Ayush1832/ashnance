@@ -122,11 +122,13 @@ export default function LeaderboardPage() {
   const [activeTab,    setActiveTab]    = useState<Tab>("round");
   const [data,         setData]         = useState<Entry[]>([]);
   const [loading,      setLoading]      = useState(true);
+  const [fetchError,   setFetchError]   = useState<string | null>(null);
   const [roundMeta,    setRoundMeta]    = useState<RoundMeta | null>(null);
   const [userCtx,      setUserCtx]      = useState<UserContext>({ userRank: null, userWeight: 0, userDistanceToFirst: null });
 
   useEffect(() => {
     setLoading(true);
+    setFetchError(null);
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -177,7 +179,7 @@ export default function LeaderboardPage() {
           setData(MOCK[activeTab]);
         }
       })
-      .catch(() => setData(MOCK[activeTab]))
+      .catch(() => { setFetchError("Could not load leaderboard — showing cached data"); setData(MOCK[activeTab]); })
       .finally(() => setLoading(false));
   }, [activeTab]);
 
@@ -242,6 +244,13 @@ export default function LeaderboardPage() {
         <div className="dash-header">
           <h1 className="dash-title">LEADER<span>BOARD</span></h1>
         </div>
+
+        {/* Error banner — shown when API fails (fallback data displayed) */}
+        {fetchError && (
+          <div style={{ fontSize: "10px", color: "var(--fire-red)", letterSpacing: "1px", marginBottom: "12px", padding: "8px 12px", border: "1px solid rgba(204,17,0,0.2)", background: "rgba(204,17,0,0.05)" }}>
+            ⚠ {fetchError}
+          </div>
+        )}
 
         {/* Tab buttons */}
         <div style={{ display: "flex", gap: "6px", marginBottom: "20px", flexWrap: "wrap" }}>

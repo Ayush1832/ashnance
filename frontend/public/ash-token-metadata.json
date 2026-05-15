@@ -1,0 +1,22 @@
+{
+  "name": "ASH Token",
+  "symbol": "ASH",
+  "description": "ASH is the native utility token of the Ashnance platform — the burn-to-win arena on Solana. Earn ASH from every burn, use it for weight boosts, staking, and exclusive rewards.",
+  "image": "https://www.ashnance.com/logo-symbol.png",
+  "external_url": "https://www.ashnance.com",
+  "attributes": [
+    { "trait_type": "Total Supply", "value": "1,000,000,000" },
+    { "trait_type": "Decimals", "value": "6" },
+    { "trait_type": "Network", "value": "Solana" },
+    { "trait_type": "Category", "value": "Utility" }
+  ],
+  "properties": {
+    "files": [
+      {
+        "uri": "https://www.ashnance.com/logo-symbol.png",
+        "type": "image/png"
+      }
+    ],
+    "category": "utility"
+  }
+}

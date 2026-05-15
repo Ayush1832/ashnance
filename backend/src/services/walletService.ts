@@ -262,6 +262,55 @@ export class WalletService {
   }
 
   /**
+   * Claim accumulated ASH tokens to the user's on-chain wallet.
+   * Deducts the DB balance and sends a real SPL transfer.
+   */
+  static async claimAsh(userId: string, toAddress: string) {
+    if (!BlockchainService.validateSolanaAddress(toAddress)) {
+      throw new BadRequestError("Invalid Solana address");
+    }
+
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    if (!wallet) throw new NotFoundError("Wallet not found");
+
+    const amount = Number(wallet.ashBalance);
+    if (amount < 1) throw new BadRequestError("No ASH balance to claim");
+
+    // Deduct DB balance FIRST (reserve), then send on-chain
+    await prisma.wallet.update({
+      where: { userId },
+      data: { ashBalance: { decrement: amount } },
+    });
+
+    let txHash: string;
+    try {
+      txHash = await BlockchainService.sendAshTransfer(toAddress, amount);
+    } catch (err) {
+      // Refund DB balance if on-chain transfer fails
+      await prisma.wallet.update({
+        where: { userId },
+        data: { ashBalance: { increment: amount } },
+      });
+      throw new BadRequestError("ASH on-chain transfer failed. Balance restored.");
+    }
+
+    await prisma.transaction.create({
+      data: {
+        userId,
+        type: "WITHDRAWAL",
+        amount,
+        currency: "ASH",
+        status: "COMPLETED",
+        txHash,
+        description: `Claimed ${amount} ASH to ${toAddress.slice(0, 8)}...`,
+        metadata: { address: toAddress },
+      },
+    });
+
+    return { claimed: amount, txHash, newBalance: 0 };
+  }
+
+  /**
    * Get whitelisted withdrawal addresses
    */
   static async getWhitelistedAddresses(userId: string) {

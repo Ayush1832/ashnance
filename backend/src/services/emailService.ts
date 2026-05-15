@@ -3,9 +3,6 @@ import crypto from "crypto";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
 
-// In-memory OTP store (use Redis in production)
-const otpStore = new Map<string, { otp: string; expiresAt: Date; attempts: number }>();
-
 export class EmailService {
   private static transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -18,15 +15,17 @@ export class EmailService {
   });
 
   /**
-   * Generate and send OTP to email
+   * Generate and send OTP to email. Persisted to DB so restarts don't lose pending OTPs.
    */
   static async sendOtp(email: string): Promise<void> {
     const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
-    otpStore.set(email, { otp, expiresAt, attempts: 0 });
+    await prisma.user.update({
+      where: { email },
+      data: { pendingOtp: otp, otpExpiresAt: expiresAt, otpAttempts: 0 },
+    });
 
-    // In dev/test, log OTP to console
     if (process.env.NODE_ENV !== "production") {
       console.log(`\n[DEV] OTP for ${email}: ${otp}\n`);
     }
@@ -54,35 +53,47 @@ export class EmailService {
         });
       } catch (err) {
         console.error("Email send error:", err);
-        // Fall through — OTP is still in memory for dev testing
       }
     }
   }
 
   /**
-   * Verify OTP for an email
+   * Verify OTP for an email. Reads from DB; clears OTP on success or max attempts.
    */
-  static verifyOtp(email: string, otp: string): boolean {
-    const stored = otpStore.get(email);
-    if (!stored) return false;
+  static async verifyOtp(email: string, otp: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { pendingOtp: true, otpExpiresAt: true, otpAttempts: true },
+    });
 
-    // Expired
-    if (stored.expiresAt < new Date()) {
-      otpStore.delete(email);
+    if (!user?.pendingOtp || !user.otpExpiresAt) return false;
+
+    if (user.otpExpiresAt < new Date()) {
+      await prisma.user.update({
+        where: { email },
+        data: { pendingOtp: null, otpExpiresAt: null, otpAttempts: 0 },
+      });
       return false;
     }
 
-    // Too many attempts
-    stored.attempts++;
-    if (stored.attempts > 5) {
-      otpStore.delete(email);
+    const attempts = user.otpAttempts + 1;
+    if (attempts > 5) {
+      await prisma.user.update({
+        where: { email },
+        data: { pendingOtp: null, otpExpiresAt: null, otpAttempts: 0 },
+      });
       return false;
     }
 
-    if (stored.otp !== otp) return false;
+    if (user.pendingOtp !== otp) {
+      await prisma.user.update({ where: { email }, data: { otpAttempts: attempts } });
+      return false;
+    }
 
-    // Valid — remove from store
-    otpStore.delete(email);
+    await prisma.user.update({
+      where: { email },
+      data: { pendingOtp: null, otpExpiresAt: null, otpAttempts: 0 },
+    });
     return true;
   }
 

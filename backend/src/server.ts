@@ -96,6 +96,26 @@ app.use(errorHandler);
 // ---- WebSocket ----
 initWebSocket(httpServer);
 
+// ---- Staking pools — ensure both pools exist at startup ----
+import("./services/stakingService").then(({ StakingService }) => {
+  StakingService.seedPools().catch((err: any) =>
+    console.error("[Staking] Seed pools failed:", err.message)
+  );
+  console.log("[Staking] Pool seed complete");
+});
+
+// ---- Owner wallet validation ----
+if (process.env.NODE_ENV === "production") {
+  const missingWallets: string[] = [];
+  if (!process.env.OWNER_1_WALLET) missingWallets.push("OWNER_1_WALLET");
+  if (!process.env.OWNER_2_WALLET) missingWallets.push("OWNER_2_WALLET");
+  if (!process.env.MASTER_KEYPAIR_SECRET) missingWallets.push("MASTER_KEYPAIR_SECRET");
+  if (missingWallets.length > 0) {
+    console.error(`[STARTUP] Missing critical wallet env vars: ${missingWallets.join(", ")}`);
+    process.exit(1);
+  }
+}
+
 // ---- Deposit Monitor — restart all wallet pollers on server start ----
 import("./services/depositMonitorService").then(({ startAllDepositMonitors }) => {
   startAllDepositMonitors().catch((err: any) =>
