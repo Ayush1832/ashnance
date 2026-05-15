@@ -40,6 +40,9 @@ const USDC_MINT =
   process.env.USDC_MINT ||
   (RPC_URL.includes("mainnet") ? USDC_MINT_MAINNET : USDC_MINT_DEVNET);
 
+/** ASH token mint address — set after running scripts/deployAshToken.ts */
+const ASH_MINT = process.env.ASH_MINT_ADDRESS || "";
+
 // ---- Active polling handles (address -> NodeJS.Timeout) ----
 const _monitorHandles = new Map<string, ReturnType<typeof setInterval>>();
 
@@ -519,6 +522,117 @@ export class BlockchainService {
     } catch {
       return null;
     }
+  }
+
+  // ----------------------------------------------------------
+  // getAshMint
+  // ----------------------------------------------------------
+  /** Returns the ASH token mint address from env. Throws if not yet deployed. */
+  static getAshMint(): string {
+    if (!ASH_MINT) {
+      throw new Error(
+        "[BlockchainService] ASH_MINT_ADDRESS is not set. " +
+        "Run scripts/deployAshToken.ts first, then add ASH_MINT_ADDRESS to .env."
+      );
+    }
+    return ASH_MINT;
+  }
+
+  /** Returns true if the ASH token has been deployed (mint address is set). */
+  static isAshDeployed(): boolean {
+    return Boolean(ASH_MINT);
+  }
+
+  // ----------------------------------------------------------
+  // getAshBalance
+  // ----------------------------------------------------------
+  /**
+   * Returns the ASH token balance (in whole tokens, 6 decimals) for an address.
+   * Returns 0 if the address has no ASH token account.
+   */
+  static async getAshBalance(ownerAddress: string): Promise<number> {
+    if (!ASH_MINT) return 0;
+    try {
+      const connection = getConnection();
+      const owner = new PublicKey(ownerAddress);
+      const mint  = new PublicKey(ASH_MINT);
+
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(owner, { mint });
+      if (tokenAccounts.value.length === 0) return 0;
+
+      const uiAmount =
+        tokenAccounts.value[0].account.data.parsed?.info?.tokenAmount?.uiAmount ?? 0;
+      return typeof uiAmount === "number" ? uiAmount : 0;
+    } catch (err) {
+      console.error("[BlockchainService] getAshBalance error:", err);
+      return 0;
+    }
+  }
+
+  // ----------------------------------------------------------
+  // sendAshTransfer
+  // ----------------------------------------------------------
+  /**
+   * Sends ASH tokens from the platform master wallet to `toAddress`.
+   * Creates the recipient's associated token account if it does not exist.
+   * Returns the transaction signature.
+   *
+   * PREREQUISITE: ASH_MINT_ADDRESS must be set (deploy the token first).
+   * The master wallet must hold enough ASH (all 1B are minted there on deploy).
+   */
+  static async sendAshTransfer(
+    toAddress: string,
+    amountAsh: number
+  ): Promise<string> {
+    const ashMintAddress = BlockchainService.getAshMint();
+
+    const connection = getConnection();
+    const master  = getMasterKeypair();
+    const mint    = new PublicKey(ashMintAddress);
+    const toOwner = new PublicKey(toAddress);
+
+    const fromAta = getAssociatedTokenAddressSync(mint, master.publicKey);
+    const toAta   = getAssociatedTokenAddressSync(mint, toOwner);
+
+    const instructions = [];
+
+    const toAtaInfo = await connection.getAccountInfo(toAta);
+    if (!toAtaInfo) {
+      instructions.push(
+        createAssociatedTokenAccountInstruction(
+          master.publicKey,
+          toAta,
+          toOwner,
+          mint
+        )
+      );
+    }
+
+    const rawAmount = BigInt(Math.round(amountAsh * 1_000_000));
+    instructions.push(
+      createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
+    );
+
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
+    tx.add(...instructions);
+    tx.sign(master);
+
+    const txHash = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: "confirmed",
+    });
+
+    const latestBlockhash = await connection.getLatestBlockhash();
+    await connection.confirmTransaction(
+      { signature: txHash, ...latestBlockhash },
+      "confirmed"
+    );
+
+    console.log(
+      `[BlockchainService] ASH transfer confirmed — ${amountAsh} ASH to ${toAddress}, tx: ${txHash}`
+    );
+    return txHash;
   }
 
   // ----------------------------------------------------------

@@ -36,6 +36,7 @@ export const config = {
   solana: {
     rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
     privateKey: process.env.SOLANA_PRIVATE_KEY || "",
+    ashMintAddress: process.env.ASH_MINT_ADDRESS || "",
   },
 
   // Email
