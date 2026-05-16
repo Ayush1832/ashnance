@@ -1,5 +1,6 @@
 import { Server as SocketServer } from "socket.io";
 import { Server as HttpServer } from "http";
+import jwt from "jsonwebtoken";
 import { config } from "../config";
 
 let io: SocketServer | null = null;
@@ -19,11 +20,22 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
   io.on("connection", (socket) => {
     console.log(`[WS] Client connected: ${socket.id}`);
 
-    // Join user-specific room for targeted notifications
-    socket.on("join:user", (userId: string) => {
-      socket.join(`user:${userId}`);
-      console.log(`[WS] User ${userId} joined room`);
-    });
+    // Extract userId from JWT handshake — never trust client-supplied userId
+    const token = socket.handshake.auth?.token as string | undefined;
+    let authedUserId: string | null = null;
+    if (token) {
+      try {
+        const payload = jwt.verify(token, config.jwt.secret) as { userId: string };
+        authedUserId = payload.userId;
+        socket.join(`user:${authedUserId}`);
+        console.log(`[WS] User ${authedUserId} joined private room`);
+      } catch {
+        // Invalid token — socket is still allowed for public rooms
+      }
+    }
+
+    // join:user is removed — clients must pass token via handshake.auth.token
+    // The private room is already joined above when the token is valid.
 
     // Join public rooms
     socket.on("join:ticker", () => {

@@ -38,6 +38,10 @@ router.post("/deposit", authenticate, async (req: AuthRequest, res: Response, ne
     if (!txHash || typeof txHash !== "string") {
       return next(new BadRequestError("txHash is required"));
     }
+    // Solana tx signatures are base58, 87-88 characters
+    if (!/^[1-9A-HJ-NP-Za-km-z]{87,88}$/.test(txHash)) {
+      return next(new BadRequestError("Invalid transaction hash format"));
+    }
     const result = await WalletService.verifyAndProcessDeposit(req.user!.userId, txHash);
     res.json({ success: true, data: result });
   } catch (error: any) {
@@ -69,8 +73,8 @@ router.post("/withdraw", authenticate, async (req: AuthRequest, res: Response, n
 router.get("/transactions", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const type = req.query.type as string | undefined;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
 
     const result = await WalletService.getTransactions(req.user!.userId, {
       type,

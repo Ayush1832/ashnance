@@ -83,7 +83,16 @@ router.get("/burn-config", async (req: AuthRequest, res: Response, next: NextFun
 // PUT /api/owner/burn-config
 router.put("/burn-config", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const updates = req.body as Record<string, number>;
+    if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) {
+      throw new BadRequestError("Request body must be a JSON object of key-value pairs");
+    }
+    // Reject non-numeric values — the service will filter unknown keys
+    const updates: Record<string, number> = {};
+    for (const [k, v] of Object.entries(req.body)) {
+      const n = Number(v);
+      if (!isFinite(n)) throw new BadRequestError(`Value for "${k}" must be a finite number`);
+      updates[k] = n;
+    }
     const config = await OwnerService.saveBurnConfig(updates);
     res.json({ success: true, data: config });
   } catch (err) { next(err); }

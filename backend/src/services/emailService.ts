@@ -3,11 +3,16 @@ import crypto from "crypto";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
 
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+}
+
 export class EmailService {
   private static transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
     port: parseInt(process.env.SMTP_PORT || "587"),
     secure: false,
+    requireTLS: true,
     auth: {
       user: process.env.SMTP_USER || "",
       pass: process.env.SMTP_PASS || "",
@@ -85,7 +90,13 @@ export class EmailService {
       return false;
     }
 
-    if (user.pendingOtp !== otp) {
+    // Use constant-time comparison to prevent timing attacks
+    const storedBuf = Buffer.from(user.pendingOtp);
+    const inputBuf  = Buffer.from(otp.slice(0, user.pendingOtp.length).padEnd(user.pendingOtp.length, "\0"));
+    const match = storedBuf.length === inputBuf.length &&
+      crypto.timingSafeEqual(storedBuf, inputBuf);
+
+    if (!match) {
       await prisma.user.update({ where: { email }, data: { otpAttempts: attempts } });
       return false;
     }
@@ -103,6 +114,10 @@ export class EmailService {
   static async sendWithdrawalAlert(email: string, amount: number, currency: string, address: string): Promise<void> {
     if (!config.email.user) return;
 
+    const safeAmount   = escHtml(String(amount));
+    const safeCurrency = escHtml(currency);
+    const safeAddress  = escHtml(address);
+
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance 🔥" <${config.email.from}>`,
@@ -111,8 +126,8 @@ export class EmailService {
         html: `
           <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:480px;margin:0 auto;border:1px solid #2A1F10;">
             <h1 style="font-family:sans-serif;color:#FF4D00;letter-spacing:4px;">WITHDRAWAL ALERT</h1>
-            <p style="color:#27AE60;font-size:24px;font-weight:700;margin:16px 0;">${amount} ${currency}</p>
-            <p style="font-size:11px;color:#806050;letter-spacing:1px;">Sent to: ${address}</p>
+            <p style="color:#27AE60;font-size:24px;font-weight:700;margin:16px 0;">${safeAmount} ${safeCurrency}</p>
+            <p style="font-size:11px;color:#806050;letter-spacing:1px;">Sent to: ${safeAddress}</p>
           </div>
         `,
       });
@@ -127,16 +142,20 @@ export class EmailService {
   static async sendWinEmail(email: string, username: string, amount: number, tier: string): Promise<void> {
     if (!config.email.user) return;
 
+    const safeUsername = escHtml(username);
+    const safeAmount   = escHtml(String(amount));
+    const safeTier     = escHtml(tier);
+
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance 🔥" <${config.email.from}>`,
         to: email,
-        subject: `🏆 YOU WON ${amount} USDC — Ashnance`,
+        subject: `YOU WON ${safeAmount} USDC — Ashnance`,
         html: `
           <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:480px;margin:0 auto;border:1px solid #FFB800;">
             <h1 style="font-family:sans-serif;color:#FFB800;letter-spacing:4px;font-size:32px;">YOU WON!</h1>
-            <p style="color:#F0E8DC;font-size:48px;font-weight:700;margin:16px 0;">${amount} USDC</p>
-            <p style="color:#806050;letter-spacing:2px;font-size:12px;">${tier} PRIZE · @${username}</p>
+            <p style="color:#F0E8DC;font-size:48px;font-weight:700;margin:16px 0;">${safeAmount} USDC</p>
+            <p style="color:#806050;letter-spacing:2px;font-size:12px;">${safeTier} PRIZE · @${safeUsername}</p>
             <p style="font-size:11px;color:#806050;margin-top:24px;">Log in to Ashnance to claim your prize.</p>
           </div>
         `,
@@ -153,6 +172,10 @@ export class EmailService {
   static async sendCriticalAlert(subject: string, body: string): Promise<void> {
     const recipients = config.ownerEmails;
     if (!config.email.user || !recipients.length) return;
+
+    const safeSubject = escHtml(subject);
+    const safeBody    = escHtml(body);
+
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance ALERT" <${config.email.from}>`,
@@ -160,8 +183,8 @@ export class EmailService {
         subject: `[CRITICAL] ${subject}`,
         html: `
           <div style="background:#1a0000;color:#ffcccc;font-family:monospace;padding:32px;max-width:600px;border:2px solid #cc0000;">
-            <h2 style="color:#ff4444;margin:0 0 16px;">[CRITICAL] ${subject}</h2>
-            <pre style="font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all;">${body}</pre>
+            <h2 style="color:#ff4444;margin:0 0 16px;">[CRITICAL] ${safeSubject}</h2>
+            <pre style="font-size:13px;line-height:1.6;white-space:pre-wrap;word-break:break-all;">${safeBody}</pre>
             <p style="color:#ff8888;font-size:11px;margin-top:24px;">This requires immediate manual review.</p>
           </div>
         `,

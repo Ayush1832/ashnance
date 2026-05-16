@@ -30,11 +30,7 @@ export class AuthService {
       where: { OR: [{ email: data.email }, { username: data.username }] },
     });
     if (existing) {
-      throw new ConflictError(
-        existing.email === data.email
-          ? "Email already registered"
-          : "Username already taken"
-      );
+      throw new ConflictError("Email or username already in use");
     }
 
     // Hash password if provided
@@ -121,7 +117,7 @@ export class AuthService {
     // Check lock
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       throw new AccountLockedError(
-        `Account locked until ${user.lockedUntil.toISOString()}`
+        "Account temporarily locked. Please try again later."
       );
     }
 
@@ -189,7 +185,7 @@ export class AuthService {
 
     // Check lock
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new AccountLockedError(`Account locked until ${user.lockedUntil.toISOString()}`);
+      throw new AccountLockedError("Account temporarily locked. Please try again later.");
     }
 
     // Reset failed attempts

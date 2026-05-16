@@ -110,8 +110,8 @@ router.put("/config/:key", async (req: AuthRequest, res: Response, next: NextFun
 // GET /api/admin/users?page=1&limit=20
 router.get("/users", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const page = Number(req.query.page as string) || 1;
-    const limit = Number(req.query.limit as string) || 20;
+    const page = Math.max(1, Number(req.query.page as string) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit as string) || 20));
 
     const [users, total] = await Promise.all([
       prisma.user.findMany({

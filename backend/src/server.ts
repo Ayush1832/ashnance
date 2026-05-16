@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import { createServer } from "http";
 import rateLimit from "express-rate-limit";
@@ -27,6 +28,9 @@ const httpServer = createServer(app);
 // Trust Nginx reverse proxy so express-rate-limit reads the correct client IP
 app.set("trust proxy", 1);
 
+// ---- Security Headers ----
+app.use(helmet());
+
 // ---- Global Middleware ----
 app.use((req, res, next) => {
   const origin = req.headers.origin;
@@ -45,7 +49,7 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());
 
 // Rate limiting
@@ -66,6 +70,14 @@ const authLimiter = rateLimit({
 });
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", authLimiter);
+
+// OTP endpoint — strict limit: 5 requests per 10 minutes per IP
+const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { success: false, error: "Too many OTP requests, please wait before trying again" },
+});
+app.use("/api/auth/send-otp", otpLimiter);
 
 // ---- Health Check ----
 app.get("/api/health", (_req, res) => {

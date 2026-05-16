@@ -200,7 +200,15 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 // GET /api/auth/google — redirect to Google consent screen
-router.get("/google", (_req: Request, res: Response) => {
+router.get("/google", (req: Request, res: Response) => {
+  const state = require("crypto").randomBytes(16).toString("hex");
+  // Store state in a short-lived cookie for CSRF validation on callback
+  res.cookie("oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000, // 10 min
+  });
   const params = new URLSearchParams({
     client_id:     config.google.clientId,
     redirect_uri:  `${config.backendUrl}/api/auth/google/callback`,
@@ -208,6 +216,7 @@ router.get("/google", (_req: Request, res: Response) => {
     scope:         "openid email profile",
     access_type:   "offline",
     prompt:        "select_account",
+    state,
   });
   res.redirect(`${GOOGLE_AUTH_URL}?${params.toString()}`);
 });
@@ -215,7 +224,14 @@ router.get("/google", (_req: Request, res: Response) => {
 // GET /api/auth/google/callback — exchange code, issue JWT, redirect to frontend
 router.get("/google/callback", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { code, error } = req.query;
+    const { code, error, state } = req.query;
+
+    // Validate CSRF state
+    const expectedState = req.cookies?.oauth_state;
+    res.clearCookie("oauth_state");
+    if (!expectedState || state !== expectedState) {
+      return res.redirect(`${config.frontendUrl}/login?error=oauth_state_mismatch`);
+    }
 
     if (error || !code) {
       return res.redirect(`${config.frontendUrl}/login?error=google_cancelled`);
@@ -264,13 +280,13 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
       avatarUrl: googleUser.picture,
     });
 
-    // 4. Redirect to frontend with tokens in query params
-    //    (frontend reads them from URL and stores in localStorage)
-    const params = new URLSearchParams({
+    // 4. Redirect to frontend with tokens in URL fragment (hash) — not sent to server,
+    //    not recorded in server access logs or browser history.
+    const fragment = new URLSearchParams({
       accessToken:  result.accessToken,
       refreshToken: result.refreshToken,
     });
-    res.redirect(`${config.frontendUrl}/auth/callback?${params.toString()}`);
+    res.redirect(`${config.frontendUrl}/auth/callback#${fragment.toString()}`);
   } catch (error) {
     next(error);
   }

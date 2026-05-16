@@ -114,6 +114,10 @@ export class BurnService {
     if (amountUsdc < burnCfg.min_burn_amount) {
       throw new BadRequestError(`Minimum burn amount is $${burnCfg.min_burn_amount} USDC`);
     }
+    const maxBurn = burnCfg.max_burn_amount ?? 10_000;
+    if (amountUsdc > maxBurn) {
+      throw new BadRequestError(`Maximum burn amount is $${maxBurn} USDC per transaction`);
+    }
 
     // Get user with wallet
     const user = await prisma.user.findUnique({
@@ -128,12 +132,8 @@ export class BurnService {
       throw new NotFoundError("User or wallet not found");
     }
 
-    // Check balance
-    if (Number(user.wallet.usdcBalance) < amountUsdc) {
-      throw new InsufficientBalanceError(
-        `Insufficient balance. You have $${user.wallet.usdcBalance} USDC, need $${amountUsdc}`
-      );
-    }
+    // Note: balance is re-checked atomically inside the Prisma transaction below
+    // to prevent race conditions between concurrent burn requests.
 
     // ---- CALCULATE WEIGHT ----
     const baseUnit = burnCfg.base_unit ?? 4.99;
@@ -190,7 +190,16 @@ export class BurnService {
     let newRoundPool = 0;
 
     const burn = await prisma.$transaction(async (tx: any) => {
-      // 1. Deduct USDC from wallet and update cumulativeWeight
+      // 1. Check balance atomically, then deduct USDC + update cumulativeWeight
+      const currentWallet = await tx.wallet.findUnique({
+        where: { userId },
+        select: { usdcBalance: true },
+      });
+      if (!currentWallet || Number(currentWallet.usdcBalance) < amountUsdc) {
+        throw new InsufficientBalanceError(
+          `Insufficient balance. You have $${currentWallet?.usdcBalance ?? 0} USDC, need $${amountUsdc}`
+        );
+      }
       const updatedWallet = await tx.wallet.update({
         where: { userId },
         data: {

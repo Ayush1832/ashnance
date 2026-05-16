@@ -173,11 +173,6 @@ export class WalletService {
       throw new UnauthorizedError("Invalid 2FA code");
     }
 
-    // Check balance
-    if (Number(user.wallet.usdcBalance) < amount) {
-      throw new InsufficientBalanceError();
-    }
-
     // Check whitelisted address (must be verified AND past 24-hour security cooldown)
     const matchingAddr = user.whitelistAddrs.find(
       (addr: any) => addr.address === address && addr.isVerified
@@ -195,67 +190,80 @@ export class WalletService {
       );
     }
 
-    // --- Step 1: Execute on-chain transfer FIRST ---
-    // DB is not touched until we have a confirmed txHash.
-    // This means if the transfer fails, the user's balance is never changed —
-    // no refund logic needed.
-    let txHash: string;
+    // --- Step 1: Reserve balance atomically (check + decrement in one transaction) ---
+    // This prevents race conditions where two concurrent withdrawals could both pass
+    // the pre-check and both drain the balance.
+    let pendingTxId: string;
     try {
-      txHash = await BlockchainService.sendUsdcTransfer(address, amount);
-    } catch (err) {
-      console.error("[WalletService] On-chain withdrawal failed:", err);
-      throw new BadRequestError(
-        "On-chain transfer failed. Your balance was not affected. Please try again."
-      );
-    }
-
-    // --- Step 2: On-chain succeeded — now update DB atomically ---
-    // Edge case: if this DB write fails after on-chain success, the user
-    // received USDC but their balance wasn't decremented. Log as CRITICAL.
-    let result: { wallet: any; transaction: any };
-    try {
-      result = await prisma.$transaction(async (tx: any) => {
-        const wallet = await tx.wallet.update({
+      const reservation = await prisma.$transaction(async (tx: any) => {
+        const currentWallet = await tx.wallet.findUnique({
+          where: { userId },
+          select: { usdcBalance: true },
+        });
+        if (!currentWallet || Number(currentWallet.usdcBalance) < amount) {
+          throw new InsufficientBalanceError();
+        }
+        const updatedWallet = await tx.wallet.update({
           where: { userId },
           data: { usdcBalance: { decrement: amount } },
         });
-
-        const transaction = await tx.transaction.create({
+        const pendingTx = await tx.transaction.create({
           data: {
             userId,
             type: "WITHDRAWAL",
             amount,
             currency: "USDC",
-            status: "COMPLETED",
-            txHash,
+            status: "PROCESSING",
             description: `Withdrawal of ${amount} USDC to ${address.slice(0, 8)}...`,
             metadata: { address },
           },
         });
-
-        await tx.user.update({
-          where: { id: userId },
-          data: { failedAttempts: 0 },
-        });
-
-        return { wallet, transaction };
+        return { wallet: updatedWallet, pendingTxId: pendingTx.id };
       });
-    } catch (dbErr) {
-      // CRITICAL: on-chain transfer succeeded but DB update failed.
-      // The user received USDC but their in-app balance was not decremented.
-      // Requires manual reconciliation.
-      const criticalMsg = `Withdrawal DB update failed after successful on-chain transfer.\nuserId=${userId}\namount=${amount}\ntxHash=${txHash}\naddress=${address}\nerror=${dbErr}`;
-      console.error("[CRITICAL]", criticalMsg);
-      EmailService.sendCriticalAlert("Withdrawal DB failure — manual reconciliation required", criticalMsg).catch(() => {});
-      throw new BadRequestError(
-        "Withdrawal sent on-chain but our records failed to update. " +
-        "Please contact support with your transaction hash: " + txHash
-      );
+      pendingTxId = reservation.pendingTxId;
+    } catch (err) {
+      if (err instanceof InsufficientBalanceError) throw err;
+      throw new BadRequestError("Could not reserve withdrawal balance. Please try again.");
     }
 
+    // --- Step 2: Execute on-chain transfer ---
+    let txHash: string;
+    try {
+      txHash = await BlockchainService.sendUsdcTransfer(address, amount);
+    } catch (err) {
+      // Refund the reserved balance and mark transaction as failed
+      console.error("[WalletService] On-chain withdrawal failed — refunding:", err);
+      await prisma.wallet.update({ where: { userId }, data: { usdcBalance: { increment: amount } } });
+      await prisma.transaction.update({ where: { id: pendingTxId }, data: { status: "FAILED" } });
+      throw new BadRequestError("On-chain transfer failed. Your balance has been restored.");
+    }
+
+    // --- Step 3: Mark as completed ---
+    // Edge case: if this fails after on-chain success, the balance is already decremented
+    // so there is no double-spend — but we need to update the transaction record.
+    let finalTxRecord: any;
+    try {
+      finalTxRecord = await prisma.$transaction(async (tx: any) => {
+        const transaction = await tx.transaction.update({
+          where: { id: pendingTxId },
+          data: { txHash, status: "COMPLETED" },
+        });
+        await tx.user.update({ where: { id: userId }, data: { failedAttempts: 0 } });
+        return transaction;
+      });
+    } catch (dbErr) {
+      // Non-critical: balance already decremented, on-chain already confirmed.
+      // The PROCESSING record exists in DB so support can reconcile.
+      const criticalMsg = `Withdrawal record update failed after successful on-chain transfer.\nuserId=${userId}\namount=${amount}\ntxHash=${txHash}\naddress=${address}\npendingTxId=${pendingTxId}\nerror=${dbErr}`;
+      console.error("[CRITICAL]", criticalMsg);
+      EmailService.sendCriticalAlert("Withdrawal record update failed — verify manually", criticalMsg).catch(() => {});
+    }
+
+    const finalWallet = await prisma.wallet.findUnique({ where: { userId }, select: { usdcBalance: true } });
+
     return {
-      newBalance: result.wallet.usdcBalance,
-      transactionId: result.transaction.id,
+      newBalance: finalWallet?.usdcBalance ?? 0,
+      transactionId: finalTxRecord?.id ?? pendingTxId,
       txHash,
       status: "COMPLETED",
     };
@@ -270,17 +278,28 @@ export class WalletService {
       throw new BadRequestError("Invalid Solana address");
     }
 
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundError("Wallet not found");
-
-    const amount = Number(wallet.ashBalance);
-    if (amount < 1) throw new BadRequestError("No ASH balance to claim");
-
-    // Deduct DB balance FIRST (reserve), then send on-chain
-    await prisma.wallet.update({
-      where: { userId },
-      data: { ashBalance: { decrement: amount } },
-    });
+    // Atomically check + reserve ASH balance to prevent double-claim race condition
+    let amount: number;
+    try {
+      const reserved = await prisma.$transaction(async (tx: any) => {
+        const wallet = await tx.wallet.findUnique({
+          where: { userId },
+          select: { ashBalance: true },
+        });
+        if (!wallet) throw new NotFoundError("Wallet not found");
+        const bal = Number(wallet.ashBalance);
+        if (bal < 1) throw new BadRequestError("No ASH balance to claim");
+        await tx.wallet.update({
+          where: { userId },
+          data: { ashBalance: { decrement: bal } },
+        });
+        return bal;
+      });
+      amount = reserved;
+    } catch (err) {
+      if (err instanceof NotFoundError || err instanceof BadRequestError) throw err;
+      throw new BadRequestError("Could not reserve ASH balance. Please try again.");
+    }
 
     let txHash: string;
     try {

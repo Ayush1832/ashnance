@@ -10,9 +10,19 @@ function AuthCallback() {
 
   useEffect(() => {
     async function handleCallback() {
-      const accessToken  = params.get("accessToken");
-      const refreshToken = params.get("refreshToken");
-      const error        = params.get("error");
+      // Tokens are in the URL fragment (hash) to avoid server logs and browser history.
+      // Fall back to query params for backwards compatibility.
+      const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+      const hashParams = new URLSearchParams(hash);
+
+      const accessToken  = hashParams.get("accessToken")  || params.get("accessToken");
+      const refreshToken = hashParams.get("refreshToken") || params.get("refreshToken");
+      const error        = hashParams.get("error")        || params.get("error");
+
+      // Clear the fragment so tokens don't sit in the address bar
+      if (typeof window !== "undefined" && hash) {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
 
       if (error || !accessToken) {
         setMsg("SIGN-IN CANCELLED");

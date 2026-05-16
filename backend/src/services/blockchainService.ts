@@ -292,7 +292,7 @@ export class BlockchainService {
         );
       }
 
-      const rawAmount = BigInt(Math.round(balance * 1_000_000));
+      const rawAmount = BigInt(Math.round(parseFloat(balance.toFixed(6)) * 1_000_000));
       instructions.push(
         createTransferInstruction(fromAta, toAta, depositKeypair.publicKey, rawAmount)
       );
@@ -478,7 +478,7 @@ export class BlockchainService {
       );
     }
 
-    const rawAmount = BigInt(Math.round(amountUsdc * 1_000_000));
+    const rawAmount = BigInt(Math.round(parseFloat(amountUsdc.toFixed(6)) * 1_000_000));
     instructions.push(
       createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
     );
@@ -608,7 +608,7 @@ export class BlockchainService {
       );
     }
 
-    const rawAmount = BigInt(Math.round(amountAsh * 1_000_000));
+    const rawAmount = BigInt(Math.round(parseFloat(amountAsh.toFixed(6)) * 1_000_000));
     instructions.push(
       createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
     );
