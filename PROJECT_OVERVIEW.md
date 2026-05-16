@@ -123,7 +123,7 @@ Three ways to register:
 **Validation rules:**
 - Email must be unique
 - Username must be unique
-- Password minimum 8 characters (if provided)
+- Password minimum 8 characters, maximum 256 characters (if provided)
 - Invalid referral codes silently ignored (no error)
 
 ### 4.2 Login
@@ -135,14 +135,14 @@ Three ways to register:
 2. `POST /api/auth/verify-otp` — `{ email, otp }` → marks OTP verified
 3. `POST /api/auth/login` — `{ email, otp }` → issues tokens
 
-**Account lockout:** 3 failed password attempts → locked for 30 minutes. Error includes `lockedUntil` timestamp.
+**Account lockout:** 3 failed password attempts → locked for 30 minutes. Error returns a generic "Account temporarily locked" message with no timestamp leak.
 
 **Wallet login:** `POST /api/auth/wallet` — signs message `"Sign in to Ashnance\ntimestamp:1234567890"`, verifies signature on server with nacl. Timestamp must be within 5 minutes (replay protection). Creates new user if address not found.
 
 **Google OAuth:**
-1. Redirect to `GET /api/auth/google`
-2. Google redirects back to `/api/auth/google/callback`
-3. Server issues tokens, redirects to `/auth/callback?accessToken=...&refreshToken=...`
+1. Redirect to `GET /api/auth/google` — server generates a random `state` cookie (CSRF protection)
+2. Google redirects back to `/api/auth/google/callback` — state is verified
+3. Server issues tokens, redirects to `/auth/callback#accessToken=...&refreshToken=...` (hash fragment — never reaches server logs)
 
 ### 4.3 Tokens
 
@@ -191,6 +191,8 @@ Every user has one wallet with:
 
 **Minimum deposit:** 1 USDC
 
+**On-chain verification commitment:** `finalized` (not just `confirmed`) — prevents crediting deposits that could be rolled back.
+
 **Supported wallets:** Phantom, Backpack, Solflare, OKX Wallet, Coinbase Wallet
 
 ### 5.3 Withdrawals
@@ -206,15 +208,15 @@ Every user has one wallet with:
 
 **Flow:**
 1. Verify 2FA code
-2. Check whitelist
-3. Check balance
-4. Execute on-chain USDC transfer **first** (before touching DB)
-5. If on-chain fails → return error, balance unchanged
-6. If on-chain succeeds → decrement balance, create transaction record
+2. Check whitelist and cooldown (24-hour cooling period for new addresses)
+3. **Step 1 — Atomic reserve (Prisma transaction):** check balance, decrement it, create `PROCESSING` transaction record — all in one atomic DB transaction. Prevents race conditions under concurrent requests.
+4. **Step 2 — On-chain transfer:** send USDC to destination address on Solana
+5. If on-chain fails → refund the reserved balance, mark record `FAILED`, return error
+6. **Step 3 — Confirm:** update transaction record to `COMPLETED`, return txHash
 
 **Failed 2FA attempts:** 3 failures → 30 min account lock (same counter as password failures).
 
-**Critical failure:** If on-chain succeeds but DB update fails — user receives USDC but balance not decremented. Backend logs `[CRITICAL]` with txHash. Support must reconcile manually.
+**Critical failure:** If Step 3 DB update fails after on-chain success — USDC sent but record not marked COMPLETED. Balance is already decremented (Step 1), so no double-spend. Backend logs `[CRITICAL]` with txHash for manual reconciliation.
 
 ### 5.4 Whitelist Addresses
 
@@ -233,6 +235,8 @@ Withdrawals require the destination address to be whitelisted.
 **Transaction types:** `DEPOSIT`, `WITHDRAWAL`, `BURN`, `WIN`, `REFERRAL_REWARD`, `VIP_PURCHASE`, `ASH_BOOST`
 
 **Statuses:** `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`
+
+> Note: `WITHDRAWAL` records pass through `PROCESSING → COMPLETED` (or `PROCESSING → FAILED`). The intermediate `PROCESSING` state is visible in transaction history and ensures atomic reserve-before-send.
 
 ---
 
@@ -521,16 +525,22 @@ Returns top 20 in each category.
 
 Connect to `wss://api.ashnance.com` via Socket.IO.
 
-### 13.1 Join Rooms
+### 13.1 Authentication & Rooms
 
-Send these events after connecting:
+**Private room auth:** Pass your JWT access token in the Socket.IO handshake `auth` object:
+```js
+io({ auth: { token: accessToken } })
+```
+The server verifies the token and auto-joins the socket to `user:<userId>`. There is no `join:user` client event — the private room is always server-assigned from the verified token.
+
+**Public rooms:** Send these events after connecting:
 
 | Event | Room Joined | Purpose |
 |-------|------------|---------|
 | `join:ticker` | `ticker` | All burns & round ends |
 | `join:round` | `round` | Round progress updates |
 | `join:leaderboard` | `leaderboard` | Rank change triggers |
-| `join:user` with `{ userId }` | `user:<userId>` | Personal events (deposits, referrals) |
+| *(JWT handshake)* | `user:<userId>` | Personal events (deposits, referrals) — auto-joined |
 
 ### 13.2 Events Emitted by Server
 
@@ -572,6 +582,11 @@ Send these events after connecting:
 
 #### `leaderboard:update` → room `leaderboard`
 No payload — signal to clients to re-fetch leaderboard.
+
+#### `referral:earned` → room `user:<referrerId>`
+```json
+{ "amount": 1.00, "from": "BurnerKing" }
+```
 
 ---
 
@@ -635,9 +650,16 @@ Access: email must be in `OWNER_EMAILS` environment variable. Login at `/owner-l
 | Network | Solana Devnet (testing) |
 | USDC Mint (devnet) | `Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr` |
 | USDC Mint (mainnet) | `EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v` |
+| ASH Token Mint (devnet) | `9ZKVsjQeUuKTeEgUdjY8cRtjyUsVsRjw7pJLYdieozVm` |
 | RPC | `https://api.devnet.solana.com` (default) |
 
 On devnet, use **devnet USDC only**. You can get devnet USDC from Solana devnet faucets.
+
+### 16.5 ASH Token
+
+ASH is the platform's native SPL token deployed on Solana devnet (mint above). Users accumulate ASH in their in-app balance through burns. To move ASH on-chain:
+
+`POST /api/wallet/claim-ash` — `{ toAddress }` — atomically deducts the full in-app ASH balance and sends an on-chain SPL transfer to the specified wallet address. Requires a valid Solana address. On-chain transfer is executed before DB deduction is finalized to prevent silent failures.
 
 ### 16.2 Master Wallet
 
@@ -660,10 +682,12 @@ This is secondary to the direct-deposit flow (user sends to master wallet direct
 ### 16.4 On-Chain Verification
 
 Deposits are verified by fetching the transaction from Solana and confirming:
-- Transaction is confirmed (not just processed)
+- Transaction is **finalized** (not just confirmed — prevents rollback-based double-credits)
 - Token type is USDC mint
 - Destination is master wallet
 - Amount matches
+
+**Double-credit prevention:** The `transactions` table has a DB-level unique constraint on `(txHash, type)`. Even if two concurrent requests pass early checks, only one will succeed at the Prisma insert — the other receives a P2002 error which is surfaced as "Transaction already processed".
 
 ---
 
@@ -697,9 +721,10 @@ Deposits are verified by fetching the transaction from Solana and confirming:
 | POST | `/withdraw` | Yes | Withdraw USDC (requires 2FA + whitelist) |
 | GET | `/transactions` | Yes | Transaction history (filterable, paginated) |
 | GET | `/whitelist` | Yes | List whitelisted withdrawal addresses |
-| POST | `/whitelist` | Yes | Add whitelist address |
+| POST | `/whitelist` | Yes | Add whitelist address (24-hour cooldown before use) |
 | DELETE | `/whitelist/:id` | Yes | Remove whitelist address |
-| GET | `/onchain/:address` | No | Get on-chain USDC balance |
+| POST | `/claim-ash` | Yes | Transfer full in-app ASH balance to on-chain wallet `{ toAddress }` |
+| GET | `/onchain/:address` | No | Get on-chain USDC balance for any Solana address |
 
 ### Burn (`/api/burn/`)
 
@@ -762,7 +787,8 @@ Deposits are verified by fetching the transaction from Solana and confirming:
 |--------|------|------|-------------|
 | GET | `/stats` | Admin | Platform stats |
 | GET | `/users` | Admin | User list (paginated) |
-| PUT | `/users/:id/role` | Admin | Change user role |
+| PUT | `/users/:id/role` | Admin | Change user role `{ role: "USER"\|"ADMIN" }` |
+| PUT | `/users/:id/ban` | Admin | Ban/unban user `{ ban: true\|false }` |
 | GET | `/config` | Admin | All config entries |
 | PUT | `/config/:key` | Admin | Update config value |
 | GET | `/prizes` | Admin | Prize configs |
@@ -897,6 +923,7 @@ These are stored in the `PlatformConfig` DB table and can be edited live via the
 | `prize_safety_pct` | 0.70 | Max prize as fraction of reward pool balance |
 | `round_time_limit_hours` | 24 | Default round time limit in hours |
 | `anti_snipe_seconds` | 10 | How long rank #1 must hold before winning |
+| `max_burn_amount` | 10000 | Maximum USDC per single burn transaction |
 
 **Note:** `reward_pool_split + profit_pool_split` must always equal 1.0. The owner panel validates this.
 
@@ -939,4 +966,35 @@ If rank #1 is ineligible (won last round) and there is no rank #2 (only one burn
 
 ---
 
-*Document generated from live codebase — April 2026*
+---
+
+## 22. Security Architecture
+
+Key security controls implemented in the current codebase:
+
+| Layer | Control |
+|-------|---------|
+| JWT | `{ algorithms: ["HS256"] }` on all `jwt.verify()` calls — blocks alg:none bypass |
+| JWT | `{ algorithm: "HS256" }` on all `jwt.sign()` calls |
+| OTP | Attempt counter is never reset on resend — brute force requires waiting for lockout |
+| OTP | Rate-limited at 5 req/10 min on both send and verify endpoints |
+| OTP | Timing-safe comparison via `crypto.timingSafeEqual()` |
+| Deposit | DB-level `UNIQUE(txHash, type)` constraint prevents double-credit even under race |
+| Deposit | `finalized` Solana commitment — no crediting of rollbackable transactions |
+| Withdrawal | Atomic reserve-then-send pattern — no race condition between concurrent requests |
+| WebSocket | Private rooms auto-joined from server-verified JWT — no client-supplied userId |
+| OAuth | CSRF state parameter (16-byte random, cookie-backed) on Google OAuth flow |
+| OAuth | Tokens delivered via URL hash fragment — never reaches server logs |
+| Email | All user-controlled values HTML-escaped before sending |
+| Email | `requireTLS: true` on SMTP transport |
+| Passwords | Max 256 chars to cap bcrypt work factor (DoS protection) |
+| Burn | Max $10,000 per transaction cap |
+| Burn | Weight cap at 300 with `sqrt` diminishing returns above cap |
+| Admin | Server-side auth check on admin page before rendering — 401/403 redirects |
+| 2FA secret | Click-to-reveal masking in settings UI |
+| Headers | `helmet()` security headers on all responses |
+| CORS | Strict allowlist, no wildcard |
+| Rate limits | 100 req/15 min global, 10 req/15 min on login/register, 5 req/10 min on OTP |
+| Pagination | Hard cap of 100 items per page on all list endpoints |
+
+*Document updated — May 2026*
