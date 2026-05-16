@@ -7,6 +7,11 @@ function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
 }
 
+// Strip CR/LF from email header fields to prevent header injection (CVE fix)
+function sanitizeHeader(s: string): string {
+  return s.replace(/[\r\n]/g, "");
+}
+
 export class EmailService {
   private static transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -39,7 +44,7 @@ export class EmailService {
       try {
         await EmailService.transporter.sendMail({
           from: `"Ashnance 🔥" <${config.email.from}>`,
-          to: email,
+          to: sanitizeHeader(email),
           subject: "Your Ashnance Login Code",
           html: `
             <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:480px;margin:0 auto;border:1px solid #2A1F10;">
@@ -121,7 +126,7 @@ export class EmailService {
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance 🔥" <${config.email.from}>`,
-        to: email,
+        to: sanitizeHeader(email),
         subject: "Withdrawal Processed — Ashnance",
         html: `
           <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:480px;margin:0 auto;border:1px solid #2A1F10;">
@@ -149,7 +154,7 @@ export class EmailService {
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance 🔥" <${config.email.from}>`,
-        to: email,
+        to: sanitizeHeader(email),
         subject: `YOU WON ${safeAmount} USDC — Ashnance`,
         html: `
           <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:480px;margin:0 auto;border:1px solid #FFB800;">
@@ -179,7 +184,7 @@ export class EmailService {
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance ALERT" <${config.email.from}>`,
-        to: recipients.join(","),
+        to: sanitizeHeader(recipients.join(",")),
         subject: `[CRITICAL] ${subject}`,
         html: `
           <div style="background:#1a0000;color:#ffcccc;font-family:monospace;padding:32px;max-width:600px;border:2px solid #cc0000;">
@@ -203,7 +208,7 @@ export class EmailService {
     try {
       await EmailService.transporter.sendMail({
         from: `"Ashnance ALERT" <${config.email.from}>`,
-        to: recipients.join(","),
+        to: sanitizeHeader(recipients.join(",")),
         subject: `[WARNING] Master wallet ${asset} balance low`,
         html: `
           <div style="background:#1a1000;color:#ffe0aa;font-family:monospace;padding:32px;max-width:480px;border:2px solid #cc8800;">

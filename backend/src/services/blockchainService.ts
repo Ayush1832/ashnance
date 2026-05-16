@@ -56,6 +56,21 @@ function getConnection(): Connection {
   return _connection;
 }
 
+/** Wraps any promise with a timeout. Rejects if it doesn't resolve within ms. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`[BlockchainService] RPC timeout after ${ms}ms: ${label}`)), ms)
+    ),
+  ]);
+}
+
+const RPC_TIMEOUT_MS = parseInt(process.env.RPC_TIMEOUT_MS ?? "30000", 10);
+
+/** Minimum SOL lamports master wallet must hold before each on-chain transfer. */
+const MIN_SOL_LAMPORTS = 50_000; // ~0.00005 SOL (covers ~10 tx fees)
+
 // ---- Master keypair loaded from env ----
 function getMasterKeypair(): Keypair {
   const secretEnv = process.env.MASTER_KEYPAIR_SECRET;
@@ -217,10 +232,14 @@ export class BlockchainService {
       const connection = getConnection();
       const masterAddress = BlockchainService.getMasterWalletAddress();
 
-      const tx = await connection.getParsedTransaction(txHash, {
-        maxSupportedTransactionVersion: 0,
-        commitment: "finalized",
-      });
+      const tx = await withTimeout(
+        connection.getParsedTransaction(txHash, {
+          maxSupportedTransactionVersion: 0,
+          commitment: "finalized",
+        }),
+        RPC_TIMEOUT_MS,
+        "getParsedTransaction"
+      );
 
       if (!tx || !tx.meta) return null;
 
@@ -280,7 +299,11 @@ export class BlockchainService {
       const instructions = [];
 
       // Create master ATA if it doesn't exist yet
-      const toAtaInfo = await connection.getAccountInfo(toAta);
+      const toAtaInfo = await withTimeout(
+        connection.getAccountInfo(toAta),
+        RPC_TIMEOUT_MS,
+        "getAccountInfo (masterAta)"
+      );
       if (!toAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(
@@ -297,20 +320,33 @@ export class BlockchainService {
         createTransferInstruction(fromAta, toAta, depositKeypair.publicKey, rawAmount)
       );
 
-      const { blockhash } = await connection.getLatestBlockhash("confirmed");
+      const { blockhash } = await withTimeout(
+        connection.getLatestBlockhash("confirmed"),
+        RPC_TIMEOUT_MS,
+        "getLatestBlockhash"
+      );
       const tx = new Transaction({ recentBlockhash: blockhash, feePayer: depositKeypair.publicKey });
       tx.add(...instructions);
       tx.sign(depositKeypair);
 
-      const txHash = await connection.sendRawTransaction(tx.serialize(), {
-        skipPreflight: false,
-        preflightCommitment: "confirmed",
-      });
+      const txHash = await withTimeout(
+        connection.sendRawTransaction(tx.serialize(), {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        }),
+        RPC_TIMEOUT_MS,
+        "sendRawTransaction"
+      );
 
-      const latestBlockhash = await connection.getLatestBlockhash();
-      await connection.confirmTransaction(
-        { signature: txHash, ...latestBlockhash },
-        "confirmed"
+      const latestBlockhash = await withTimeout(
+        connection.getLatestBlockhash(),
+        RPC_TIMEOUT_MS,
+        "getLatestBlockhash (confirm)"
+      );
+      await withTimeout(
+        connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
+        RPC_TIMEOUT_MS,
+        "confirmTransaction"
       );
 
       console.log(
@@ -460,13 +496,30 @@ export class BlockchainService {
     const mint = new PublicKey(USDC_MINT);
     const toOwner = new PublicKey(toAddress);
 
+    // Pre-flight: check master wallet has enough SOL to pay fees
+    const solBalance = await withTimeout(
+      connection.getBalance(master.publicKey),
+      RPC_TIMEOUT_MS,
+      "getBalance (SOL)"
+    );
+    if (solBalance < MIN_SOL_LAMPORTS) {
+      throw new Error(
+        `[BlockchainService] Master wallet has insufficient SOL for fees: ${solBalance} lamports. ` +
+        `Need at least ${MIN_SOL_LAMPORTS} lamports. Use devnet-airdrop or fund the master wallet.`
+      );
+    }
+
     const fromAta = getAssociatedTokenAddressSync(mint, master.publicKey);
     const toAta   = getAssociatedTokenAddressSync(mint, toOwner);
 
     const instructions = [];
 
     // Create destination ATA if it doesn't exist
-    const toAtaInfo = await connection.getAccountInfo(toAta);
+    const toAtaInfo = await withTimeout(
+      connection.getAccountInfo(toAta),
+      RPC_TIMEOUT_MS,
+      "getAccountInfo (toAta)"
+    );
     if (!toAtaInfo) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
@@ -483,20 +536,33 @@ export class BlockchainService {
       createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
     );
 
-    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const { blockhash } = await withTimeout(
+      connection.getLatestBlockhash("confirmed"),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash"
+    );
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
     tx.add(...instructions);
     tx.sign(master);
 
-    const txHash = await connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
-    });
+    const txHash = await withTimeout(
+      connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }),
+      RPC_TIMEOUT_MS,
+      "sendRawTransaction"
+    );
 
-    const latestBlockhash = await connection.getLatestBlockhash();
-    await connection.confirmTransaction(
-      { signature: txHash, ...latestBlockhash },
-      "confirmed"
+    const latestBlockhash = await withTimeout(
+      connection.getLatestBlockhash(),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash (confirm)"
+    );
+    await withTimeout(
+      connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
+      RPC_TIMEOUT_MS,
+      "confirmTransaction"
     );
 
     console.log(
@@ -591,12 +657,29 @@ export class BlockchainService {
     const mint    = new PublicKey(ashMintAddress);
     const toOwner = new PublicKey(toAddress);
 
+    // Pre-flight: check master wallet has enough SOL to pay fees
+    const solBalance = await withTimeout(
+      connection.getBalance(master.publicKey),
+      RPC_TIMEOUT_MS,
+      "getBalance (SOL)"
+    );
+    if (solBalance < MIN_SOL_LAMPORTS) {
+      throw new Error(
+        `[BlockchainService] Master wallet has insufficient SOL for fees: ${solBalance} lamports. ` +
+        `Need at least ${MIN_SOL_LAMPORTS} lamports. Use devnet-airdrop or fund the master wallet.`
+      );
+    }
+
     const fromAta = getAssociatedTokenAddressSync(mint, master.publicKey);
     const toAta   = getAssociatedTokenAddressSync(mint, toOwner);
 
     const instructions = [];
 
-    const toAtaInfo = await connection.getAccountInfo(toAta);
+    const toAtaInfo = await withTimeout(
+      connection.getAccountInfo(toAta),
+      RPC_TIMEOUT_MS,
+      "getAccountInfo (toAta)"
+    );
     if (!toAtaInfo) {
       instructions.push(
         createAssociatedTokenAccountInstruction(
@@ -613,20 +696,33 @@ export class BlockchainService {
       createTransferInstruction(fromAta, toAta, master.publicKey, rawAmount)
     );
 
-    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const { blockhash } = await withTimeout(
+      connection.getLatestBlockhash("confirmed"),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash"
+    );
     const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
     tx.add(...instructions);
     tx.sign(master);
 
-    const txHash = await connection.sendRawTransaction(tx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
-    });
+    const txHash = await withTimeout(
+      connection.sendRawTransaction(tx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }),
+      RPC_TIMEOUT_MS,
+      "sendRawTransaction"
+    );
 
-    const latestBlockhash = await connection.getLatestBlockhash();
-    await connection.confirmTransaction(
-      { signature: txHash, ...latestBlockhash },
-      "confirmed"
+    const latestBlockhash = await withTimeout(
+      connection.getLatestBlockhash(),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash (confirm)"
+    );
+    await withTimeout(
+      connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
+      RPC_TIMEOUT_MS,
+      "confirmTransaction"
     );
 
     console.log(
