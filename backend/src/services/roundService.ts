@@ -309,11 +309,10 @@ export class RoundService {
       });
 
       // 6. req #1 — Soft reset: all other wallets × 0.90
-      await tx.$executeRaw`
-        UPDATE wallets
-        SET "cumulativeWeight" = "cumulativeWeight" * 0.90
-        WHERE "userId" != ${winner.userId}
-      `;
+      await tx.wallet.updateMany({
+        where: { userId: { not: winner.userId } },
+        data: { cumulativeWeight: { multiply: 0.90 } },
+      });
 
       // 7. req #5 — Record winner for anti-domination cooldown
       await tx.user.update({

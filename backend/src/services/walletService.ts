@@ -45,49 +45,51 @@ export class WalletService {
    * The user must have sent USDC directly to the platform master wallet.
    */
   static async verifyAndProcessDeposit(userId: string, txHash: string) {
-    // Idempotency — prevent double-credit
-    const existingTx = await prisma.transaction.findFirst({
-      where: { txHash, type: "DEPOSIT" },
-    });
-    if (existingTx) throw new BadRequestError("Transaction already processed");
-
-    // Verify on-chain
+    // Verify on-chain first (finalized commitment)
     const verified = await BlockchainService.verifyDepositTransaction(txHash);
     if (!verified) {
       throw new BadRequestError(
-        "Could not verify transaction. Make sure you sent USDC to the platform wallet on Solana and the transaction is confirmed."
+        "Could not verify transaction. Make sure you sent USDC to the platform wallet on Solana and the transaction is finalized."
       );
     }
 
     const { amount } = verified;
     if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
 
-    const result = await prisma.$transaction(async (tx: any) => {
-      const wallet = await tx.wallet.update({
-        where: { userId },
-        data: { usdcBalance: { increment: amount } },
+    // Atomic credit — DB unique constraint on (txHash, type) prevents double-credit even under race
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        const wallet = await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { increment: amount } },
+        });
+
+        const transaction = await tx.transaction.create({
+          data: {
+            userId,
+            type: "DEPOSIT",
+            amount,
+            currency: "USDC",
+            status: "COMPLETED",
+            txHash,
+            description: `Deposited ${amount} USDC via wallet`,
+          },
+        });
+
+        return { wallet, transaction };
       });
 
-      const transaction = await tx.transaction.create({
-        data: {
-          userId,
-          type: "DEPOSIT",
-          amount,
-          currency: "USDC",
-          status: "COMPLETED",
-          txHash,
-          description: `Deposited ${amount} USDC via wallet`,
-        },
-      });
-
-      return { wallet, transaction };
-    });
-
-    return {
-      amount,
-      newBalance: result.wallet.usdcBalance,
-      transactionId: result.transaction.id,
-    };
+      return {
+        amount,
+        newBalance: result.wallet.usdcBalance,
+        transactionId: result.transaction.id,
+      };
+    } catch (err: any) {
+      if (err?.code === "P2002") {
+        throw new BadRequestError("Transaction already processed");
+      }
+      throw err;
+    }
   }
 
   /**

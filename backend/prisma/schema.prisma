@@ -163,6 +163,7 @@ model Transaction {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
+  @@unique([txHash, type])
   @@index([userId, type, createdAt])
   @@map("transactions")
 }

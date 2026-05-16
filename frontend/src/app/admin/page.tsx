@@ -64,8 +64,28 @@ export default function AdminPage() {
   const [adminUsers, setAdminUsers]   = useState<AdminUser[]>([]);
   const [usersError, setUsersError]   = useState<string | null>(null);
   const [statsError, setStatsError]   = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Route guard — redirect non-admins before rendering any content
+  useEffect(() => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+    if (!token) {
+      window.location.replace("/login");
+      return;
+    }
+    fetch(`${API}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => {
+        if (r.status === 401 || r.status === 403) {
+          window.location.replace("/dashboard");
+        } else {
+          setAuthChecked(true);
+        }
+      })
+      .catch(() => setAuthChecked(true));
+  }, []);
 
   useEffect(() => {
+    if (!authChecked) return;
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -107,7 +127,7 @@ export default function AdminPage() {
         else setUsersError("Failed to load users");
       })
       .catch(() => { setUsersError("Failed to load users"); });
-  }, []);
+  }, [authChecked]);
 
   async function handleBanUser(userId: string, ban: boolean) {
     const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
@@ -156,6 +176,14 @@ export default function AdminPage() {
     setPrizes((prev) => prev.map((p, idx) => idx === i ? updated : p));
     setEditPrize(null);
     setEditVals({});
+  }
+
+  if (!authChecked) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", color: "#FF4D00", fontSize: "24px", letterSpacing: "4px" }}>
+        VERIFYING ACCESS...
+      </div>
+    );
   }
 
   return (

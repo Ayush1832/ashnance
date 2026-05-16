@@ -28,7 +28,7 @@ export class EmailService {
 
     await prisma.user.update({
       where: { email },
-      data: { pendingOtp: otp, otpExpiresAt: expiresAt, otpAttempts: 0 },
+      data: { pendingOtp: otp, otpExpiresAt: expiresAt },
     });
 
     if (process.env.NODE_ENV !== "production") {

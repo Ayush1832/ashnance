@@ -41,6 +41,7 @@ export default function SettingsPage() {
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
   const [showQR, setShowQR]             = useState(false);
   const [qrSecret, setQrSecret]         = useState("");
+  const [showSecret, setShowSecret]     = useState(false);
   const [totpCode, setTotpCode]         = useState("");
   const [currentPass, setCurrentPass]   = useState("");
   const [newPass, setNewPass]           = useState("");
@@ -392,7 +393,14 @@ export default function SettingsPage() {
                     }}>
                       <span style={{ fontSize: "36px" }}>📱</span>
                       <div style={{ fontSize: "9px", color: "var(--text-dim)", marginTop: "8px", letterSpacing: "1px", textAlign: "center", padding: "0 8px" }}>
-                        SECRET: {qrSecret}
+                        SECRET:{" "}
+                        {showSecret ? qrSecret : "••••••••••••••••"}
+                        <button
+                          onClick={() => setShowSecret((v) => !v)}
+                          style={{ marginLeft: "6px", background: "none", border: "none", color: "var(--fire-orange)", cursor: "pointer", fontSize: "9px", letterSpacing: "1px" }}
+                        >
+                          {showSecret ? "HIDE" : "REVEAL"}
+                        </button>
                       </div>
                     </div>
                     <div className="form-group">

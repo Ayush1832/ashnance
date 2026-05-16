@@ -219,7 +219,7 @@ export class BlockchainService {
 
       const tx = await connection.getParsedTransaction(txHash, {
         maxSupportedTransactionVersion: 0,
-        commitment: "confirmed",
+        commitment: "finalized",
       });
 
       if (!tx || !tx.meta) return null;

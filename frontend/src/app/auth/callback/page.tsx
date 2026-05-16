@@ -15,9 +15,9 @@ function AuthCallback() {
       const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
       const hashParams = new URLSearchParams(hash);
 
-      const accessToken  = hashParams.get("accessToken")  || params.get("accessToken");
-      const refreshToken = hashParams.get("refreshToken") || params.get("refreshToken");
-      const error        = hashParams.get("error")        || params.get("error");
+      const accessToken  = hashParams.get("accessToken");
+      const refreshToken = hashParams.get("refreshToken");
+      const error        = hashParams.get("error");
 
       // Clear the fragment so tokens don't sit in the address bar
       if (typeof window !== "undefined" && hash) {

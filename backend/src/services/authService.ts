@@ -532,13 +532,13 @@ export class AuthService {
     const accessToken = jwt.sign(
       { userId, email },
       config.jwt.secret,
-      { expiresIn: 900 } // 15 minutes in seconds
+      { algorithm: "HS256", expiresIn: 900 }
     );
 
     const refreshToken = jwt.sign(
       { userId, email, type: "refresh" },
       config.jwt.refreshSecret,
-      { expiresIn: 604800 } // 7 days in seconds
+      { algorithm: "HS256", expiresIn: 604800 }
     );
 
     return { accessToken, refreshToken };

@@ -78,6 +78,7 @@ const otpLimiter = rateLimit({
   message: { success: false, error: "Too many OTP requests, please wait before trying again" },
 });
 app.use("/api/auth/send-otp", otpLimiter);
+app.use("/api/auth/verify-otp", otpLimiter);
 
 // ---- Health Check ----
 app.get("/api/health", (_req, res) => {

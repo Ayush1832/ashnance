@@ -28,7 +28,7 @@ export const authenticate = async (
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, config.jwt.secret) as AuthPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ["HS256"] }) as AuthPayload;
 
     // Check if user account is locked
     const user = await prisma.user.findUnique({
@@ -70,7 +70,7 @@ export const optionalAuth = async (
     }
 
     const token = authHeader.split(" ")[1];
-    const decoded = jwt.verify(token, config.jwt.secret) as AuthPayload;
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ["HS256"] }) as AuthPayload;
     req.user = decoded;
     next();
   } catch {

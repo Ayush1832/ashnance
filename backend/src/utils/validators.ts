@@ -11,6 +11,7 @@ export const registerSchema = z.object({
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
+    .max(256, "Password must be at most 256 characters")
     .optional(), // optional for wallet/OAuth users
   referralCode: z.string().optional(),
 });
@@ -35,13 +36,14 @@ export const burnSchema = z.object({
 
 // ---- WALLET ----
 export const depositSchema = z.object({
-  amount: z.number().min(1, "Minimum deposit is 1 USDC"),
+  amount: z.number().positive("Amount must be positive").min(1, "Minimum deposit is 1 USDC"),
   txHash: z.string().min(1, "Transaction hash is required"),
 });
 
 export const withdrawSchema = z.object({
   amount: z
     .number()
+    .positive("Amount must be positive")
     .min(10, "Minimum withdrawal is $10 USDC"),
   address: z.string().min(32, "Invalid Solana address"),
   twoFaCode: z.string().length(6, "2FA code must be 6 digits"),
