@@ -43,6 +43,7 @@ model User {
   failedAttempts  Int       @default(0)
   lockedUntil     DateTime?
   privacyMode     Boolean   @default(false)
+  isBanned        Boolean   @default(false)
 
   // OTP (email verification)
   pendingOtp      String?
@@ -62,6 +63,7 @@ model User {
   whitelistAddrs  WhitelistedAddress[]
   stakingPositions StakingPosition[]
   roundsWon       Round[]
+  recoveryCodes   RecoveryCode[]
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -220,11 +222,27 @@ model WhitelistedAddress {
   address       String
   label         String?
   isVerified    Boolean  @default(false)
+  activatesAt   DateTime? // null = immediately active (devnet); set to now+24h on mainnet
 
   createdAt     DateTime @default(now())
 
   @@unique([userId, address])
   @@map("whitelisted_addresses")
+}
+
+// ---- 2FA RECOVERY CODES ----
+model RecoveryCode {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  codeHash      String   // bcrypt hash of the plaintext code
+  usedAt        DateTime? // null = unused
+
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@map("recovery_codes")
 }
 
 // ---- REFRESH TOKENS ----
@@ -334,6 +352,16 @@ model ProfitPool {
   totalWithdrawn Decimal  @default(0) @db.Decimal(18, 6)
   updatedAt      DateTime @updatedAt
   @@map("profit_pool")
+}
+
+// ---- REFERRAL POOL ----
+model ReferralPool {
+  id             String   @id @default(cuid())
+  balance        Decimal  @default(0) @db.Decimal(18, 6)
+  totalDeposited Decimal  @default(0) @db.Decimal(18, 6)
+  totalPaidOut   Decimal  @default(0) @db.Decimal(18, 6)
+  updatedAt      DateTime @updatedAt
+  @@map("referral_pool")
 }
 
 // ---- OWNER WITHDRAWAL REQUESTS ----

@@ -177,6 +177,65 @@ export class AuthService {
   }
 
   /**
+   * Login with email + password + backup recovery code (instead of TOTP)
+   */
+  static async loginWithRecoveryCode(email: string, password: string, recoveryCode: string) {
+    const { TwoFAService } = await import("./twoFAService");
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !user.passwordHash) {
+      throw new UnauthorizedError("Invalid email or password");
+    }
+
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new AccountLockedError("Account temporarily locked. Please try again later.");
+    }
+
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      const attempts = user.failedAttempts + 1;
+      const lockData =
+        attempts >= 3
+          ? { failedAttempts: attempts, lockedUntil: new Date(Date.now() + 30 * 60 * 1000) }
+          : { failedAttempts: attempts };
+      await prisma.user.update({ where: { id: user.id }, data: lockData });
+      throw new UnauthorizedError("Invalid email or password");
+    }
+
+    if (!user.twoFaEnabled) {
+      throw new BadRequestError("2FA is not enabled on this account");
+    }
+
+    const redeemed = await TwoFAService.redeemRecoveryCode(user.id, recoveryCode);
+    if (!redeemed) {
+      throw new UnauthorizedError("Invalid or already-used recovery code");
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const remaining = await TwoFAService.getRemainingRecoveryCodes(user.id);
+    const tokens = AuthService.generateTokens(user.id, user.email);
+    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        isVip: user.isVip,
+        vipTier: user.vipTier,
+        referralCode: user.referralCode,
+        role: user.role,
+      },
+      remainingRecoveryCodes: remaining,
+      ...tokens,
+    };
+  }
+
+  /**
    * Passwordless login by email (after OTP verified externally)
    */
   static async loginByEmail(email: string) {

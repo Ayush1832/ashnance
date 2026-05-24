@@ -160,8 +160,8 @@ router.put("/users/:id/ban", async (req: AuthRequest, res: Response, next: NextF
     const { ban } = req.body;
     const user = await prisma.user.update({
       where: { id },
-      data: { lockedUntil: ban ? new Date("2099-01-01") : null },
-      select: { id: true, username: true, lockedUntil: true },
+      data: { isBanned: !!ban },
+      select: { id: true, username: true, isBanned: true },
     });
     res.json({ success: true, data: user });
   } catch (error) { next(error); }

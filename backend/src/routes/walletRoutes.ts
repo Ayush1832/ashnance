@@ -120,14 +120,20 @@ router.delete("/whitelist/:id", authenticate, async (req: AuthRequest, res: Resp
   }
 });
 
-// POST /api/wallet/claim-ash — Transfer accumulated ASH balance to user's on-chain wallet
+// POST /api/wallet/claim-ash — Transfer ASH balance (full or partial) to user's on-chain wallet
+// Body: { toAddress: string, amount?: number }
+// If amount is omitted, claims the full in-app ASH balance.
 router.post("/claim-ash", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { toAddress } = req.body;
+    const { toAddress, amount } = req.body;
     if (!toAddress || typeof toAddress !== "string") {
       return next(new BadRequestError("toAddress is required"));
     }
-    const result = await WalletService.claimAsh(req.user!.userId, toAddress);
+    const parsedAmount = amount !== undefined ? Number(amount) : undefined;
+    if (parsedAmount !== undefined && (isNaN(parsedAmount) || parsedAmount <= 0)) {
+      return next(new BadRequestError("amount must be a positive number"));
+    }
+    const result = await WalletService.claimAsh(req.user!.userId, toAddress, parsedAmount);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);

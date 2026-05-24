@@ -99,27 +99,27 @@ export class WalletService {
   static async processDeposit(userId: string, amount: number, txHash: string) {
     if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
 
-    const existingTx = await prisma.transaction.findFirst({
-      where: { txHash, type: "DEPOSIT" },
-    });
-    if (existingTx) throw new BadRequestError("Transaction already processed");
-
-    const result = await prisma.$transaction(async (tx: any) => {
-      const wallet = await tx.wallet.update({
-        where: { userId },
-        data: { usdcBalance: { increment: amount } },
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        const wallet = await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { increment: amount } },
+        });
+        const transaction = await tx.transaction.create({
+          data: {
+            userId, type: "DEPOSIT", amount, currency: "USDC",
+            status: "COMPLETED", txHash,
+            description: `Deposited ${amount} USDC`,
+          },
+        });
+        return { wallet, transaction };
       });
-      const transaction = await tx.transaction.create({
-        data: {
-          userId, type: "DEPOSIT", amount, currency: "USDC",
-          status: "COMPLETED", txHash,
-          description: `Deposited ${amount} USDC`,
-        },
-      });
-      return { wallet, transaction };
-    });
 
-    return { newBalance: result.wallet.usdcBalance, transactionId: result.transaction.id };
+      return { newBalance: result.wallet.usdcBalance, transactionId: result.transaction.id };
+    } catch (err: any) {
+      if (err.code === "P2002") throw new ConflictError("Transaction already processed");
+      throw err;
+    }
   }
 
   /**
@@ -175,7 +175,7 @@ export class WalletService {
       throw new UnauthorizedError("Invalid 2FA code");
     }
 
-    // Check whitelisted address (must be verified AND past 24-hour security cooldown)
+    // Check whitelisted address (must be verified AND past 24-hour activation cooldown)
     const matchingAddr = user.whitelistAddrs.find(
       (addr: any) => addr.address === address && addr.isVerified
     );
@@ -184,11 +184,19 @@ export class WalletService {
         "Address not whitelisted. Add it in Settings before withdrawing."
       );
     }
-    const cooldownRemaining = WHITELIST_COOLDOWN_MS - (Date.now() - new Date(matchingAddr.createdAt).getTime());
-    if (cooldownRemaining > 0) {
-      const hours = Math.ceil(cooldownRemaining / 3_600_000);
+    if (matchingAddr.activatesAt && new Date(matchingAddr.activatesAt) > new Date()) {
+      const msRemaining = new Date(matchingAddr.activatesAt).getTime() - Date.now();
+      const hours = Math.ceil(msRemaining / 3_600_000);
       throw new BadRequestError(
-        `New whitelist addresses have a 24-hour security cooldown. This address will be ready in ~${hours} hour${hours === 1 ? "" : "s"}.`
+        `New whitelist addresses have a 24-hour security cooldown. ` +
+        `This address will be ready in ~${hours} hour${hours === 1 ? "" : "s"}.`
+      );
+    }
+
+    // Banned users cannot withdraw automatically — flag for manual review
+    if (user.isBanned) {
+      throw new BadRequestError(
+        "Your account is suspended. Please contact support to arrange withdrawal of your funds."
       );
     }
 
@@ -272,15 +280,16 @@ export class WalletService {
   }
 
   /**
-   * Claim accumulated ASH tokens to the user's on-chain wallet.
-   * Deducts the DB balance and sends a real SPL transfer.
+   * Claim ASH tokens to the user's on-chain wallet.
+   * Supports partial claims — user specifies the amount to transfer.
+   * If amount is omitted, the full balance is claimed.
    */
-  static async claimAsh(userId: string, toAddress: string) {
+  static async claimAsh(userId: string, toAddress: string, requestedAmount?: number) {
     if (!BlockchainService.validateSolanaAddress(toAddress)) {
       throw new BadRequestError("Invalid Solana address");
     }
 
-    // Atomically check + reserve ASH balance to prevent double-claim race condition
+    // Atomically check + reserve the requested ASH to prevent double-claim race condition
     let amount: number;
     try {
       const reserved = await prisma.$transaction(async (tx: any) => {
@@ -291,11 +300,21 @@ export class WalletService {
         if (!wallet) throw new NotFoundError("Wallet not found");
         const bal = Number(wallet.ashBalance);
         if (bal < 1) throw new BadRequestError("No ASH balance to claim");
+
+        // Partial claim support
+        const claimAmount = requestedAmount !== undefined ? requestedAmount : bal;
+        if (claimAmount <= 0) throw new BadRequestError("Claim amount must be greater than 0");
+        if (claimAmount > bal) {
+          throw new BadRequestError(
+            `Requested ${claimAmount} ASH but only ${bal} ASH available`
+          );
+        }
+
         await tx.wallet.update({
           where: { userId },
-          data: { ashBalance: { decrement: bal } },
+          data: { ashBalance: { decrement: claimAmount } },
         });
-        return bal;
+        return claimAmount;
       });
       amount = reserved;
     } catch (err) {
@@ -315,6 +334,11 @@ export class WalletService {
       throw new BadRequestError("ASH on-chain transfer failed. Balance restored.");
     }
 
+    const newWallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { ashBalance: true },
+    });
+
     await prisma.transaction.create({
       data: {
         userId,
@@ -328,7 +352,7 @@ export class WalletService {
       },
     });
 
-    return { claimed: amount, txHash, newBalance: 0 };
+    return { claimed: amount, txHash, newBalance: Number(newWallet?.ashBalance ?? 0) };
   }
 
   /**
@@ -342,7 +366,10 @@ export class WalletService {
   }
 
   /**
-   * Add a new whitelist address
+   * Add a new whitelist address.
+   * On mainnet (NODE_ENV=production): address enters a 24-hour pending state
+   * before it can be used for withdrawals (activatesAt = now + 24h).
+   * On devnet: immediately active (activatesAt = null).
    */
   static async addWhitelistedAddress(userId: string, address: string, label?: string) {
     if (!BlockchainService.validateSolanaAddress(address)) {
@@ -354,12 +381,18 @@ export class WalletService {
     });
     if (existing) throw new ConflictError("Address already whitelisted");
 
+    const isProduction = process.env.NODE_ENV === "production";
+    const activatesAt = isProduction
+      ? new Date(Date.now() + WHITELIST_COOLDOWN_MS)
+      : null;
+
     return prisma.whitelistedAddress.create({
       data: {
         userId,
         address,
         label: label || null,
-        isVerified: true, // auto-verified; add manual cooldown approval for mainnet
+        isVerified: true,
+        activatesAt,
       },
     });
   }

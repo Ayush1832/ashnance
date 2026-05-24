@@ -4,6 +4,7 @@ import {
   InsufficientBalanceError,
   BadRequestError,
   NotFoundError,
+  ForbiddenError,
 } from "../utils/errors";
 import { BlockchainService } from "./blockchainService";
 import { OwnerService, ASH_TOKEN_PRICE_USD } from "./ownerService";
@@ -15,6 +16,7 @@ export interface BurnResult {
   weight: number;
   finalWeight: number;
   userCumulativeWeight: number;
+  emissionMultiplier: number;
   // Round context
   roundId: string | null;
   roundCurrentPool: number;
@@ -31,8 +33,9 @@ export interface BurnResult {
 export class BurnService {
   /**
    * Activate a 1-hour ASH boost for a user.
-   * Deducts boost_cost_ash from wallet and sets boostExpiresAt = now + boost_duration_ms.
-   * If boost is already active, extends the timer by another hour.
+   * Deducts boost_cost_ash from wallet, sets boostExpiresAt, and
+   * executes a real on-chain ASH burn from the platform treasury
+   * so circulating supply actually decreases.
    */
   static async activateBoost(userId: string): Promise<{ boostExpiresAt: Date; ashDeducted: number }> {
     const burnCfg = await OwnerService.getBurnConfig();
@@ -72,6 +75,16 @@ export class BurnService {
       },
     });
 
+    // Real on-chain burn from platform ASH treasury — reduces circulating supply
+    if (process.env.ASH_MINT_ADDRESS) {
+      try {
+        await BlockchainService.burnAshFromTreasury(burnCfg.boost_cost_ash);
+      } catch (err) {
+        // Non-fatal: DB balance is already reduced. Log for reconciliation.
+        console.error("[BurnService] On-chain ASH burn failed (DB already updated):", err);
+      }
+    }
+
     return { boostExpiresAt, ashDeducted: burnCfg.boost_cost_ash };
   }
 
@@ -92,34 +105,32 @@ export class BurnService {
   }
 
   /**
-   * Execute a burn — the core game mechanic (round-based competitive system).
+   * Execute a participation — the core game mechanic (round-based competitive system).
    *
-   * Every burn:
-   *  1. Deducts USDC from the user's wallet
-   *  2. Splits the amount: reward_pool_split → round prize pool, profit_pool_split → profit
-   *  3. Adds finalWeight to the user's persistent cumulativeWeight (leaderboard ranking)
-   *  4. Grants ASH tokens to the burner (always — no per-burn random win/lose)
-   *  5. Checks if round.currentPool >= prizePoolTarget → if so, ends the round and pays winner
+   * Pool split (configurable, default 40/40/20):
+   *   - 40% → reward pool (prize fund for round winner)
+   *   - 40% → profit pool (owner revenue)
+   *   - 20% → referral pool (dedicated referral/reward budget)
    *
-   * The WINNER is the user ranked #1 by cumulativeWeight (weight accumulated during this round)
-   * at the exact moment the prize pool hits its target.
+   * Referral commission is paid from the referral pool — never destabilises the prize pool.
+   *
+   * Burns are BLOCKED when no active round exists.
    */
   static async executeBurn(
     userId: string,
     amountUsdc: number,
   ): Promise<BurnResult> {
-    // Load live burn config from DB
     const burnCfg = await OwnerService.getBurnConfig();
 
     if (amountUsdc < burnCfg.min_burn_amount) {
-      throw new BadRequestError(`Minimum burn amount is $${burnCfg.min_burn_amount} USDC`);
+      throw new BadRequestError(`Minimum participation amount is $${burnCfg.min_burn_amount} USDC`);
     }
     const maxBurn = burnCfg.max_burn_amount ?? 10_000;
     if (amountUsdc > maxBurn) {
-      throw new BadRequestError(`Maximum burn amount is $${maxBurn} USDC per transaction`);
+      throw new BadRequestError(`Maximum participation is $${maxBurn} USDC per transaction`);
     }
 
-    // Get user with wallet
+    // Get user with wallet — check ban status first
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -132,8 +143,24 @@ export class BurnService {
       throw new NotFoundError("User or wallet not found");
     }
 
-    // Note: balance is re-checked atomically inside the Prisma transaction below
-    // to prevent race conditions between concurrent burn requests.
+    // Banned users cannot participate
+    if (user.isBanned) {
+      throw new ForbiddenError("Your account has been suspended. Please contact support.");
+    }
+
+    // ---- REQUIRE ACTIVE ROUND ----
+    const activeRound = await RoundService.getActiveRound();
+    if (!activeRound) {
+      throw new BadRequestError(
+        "No active round. Participation is only allowed during an active round. " +
+        "Please wait for the next round to begin."
+      );
+    }
+
+    // ---- EMISSION MULTIPLIER ----
+    const emissionMultiplier = await OwnerService.getEmissionMultiplier();
+    // effectiveAshReward = base_reward × emissionMultiplier
+    // This halves every emission_halving_threshold ASH emitted, creating scarcity over time.
 
     // ---- CALCULATE WEIGHT ----
     const baseUnit = burnCfg.base_unit ?? 4.99;
@@ -156,7 +183,6 @@ export class BurnService {
     const boostBonus = boostActive ? config.weight.ashBoostBonus : 0;
 
     // req #4 — Referral limit: referral bonus ≤ 40% of total weight
-    // maxReferralBonus = (cap / (1 - cap)) × nonReferralWeight
     const referralCapPct = burnCfg.referral_weight_cap_pct ?? 0.40;
     const nonReferralWeight = baseWeight + vipBonus + boostBonus;
     const maxReferralWeight = (referralCapPct / (1 - referralCapPct)) * nonReferralWeight;
@@ -170,21 +196,23 @@ export class BurnService {
       ? rawTotalWeight
       : weightCap + Math.sqrt(rawTotalWeight - weightCap);
 
-    // ---- ASH REWARD (all burners receive ASH) ----
+    // ---- ASH REWARD (with emission multiplier) ----
     let ashReward = Math.floor(
-      (amountUsdc * burnCfg.ash_reward_percent) / ASH_TOKEN_PRICE_USD
+      (amountUsdc * burnCfg.ash_reward_percent * emissionMultiplier) / ASH_TOKEN_PRICE_USD
     );
-    // VIP bonus: +20% ASH for Holy Fire
-    if (user.vipTier === "HOLY_FIRE") {
+    // VIP bonus: +20% ASH for Holy Fire (only while VIP is active)
+    if (user.isVip && user.vipExpiresAt && user.vipExpiresAt > new Date() && user.vipTier === "HOLY_FIRE") {
       ashReward = Math.floor(ashReward * 1.2);
     }
 
-    // ---- GET ACTIVE ROUND ----
-    const activeRound = await RoundService.getActiveRound();
+    // ---- POOL SPLITS (40/40/20) ----
+    const rewardPoolSplit   = burnCfg.reward_pool_split   ?? 0.40;
+    const profitPoolSplit   = burnCfg.profit_pool_split   ?? 0.40;
+    const referralPoolSplit = burnCfg.referral_pool_split ?? 0.20;
 
-    // ---- EXECUTE IN TRANSACTION ----
-    const rewardPoolAmount = amountUsdc * burnCfg.reward_pool_split;
-    const profitPoolAmount = amountUsdc * burnCfg.profit_pool_split;
+    const rewardPoolAmount   = amountUsdc * rewardPoolSplit;
+    const profitPoolAmount   = amountUsdc * profitPoolSplit;
+    const referralPoolAmount = amountUsdc * referralPoolSplit;
 
     let newCumulativeWeight = 0;
     let newRoundPool = 0;
@@ -214,22 +242,25 @@ export class BurnService {
       await tx.rewardPool.updateMany({
         data: { totalBalance: { increment: rewardPoolAmount } },
       });
-
       await tx.profitPool.updateMany({
         data: {
           balance:        { increment: profitPoolAmount },
           totalDeposited: { increment: profitPoolAmount },
         },
       });
+      await tx.referralPool.updateMany({
+        data: {
+          balance:        { increment: referralPoolAmount },
+          totalDeposited: { increment: referralPoolAmount },
+        },
+      });
 
-      // 3. Update round's currentPool if there's an active round
-      if (activeRound) {
-        const updatedRound = await tx.round.update({
-          where: { id: activeRound.id },
-          data: { currentPool: { increment: rewardPoolAmount } },
-        });
-        newRoundPool = Number(updatedRound.currentPool);
-      }
+      // 3. Update round's currentPool
+      const updatedRound = await tx.round.update({
+        where: { id: activeRound.id },
+        data: { currentPool: { increment: rewardPoolAmount } },
+      });
+      newRoundPool = Number(updatedRound.currentPool);
 
       // 4. Create burn record
       const burnRecord = await tx.burn.create({
@@ -239,7 +270,7 @@ export class BurnService {
           weight:     baseWeight,
           finalWeight,
           ashReward,
-          roundId:    activeRound?.id ?? null,
+          roundId:    activeRound.id,
           isWinner:   false,
           vrfSeed:    BlockchainService.simulateVRF(userId + Date.now().toString()).toString(),
         },
@@ -253,42 +284,71 @@ export class BurnService {
           amount:      amountUsdc,
           currency:    "USDC",
           status:      "COMPLETED",
-          description: `Burned $${amountUsdc} USDC${activeRound ? ` (Round #${activeRound.roundNumber})` : ""}`,
+          description: `Participated $${amountUsdc} USDC (Round #${activeRound.roundNumber})`,
         },
       });
 
-      // 6. Process referral reward
+      // 6. Process referral reward from referral pool (NOT from reward pool)
       if (user.referredById) {
-        const referralReward = amountUsdc * burnCfg.referral_commission;
+        const referralReward = amountUsdc * (burnCfg.referral_commission ?? 0.10);
 
-        await tx.wallet.update({
-          where: { userId: user.referredById },
-          data: { usdcBalance: { increment: referralReward } },
-        });
+        // Cap referral reward to available referral pool balance
+        const currentReferralPool = await tx.referralPool.findFirst();
+        const availableReferralBudget = Number(currentReferralPool?.balance ?? 0);
+        const actualReward = Math.min(referralReward, availableReferralBudget);
 
-        await tx.referral.updateMany({
-          where: { referrerId: user.referredById, refereeId: userId },
-          data: { totalBurns: { increment: 1 }, totalEarned: { increment: referralReward } },
-        });
+        if (actualReward > 0) {
+          await tx.wallet.updateMany({
+            where: { userId: user.referredById },
+            data: { usdcBalance: { increment: actualReward } },
+          });
 
-        await tx.transaction.create({
-          data: {
-            userId:      user.referredById,
-            type:        "REFERRAL_REWARD",
-            amount:      referralReward,
-            currency:    "USDC",
-            status:      "COMPLETED",
-            description: `Referral reward from ${user.username}'s burn`,
-          },
-        });
+          await tx.referral.updateMany({
+            where: { referrerId: user.referredById, refereeId: userId },
+            data: { totalBurns: { increment: 1 }, totalEarned: { increment: actualReward } },
+          });
 
-        await tx.rewardPool.updateMany({
-          data: { totalBalance: { decrement: referralReward } },
-        });
+          await tx.transaction.create({
+            data: {
+              userId:      user.referredById,
+              type:        "REFERRAL_REWARD",
+              amount:      actualReward,
+              currency:    "USDC",
+              status:      "COMPLETED",
+              description: `Referral reward from ${user.username}'s participation`,
+            },
+          });
+
+          // Deduct from referral pool (not reward pool)
+          await tx.referralPool.updateMany({
+            data: {
+              balance:     { decrement: actualReward },
+              totalPaidOut: { increment: actualReward },
+            },
+          });
+        } else {
+          // Referral pool empty — update burn count only, reward queued for later
+          await tx.referral.updateMany({
+            where: { referrerId: user.referredById, refereeId: userId },
+            data: { totalBurns: { increment: 1 } },
+          });
+        }
       }
 
       return burnRecord;
     });
+
+    // Update total_ash_emitted in platform config (outside main tx for performance)
+    try {
+      const currentEmitted = burnCfg.total_ash_emitted ?? 0;
+      await prisma.platformConfig.upsert({
+        where: { key: "total_ash_emitted" },
+        update: { value: String(currentEmitted + ashReward) },
+        create: { key: "total_ash_emitted", value: String(currentEmitted + ashReward) },
+      });
+    } catch {
+      // Non-fatal — emission tracking is best-effort
+    }
 
     // ---- CHECK IF ROUND SHOULD END (outside main tx to avoid nested tx issues) ----
     let roundEnded = false;
@@ -296,7 +356,7 @@ export class BurnService {
     let roundPrize: number | null = null;
     let roundNumber: number | null = null;
 
-    if (activeRound && newRoundPool >= Number(activeRound.prizePoolTarget)) {
+    if (newRoundPool >= Number(activeRound.prizePoolTarget)) {
       try {
         const result = await RoundService.endRound(activeRound.id);
         roundEnded = true;
@@ -316,10 +376,10 @@ export class BurnService {
 
     // ---- GET USER'S CURRENT ROUND RANK + UPDATE ANTI-SNIPE TRACKER ----
     let userRoundRank: number | null = null;
-    const prizePoolTarget = activeRound ? Number(activeRound.prizePoolTarget) : burnCfg.prize_pool_target ?? 500;
-    const currentPool = activeRound ? newRoundPool : 0;
+    const prizePoolTarget = Number(activeRound.prizePoolTarget);
+    const currentPool = newRoundPool;
 
-    if (activeRound && !roundEnded) {
+    if (!roundEnded) {
       const leaderboard = await RoundService.getRoundLeaderboard(activeRound.id);
       const entry = leaderboard.find((e) => e.userId === userId);
       userRoundRank = entry?.rank ?? null;
@@ -346,7 +406,8 @@ export class BurnService {
       weight:               baseWeight,
       finalWeight,
       userCumulativeWeight: newCumulativeWeight,
-      roundId:              activeRound?.id ?? null,
+      emissionMultiplier,
+      roundId:              activeRound.id,
       roundCurrentPool:     currentPool,
       roundTargetPool:      prizePoolTarget,
       roundProgressPercent: prizePoolTarget > 0

@@ -49,8 +49,19 @@ export function watchDepositAddress(userId: string, depositAddress: string): voi
 /**
  * Load all wallet deposit addresses from the DB and start monitoring each.
  * Called once when the server starts.
+ *
+ * PM2 cluster safety: only instance 0 (or non-clustered Node) runs the poller.
+ * Without this guard, every worker would poll + credit independently, causing
+ * duplicate deposits when the DB unique constraint race window is tight.
  */
 export async function startAllDepositMonitors(): Promise<void> {
+  const instanceId = process.env.PM2_INSTANCE_ID ?? process.env.NODE_APP_INSTANCE;
+  if (instanceId !== undefined && instanceId !== "0") {
+    console.log(
+      `[DepositMonitor] PM2 instance ${instanceId} — skipping deposit poller (only instance 0 polls)`
+    );
+    return;
+  }
   try {
     const wallets = await prisma.wallet.findMany({
       select: { userId: true, depositAddress: true },

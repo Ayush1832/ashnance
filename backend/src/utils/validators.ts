@@ -43,6 +43,7 @@ export const depositSchema = z.object({
 export const withdrawSchema = z.object({
   amount: z
     .number()
+    .finite("Amount must be a finite number")
     .positive("Amount must be positive")
     .min(10, "Minimum withdrawal is $10 USDC"),
   address: z.string().min(32, "Invalid Solana address"),

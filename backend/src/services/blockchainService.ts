@@ -21,6 +21,7 @@ import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
   createTransferInstruction,
+  createBurnInstruction,
 } from "@solana/spl-token";
 import * as crypto from "crypto";
 
@@ -325,9 +326,11 @@ export class BlockchainService {
         RPC_TIMEOUT_MS,
         "getLatestBlockhash"
       );
-      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: depositKeypair.publicKey });
+      // Master wallet pays fees — deposit addresses hold USDC only, never SOL.
+      // depositKeypair signs as token account authority; master signs as fee payer.
+      const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
       tx.add(...instructions);
-      tx.sign(depositKeypair);
+      tx.sign(master, depositKeypair);
 
       const txHash = await withTimeout(
         connection.sendRawTransaction(tx.serialize(), {
@@ -727,6 +730,97 @@ export class BlockchainService {
 
     console.log(
       `[BlockchainService] ASH transfer confirmed — ${amountAsh} ASH to ${toAddress}, tx: ${txHash}`
+    );
+    return txHash;
+  }
+
+  // ----------------------------------------------------------
+  // getStakingTreasuryKeypair / getStakingTreasuryAddress
+  // ----------------------------------------------------------
+  /**
+   * Returns the deterministic staking treasury keypair, derived from the master
+   * keypair seed. Isolated from operational master wallet; forward-compatible
+   * with multisig if the treasury address is upgraded later.
+   */
+  static getStakingTreasuryKeypair(): Keypair {
+    const master = getMasterKeypair();
+    const seed = crypto
+      .createHash("sha256")
+      .update(Buffer.concat([
+        master.secretKey.slice(0, 32),
+        Buffer.from("staking-treasury", "utf8"),
+      ]))
+      .digest()
+      .slice(0, 32);
+    return Keypair.fromSeed(Uint8Array.from(seed));
+  }
+
+  static getStakingTreasuryAddress(): string {
+    return BlockchainService.getStakingTreasuryKeypair().publicKey.toBase58();
+  }
+
+  // ----------------------------------------------------------
+  // burnAshFromTreasury
+  // ----------------------------------------------------------
+  /**
+   * Burns ASH tokens from the platform master wallet's ATA, permanently
+   * removing them from circulating supply on-chain.
+   *
+   * Called when users consume ASH utility sinks (e.g. boost activation).
+   * The in-app DB balance is decremented by the caller; this method handles
+   * the corresponding on-chain burn so circulating supply actually decreases.
+   *
+   * PREREQUISITE: ASH_MINT_ADDRESS must be set and master wallet must hold ASH.
+   */
+  static async burnAshFromTreasury(amountAsh: number): Promise<string> {
+    const ashMintAddress = BlockchainService.getAshMint();
+    const connection = getConnection();
+    const master = getMasterKeypair();
+    const mint = new PublicKey(ashMintAddress);
+
+    const solBalance = await withTimeout(
+      connection.getBalance(master.publicKey),
+      RPC_TIMEOUT_MS,
+      "getBalance (SOL)"
+    );
+    if (solBalance < MIN_SOL_LAMPORTS) {
+      throw new Error(
+        `[BlockchainService] Master wallet has insufficient SOL for ASH burn fees: ${solBalance} lamports.`
+      );
+    }
+
+    const masterAta = getAssociatedTokenAddressSync(mint, master.publicKey);
+    const rawAmount = BigInt(Math.round(parseFloat(amountAsh.toFixed(6)) * 1_000_000));
+
+    const { blockhash } = await withTimeout(
+      connection.getLatestBlockhash("confirmed"),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash"
+    );
+
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: master.publicKey });
+    tx.add(createBurnInstruction(masterAta, mint, master.publicKey, rawAmount));
+    tx.sign(master);
+
+    const txHash = await withTimeout(
+      connection.sendRawTransaction(tx.serialize(), { skipPreflight: false }),
+      RPC_TIMEOUT_MS,
+      "sendRawTransaction (ASH burn)"
+    );
+
+    const latestBlockhash = await withTimeout(
+      connection.getLatestBlockhash(),
+      RPC_TIMEOUT_MS,
+      "getLatestBlockhash (confirm)"
+    );
+    await withTimeout(
+      connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
+      RPC_TIMEOUT_MS,
+      "confirmTransaction (ASH burn)"
+    );
+
+    console.log(
+      `[BlockchainService] Burned ${amountAsh} ASH from treasury on-chain, tx: ${txHash}`
     );
     return txHash;
   }

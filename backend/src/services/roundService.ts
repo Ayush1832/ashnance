@@ -2,6 +2,7 @@ import { prisma } from "../utils/prisma";
 import { BadRequestError, NotFoundError } from "../utils/errors";
 import { OwnerService } from "./ownerService";
 
+
 export interface RoundLeaderboardEntry {
   rank: number;
   userId: string;
@@ -177,10 +178,9 @@ export class RoundService {
         status: round.status,
         prizePoolTarget: Number(round.prizePoolTarget),
         currentPool: Number(round.currentPool),
-        progressPercent: Math.min(
-          100,
-          (Number(round.currentPool) / Number(round.prizePoolTarget)) * 100
-        ),
+        progressPercent: Number(round.prizePoolTarget) > 0
+          ? Math.min(100, (Number(round.currentPool) / Number(round.prizePoolTarget)) * 100)
+          : 0,
         startedAt: round.startedAt,
         endsAt: round.endsAt,       // req #6: time limit deadline
         timeLimitHours: round.timeLimitHours,
@@ -321,7 +321,31 @@ export class RoundService {
       });
     });
 
-    return { winner, prizeAmount, roundNumber: round.roundNumber };
+    const result = { winner, prizeAmount, roundNumber: round.roundNumber };
+
+    // ---- AUTO-CREATION: start the next round immediately using the same parameters ----
+    // Reads the auto_round_creation config flag (default 1 = enabled).
+    // Re-uses the completed round's prizePoolTarget and timeLimitHours so the
+    // economy stays consistent without manual owner intervention.
+    try {
+      const cfg = await OwnerService.getBurnConfig();
+      const autoCreate = (cfg.auto_round_creation ?? 1) === 1;
+      if (autoCreate) {
+        await RoundService.createRound(
+          Number(round.prizePoolTarget),
+          round.timeLimitHours ?? undefined
+        );
+        console.log(
+          `[ROUND] Auto-created round #${round.roundNumber + 1} ` +
+          `(target: $${round.prizePoolTarget}, limit: ${round.timeLimitHours ?? "none"}h)`
+        );
+      }
+    } catch (err: any) {
+      // Non-fatal: an active round may already exist (race), or config missing.
+      console.warn(`[ROUND] Auto-creation after round #${round.roundNumber} skipped: ${err.message}`);
+    }
+
+    return result;
   }
 
   /**

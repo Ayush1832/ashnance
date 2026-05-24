@@ -144,10 +144,10 @@ describe("WalletService.processWithdrawal", () => {
   }
 
   function mockWhitelistedAddress(cooldownPassed = true) {
-    const createdAt = cooldownPassed
-      ? new Date(Date.now() - 25 * 60 * 60 * 1000) // 25h ago
-      : new Date(Date.now() - 1 * 60 * 60 * 1000); // 1h ago
-    // walletService uses user.whitelistAddrs (from include), not a separate findFirst query
+    // New code checks activatesAt field (not createdAt + COOLDOWN_MS)
+    const activatesAt = cooldownPassed
+      ? null // null means no cooldown (devnet) or cooldown already passed
+      : new Date(Date.now() + 23 * 60 * 60 * 1000); // 23h from now — still in cooldown
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
       id: "user-1",
       twoFaEnabled: true,
@@ -159,7 +159,7 @@ describe("WalletService.processWithdrawal", () => {
         id: "addr-1",
         address: "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
         isVerified: true,
-        createdAt,
+        activatesAt,
       }],
     });
   }

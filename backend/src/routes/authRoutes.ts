@@ -87,6 +87,24 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+// POST /api/auth/login/recovery — login with backup recovery code instead of TOTP
+router.post("/login/recovery", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, password, recoveryCode } = req.body;
+    if (!email || !password || !recoveryCode) {
+      throw new BadRequestError("email, password, and recoveryCode are required");
+    }
+    const result = await AuthService.loginWithRecoveryCode(
+      (email as string).toLowerCase().trim(),
+      password as string,
+      (recoveryCode as string).trim()
+    );
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/auth/refresh
 router.post("/refresh", async (req: Request, res: Response, next: NextFunction) => {
   try {

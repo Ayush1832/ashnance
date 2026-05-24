@@ -109,6 +109,30 @@ app.use(errorHandler);
 // ---- WebSocket ----
 initWebSocket(httpServer);
 
+// ---- Seed singleton pool records — CRITICAL ----
+// rewardPool, profitPool, referralPool each have exactly one row.
+// updateMany() on an empty table silently affects 0 rows, so if these
+// records don't exist, ALL burn pool increments are silently discarded:
+//   • winners receive $0 prizes
+//   • owners can never withdraw profit
+//   • referral rewards are always 0
+// Creating them here ensures the rows exist before any burn can happen.
+import("./utils/prisma").then(({ prisma }) => {
+  Promise.all([
+    prisma.rewardPool.findFirst().then((r) =>
+      r ? null : prisma.rewardPool.create({ data: {} })
+    ),
+    prisma.profitPool.findFirst().then((r) =>
+      r ? null : prisma.profitPool.create({ data: {} })
+    ),
+    prisma.referralPool.findFirst().then((r) =>
+      r ? null : prisma.referralPool.create({ data: {} })
+    ),
+  ])
+    .then(() => console.log("[Startup] Pool records verified (rewardPool, profitPool, referralPool)"))
+    .catch((err: any) => console.error("[Startup] Pool seeding failed:", err.message));
+});
+
 // ---- Staking pools — ensure both pools exist at startup ----
 import("./services/stakingService").then(({ StakingService }) => {
   StakingService.seedPools().catch((err: any) =>

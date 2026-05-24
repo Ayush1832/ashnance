@@ -15,8 +15,10 @@ jest.mock("../../utils/prisma", () => ({
     transaction: { create: jest.fn() },
     rewardPool: { updateMany: jest.fn() },
     profitPool: { updateMany: jest.fn() },
+    referralPool: { updateMany: jest.fn(), findFirst: jest.fn() },
     round: { findFirst: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
     referral: { updateMany: jest.fn() },
+    platformConfig: { upsert: jest.fn() },
   },
 }));
 
@@ -44,6 +46,7 @@ jest.mock("../../services/ownerService", () => ({
       prize_pool_target: 500,
       anti_snipe_seconds: 10,
     }),
+    getEmissionMultiplier: jest.fn().mockResolvedValue(1),
   },
   ASH_TOKEN_PRICE_USD: 0.01,
 }));
@@ -71,6 +74,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     id: "user-1",
     username: "BurnerKing",
     isVip: false,
+    isBanned: false,
     vipExpiresAt: null,
     vipTier: null,
     referredById: null,
@@ -94,7 +98,8 @@ function mockTransaction(returnValue: unknown) {
       },
       rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
       profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-      round: { update: jest.fn() },
+      referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+      round: { update: jest.fn().mockResolvedValue({ currentPool: "205" }) },
       burn: { create: jest.fn().mockResolvedValue({ id: "burn-1" }) },
       transaction: { create: jest.fn().mockResolvedValue({}) },
       referral: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -105,7 +110,18 @@ function mockTransaction(returnValue: unknown) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+  (RoundService.getActiveRound as jest.Mock).mockResolvedValue({
+    id: "round-active",
+    roundNumber: 1,
+    prizePoolTarget: 500,
+    currentPool: 0,
+    rank1HolderId: null,
+    rank1SinceAt: null,
+    status: "ACTIVE",
+    endsAt: null,
+    timeLimitHours: null,
+  });
+  (mockPrisma.platformConfig as any).upsert.mockResolvedValue({});
 });
 
 describe("BurnService.executeBurn — validation", () => {
@@ -136,7 +152,8 @@ describe("BurnService.executeBurn — balance check (atomic)", () => {
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn(), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "5" }) },
         burn: { create: jest.fn() },
         transaction: { create: jest.fn() },
         referral: { updateMany: jest.fn() },
@@ -173,7 +190,8 @@ describe("BurnService.executeBurn — pool split accounting", () => {
             return {};
           }),
         },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-1" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
         referral: { updateMany: jest.fn() },
@@ -206,7 +224,8 @@ describe("BurnService.executeBurn — ASH reward", () => {
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-1" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
         referral: { updateMany: jest.fn() },
@@ -242,7 +261,8 @@ describe("BurnService.executeBurn — ASH reward", () => {
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-1" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
         referral: { updateMany: jest.fn() },
@@ -259,13 +279,12 @@ describe("BurnService.executeBurn — ASH reward", () => {
 });
 
 describe("BurnService.executeBurn — no active round", () => {
-  test("burn succeeds with roundId: null when no active round", async () => {
+  test("burn is blocked when no active round exists", async () => {
     (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(makeUser());
-    mockTransaction({});
 
-    const result = await BurnService.executeBurn("user-1", 10);
-    expect(result.roundId).toBeNull();
+    await expect(BurnService.executeBurn("user-1", 10)).rejects.toThrow(BadRequestError);
+    await expect(BurnService.executeBurn("user-1", 10)).rejects.toThrow(/No active round/i);
   });
 });
 

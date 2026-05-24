@@ -10,39 +10,48 @@ export const ASH_TOKEN_PRICE_USD = 0.01;
 const BURN_CONFIG_KEYS = [
   "ash_reward_percent",
   "constant_factor",
-  "reward_pool_split", "profit_pool_split",
+  "reward_pool_split", "profit_pool_split", "referral_pool_split",
   "referral_commission",
-  "min_burn_amount",
+  "min_burn_amount", "max_burn_amount",
   "base_unit",
   "boost_cost_ash",
   "boost_duration_ms",
   "vip_holy_fire_bonus",
-  "prize_pool_target",        // USDC amount the round pool must reach to end the round
-  // Balance requirement config keys
-  "weight_cap",               // req #3: max effective weight before diminishing returns (default 300)
-  "referral_weight_cap_pct",  // req #4: referral bonus ≤ this fraction of total weight (default 0.40)
-  "prize_safety_pct",         // req #7: prize ≤ this fraction of reward pool balance (default 0.70)
-  "round_time_limit_hours",   // req #6: default round time limit in hours (default 24)
-  "anti_snipe_seconds",       // req #8: rank #1 must hold for this many seconds before winning (default 10)
+  "prize_pool_target",
+  "weight_cap",
+  "referral_weight_cap_pct",
+  "prize_safety_pct",
+  "round_time_limit_hours",
+  "anti_snipe_seconds",
+  // Emission halving
+  "emission_halving_threshold", // ASH emitted per halving interval (default 100M)
+  "total_ash_emitted",          // running total — updated on every burn
+  // Round automation
+  "auto_round_creation",        // 1 = auto-create next round after end, 0 = manual
 ];
 
 const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   ash_reward_percent: 1.0,
   constant_factor: 100,
-  reward_pool_split: 0.5,
-  profit_pool_split: 0.5,
-  referral_commission: 0.1,
-  min_burn_amount: 5.0,          // Entry = $5 per round-based spec
-  base_unit: 4.99,               // Weight reference unit — never changes
+  reward_pool_split: 0.40,       // reduced from 0.50 — referral pool takes 0.20
+  profit_pool_split: 0.40,       // reduced from 0.50
+  referral_pool_split: 0.20,     // dedicated referral/reward budget
+  referral_commission: 0.10,     // 10% of participation paid from referral pool
+  min_burn_amount: 5.0,
+  max_burn_amount: 10000,
+  base_unit: 4.99,
   boost_cost_ash: 1000,
-  boost_duration_ms: 3600000,    // 1 hour
+  boost_duration_ms: 3600000,
   vip_holy_fire_bonus: 0.50,
-  prize_pool_target: 500,        // default: round ends when reward pool reaches $500
-  weight_cap: 300,               // req #3: weight cap
-  referral_weight_cap_pct: 0.40, // req #4: 40% referral cap
-  prize_safety_pct: 0.70,        // req #7: 70% prize safety limit
-  round_time_limit_hours: 24,    // req #6: 24-hour default time limit
-  anti_snipe_seconds: 10,        // req #8: 10-second anti-snipe hold
+  prize_pool_target: 500,
+  weight_cap: 300,
+  referral_weight_cap_pct: 0.40,
+  prize_safety_pct: 0.70,
+  round_time_limit_hours: 24,
+  anti_snipe_seconds: 10,
+  emission_halving_threshold: 100_000_000, // 100M ASH per halving interval
+  total_ash_emitted: 0,                    // updated on each burn
+  auto_round_creation: 1,                  // enabled by default
 };
 
 export class OwnerService {
@@ -58,6 +67,32 @@ export class OwnerService {
       pool = await prisma.profitPool.create({ data: {} });
     }
     return pool;
+  }
+
+  /** Get or create the referral pool record */
+  static async getReferralPool() {
+    let pool = await prisma.referralPool.findFirst();
+    if (!pool) {
+      pool = await prisma.referralPool.create({ data: {} });
+    }
+    return pool;
+  }
+
+  /**
+   * Compute the current emission multiplier based on total ASH emitted so far.
+   * Halves every `emission_halving_threshold` ASH (default 100M).
+   *   0 → 100M  = 1.0 (full rewards)
+   *   100M → 200M = 0.5
+   *   200M → 300M = 0.25
+   *   etc.
+   */
+  static async getEmissionMultiplier(): Promise<number> {
+    const cfg = await OwnerService.getBurnConfig();
+    const totalEmitted = cfg.total_ash_emitted ?? 0;
+    const threshold = cfg.emission_halving_threshold ?? 100_000_000;
+    if (threshold <= 0) return 1;
+    const halvings = Math.floor(totalEmitted / threshold);
+    return 1 / Math.pow(2, halvings);
   }
 
   /** Get platform stats overview */
@@ -299,13 +334,17 @@ export class OwnerService {
 
   /** Save burn configuration to PlatformConfig */
   static async saveBurnConfig(updates: Record<string, number>) {
-    // Validate pool splits always sum to 1.0
+    // Validate pool splits always sum to 1.0 (reward + profit + referral)
     const current = await OwnerService.getBurnConfig();
     const merged  = { ...current, ...updates };
-    const splitSum = (merged.reward_pool_split ?? 0) + (merged.profit_pool_split ?? 0);
+    const splitSum =
+      (merged.reward_pool_split ?? 0) +
+      (merged.profit_pool_split ?? 0) +
+      (merged.referral_pool_split ?? 0);
     if (Math.abs(splitSum - 1.0) > 0.001) {
       throw new BadRequestError(
-        `reward_pool_split (${merged.reward_pool_split}) + profit_pool_split (${merged.profit_pool_split}) must equal 1.0`
+        `reward_pool_split + profit_pool_split + referral_pool_split must equal 1.0 ` +
+        `(got ${merged.reward_pool_split} + ${merged.profit_pool_split} + ${merged.referral_pool_split} = ${splitSum.toFixed(4)})`
       );
     }
 

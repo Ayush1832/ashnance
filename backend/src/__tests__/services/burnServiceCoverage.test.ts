@@ -13,8 +13,10 @@ jest.mock("../../utils/prisma", () => ({
     transaction: { create: jest.fn() },
     rewardPool: { updateMany: jest.fn() },
     profitPool: { updateMany: jest.fn() },
+    referralPool: { updateMany: jest.fn(), findFirst: jest.fn() },
     round: { findFirst: jest.fn(), update: jest.fn(), findUnique: jest.fn() },
     referral: { updateMany: jest.fn() },
+    platformConfig: { upsert: jest.fn() },
   },
 }));
 
@@ -40,6 +42,7 @@ jest.mock("../../services/ownerService", () => ({
       prize_pool_target: 500,
       anti_snipe_seconds: 10,
     }),
+    getEmissionMultiplier: jest.fn().mockResolvedValue(1),
   },
   ASH_TOKEN_PRICE_USD: 0.01,
 }));
@@ -64,6 +67,7 @@ function makeUser(overrides: Record<string, unknown> = {}) {
     id: "user-1",
     username: "BurnerKing",
     isVip: false,
+    isBanned: false,
     vipExpiresAt: null,
     vipTier: null,
     referredById: null,
@@ -107,6 +111,7 @@ function mockFullTransaction(options: {
       },
       rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
       profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
+      referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
       round: {
         update: jest.fn().mockResolvedValue({ currentPool: String(newRoundPool) }),
       },
@@ -118,7 +123,10 @@ function mockFullTransaction(options: {
   });
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  (mockPrisma.platformConfig as any).upsert.mockResolvedValue({});
+});
 
 // ===========================================================================
 // Active round — round pool update (covers lines 226-230)
@@ -138,6 +146,7 @@ describe("BurnService.executeBurn — with active round", () => {
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
         round: {
           update: jest.fn().mockImplementation(() => {
             roundUpdated = true;
@@ -175,6 +184,7 @@ describe("BurnService.executeBurn — with active round", () => {
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
         round: {
           update: jest.fn().mockResolvedValue({ currentPool: "200" }), // hits target
         },
@@ -214,6 +224,7 @@ describe("BurnService.executeBurn — with active round", () => {
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
         round: { update: jest.fn().mockResolvedValue({ currentPool: "200" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-race" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
@@ -262,33 +273,36 @@ describe("BurnService.executeBurn — with active round", () => {
 // Referral reward processing (covers lines 262-285)
 // ===========================================================================
 describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () => {
-  test("pays referral commission and decrements reward pool when referredById is set", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+  test("pays referral commission from referral pool when referredById is set", async () => {
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({ referredById: "referrer-1" })
     );
 
     let referrerCredited = false;
-    let rewardPoolDecremented = false;
+    let referralPoolDecremented = false;
     let referralTxCreated = false;
 
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
-          update: jest.fn().mockImplementation((args: any) => {
-            if (args.where?.userId === "referrer-1") referrerCredited = true;
-            return { usdcBalance: "990", cumulativeWeight: "1.002" };
-          }),
-        },
-        rewardPool: {
+          update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "1.002" }),
           updateMany: jest.fn().mockImplementation((args: any) => {
-            if (args.data?.totalBalance?.decrement) rewardPoolDecremented = true;
+            if (args.where?.userId === "referrer-1") referrerCredited = true;
             return {};
           }),
         },
+        rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-        round: { update: jest.fn() },
+        referralPool: {
+          findFirst: jest.fn().mockResolvedValue({ balance: "1000" }),
+          updateMany: jest.fn().mockImplementation((args: any) => {
+            if (args.data?.balance?.decrement) referralPoolDecremented = true;
+            return {};
+          }),
+        },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-ref" }) },
         transaction: {
           create: jest.fn().mockImplementation((args: any) => {
@@ -304,12 +318,12 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
     await BurnService.executeBurn("user-1", 10);
 
     expect(referrerCredited).toBe(true);
-    expect(rewardPoolDecremented).toBe(true);
+    expect(referralPoolDecremented).toBe(true);
     expect(referralTxCreated).toBe(true);
   });
 
   test("Referral Code Used At Registration But Referrer Deleted — no error, burn completes normally", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     // User has referredById set but referrer's wallet doesn't exist
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({ referredById: "deleted-referrer" })
@@ -319,20 +333,16 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
       const tx = {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
-          update: jest.fn().mockImplementation(() => {
-            // Referrer wallet update — in real code this would throw P2025 (not found)
-            // BurnService doesn't guard this — it will throw; but the spec says
-            // "no error" which means the code silently skips. Let's check actual behavior:
-            // The code does tx.wallet.update({ where: { userId: referredById } }) without guard
-            // So if referrer wallet doesn't exist, this would error.
-            // We mock it to succeed (simulating the case where referral record exists but referrer deleted
-            // doesn't error at wallet.update level — Prisma P2025 would need to be handled)
-            return { usdcBalance: "990", cumulativeWeight: "1.002" };
-          }),
+          update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "1.002" }),
+          updateMany: jest.fn().mockResolvedValue({}),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-        round: { update: jest.fn() },
+        referralPool: {
+          findFirst: jest.fn().mockResolvedValue({ balance: "1000" }),
+          updateMany: jest.fn().mockResolvedValue({}),
+        },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-no-ref" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
         referral: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -342,12 +352,12 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
 
     // Burn should complete without error
     const result = await BurnService.executeBurn("user-1", 10);
-    expect(result.roundId).toBeNull();
+    expect(result.roundId).toBe("round-active");
     expect(result.ashReward).toBe(1000);
   });
 
   test("VIP Expiry Mid-Burn — expired VIP gets no VIP bonus", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({
         isVip: true,
@@ -364,7 +374,8 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn().mockResolvedValue({}), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-vip-exp" }) },
         transaction: { create: jest.fn().mockResolvedValue({}) },
         referral: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -375,11 +386,8 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
     const result = await BurnService.executeBurn("user-1", 10);
     // No VIP bonus: finalWeight should be ~10/4.99 = 2.004 (no +0.50)
     expect(result.finalWeight).toBeCloseTo(10 / 4.99, 3);
-    // ASH: no VIP bonus either — base VIP tier check uses vipTier only, not expiry
-    // Looking at code line 178: `if (user.vipTier === "HOLY_FIRE")` — no expiry check on ASH
-    // So ASH gets +20% even though VIP weight is not applied
-    // This is intentional behavior in the current code
-    expect(result.ashReward).toBe(1200); // floor(10/0.01 * 1.2)
+    // ASH: expired VIP gets no +20% ASH bonus (expiry checked for both weight and ASH)
+    expect(result.ashReward).toBe(1000); // floor(10/0.01), no VIP multiplier
   });
 });
 
@@ -482,7 +490,7 @@ describe("BurnService.executeBurn — max burn", () => {
   test("throws BadRequestError when amount exceeds max_burn_amount", async () => {
     (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
     const { BadRequestError } = await import("../../utils/errors");
-    await expect(BurnService.executeBurn("user-1", 99999)).rejects.toThrow(/Maximum burn amount/i);
+    await expect(BurnService.executeBurn("user-1", 99999)).rejects.toThrow(/Maximum participation/i);
   });
 });
 
@@ -502,7 +510,7 @@ describe("BurnService.executeBurn — user not found", () => {
 // ===========================================================================
 describe("BurnService.executeBurn — VIP active + boost active branches", () => {
   test("applies VIP bonus when isVip=true and VIP not expired and tier=HOLY_FIRE", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({
         isVip: true,
@@ -518,7 +526,7 @@ describe("BurnService.executeBurn — VIP active + boost active branches", () =>
   });
 
   test("applies boost bonus when boostExpiresAt is in the future", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({
         wallet: {
@@ -543,7 +551,7 @@ describe("BurnService.executeBurn — VIP active + boost active branches", () =>
 describe("BurnService.executeBurn — insufficient balance inside tx", () => {
   test("throws InsufficientBalanceError when wallet balance is too low in tx", async () => {
     const { InsufficientBalanceError } = await import("../../utils/errors");
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(makeUser());
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
@@ -553,7 +561,8 @@ describe("BurnService.executeBurn — insufficient balance inside tx", () => {
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn(), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "5" }) },
         burn: { create: jest.fn() },
         transaction: { create: jest.fn() },
         referral: { updateMany: jest.fn() },
@@ -568,31 +577,13 @@ describe("BurnService.executeBurn — insufficient balance inside tx", () => {
 // executeBurn — prize_pool_target null (line 319 ?? branch) + prizePoolTarget=0 (line 352)
 // ===========================================================================
 describe("BurnService.executeBurn — prizePoolTarget edge cases", () => {
-  test("uses ?? 500 fallback when prize_pool_target is undefined in burn config", async () => {
-    const { OwnerService } = await import("../../services/ownerService") as any;
-    // Temporarily override getBurnConfig to omit prize_pool_target
-    OwnerService.getBurnConfig.mockResolvedValueOnce({
-      min_burn_amount: 5,
-      max_burn_amount: 10000,
-      base_unit: 4.99,
-      ash_reward_percent: 1.0,
-      reward_pool_split: 0.5,
-      profit_pool_split: 0.5,
-      referral_commission: 0.10,
-      vip_holy_fire_bonus: 0.50,
-      boost_cost_ash: 1000,
-      boost_duration_ms: 3600000,
-      weight_cap: 300,
-      referral_weight_cap_pct: 0.40,
-      anti_snipe_seconds: 10,
-      // prize_pool_target intentionally absent → falls through to ?? 500
-    });
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+  test("roundTargetPool comes from the active round's prizePoolTarget", async () => {
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound({ prizePoolTarget: 500 }));
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(makeUser());
     mockFullTransaction();
 
     const result = await BurnService.executeBurn("user-1", 10);
-    expect(result.roundTargetPool).toBe(500); // fallback value
+    expect(result.roundTargetPool).toBe(500); // from activeRound.prizePoolTarget
   });
 });
 
@@ -649,7 +640,7 @@ describe("BurnService.executeBurn — null config fields trigger ?? fallbacks + 
       prize_pool_target: 500,
     });
 
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     // 1500 USDC / 4.99 ≈ 300.6 → exceeds weight_cap of 300
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(
       makeUser({ wallet: { usdcBalance: "5000", ashBalance: "0", cumulativeWeight: "0", boostExpiresAt: null } })
@@ -667,17 +658,18 @@ describe("BurnService.executeBurn — null config fields trigger ?? fallbacks + 
 // ===========================================================================
 describe("BurnService.executeBurn — currentWallet null in tx", () => {
   test("throws InsufficientBalanceError with $0 when tx wallet findUnique returns null", async () => {
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound());
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(makeUser());
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
         wallet: {
-          findUnique: jest.fn().mockResolvedValue(null), // triggers ?? 0 at line 200
+          findUnique: jest.fn().mockResolvedValue(null), // triggers ?? 0 at balance check
           update: jest.fn(),
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
-        round: { update: jest.fn() },
+        referralPool: { updateMany: jest.fn(), findFirst: jest.fn().mockResolvedValue({ balance: "1000" }) },
+        round: { update: jest.fn().mockResolvedValue({ currentPool: "10" }) },
         burn: { create: jest.fn() },
         transaction: { create: jest.fn() },
         referral: { updateMany: jest.fn() },
@@ -715,26 +707,8 @@ describe("BurnService.executeBurn — user not in active-round leaderboard", () 
 // executeBurn — prizePoolTarget = 0 (line 352 false branch)
 // ===========================================================================
 describe("BurnService.executeBurn — prizePoolTarget zero", () => {
-  test("roundProgressPercent is 0 when prizePoolTarget is 0", async () => {
-    const { OwnerService } = await import("../../services/ownerService") as any;
-    OwnerService.getBurnConfig.mockResolvedValueOnce({
-      min_burn_amount: 5,
-      max_burn_amount: 10000,
-      base_unit: 4.99,
-      ash_reward_percent: 1.0,
-      reward_pool_split: 0.5,
-      profit_pool_split: 0.5,
-      referral_commission: 0.10,
-      vip_holy_fire_bonus: 0.50,
-      boost_cost_ash: 1000,
-      boost_duration_ms: 3600000,
-      weight_cap: 300,
-      referral_weight_cap_pct: 0.40,
-      anti_snipe_seconds: 10,
-      prize_pool_target: 0, // prizePoolTarget = 0 → false branch at line 352
-    });
-
-    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(null);
+  test("roundProgressPercent is 0 when active round prizePoolTarget is 0", async () => {
+    (RoundService.getActiveRound as jest.Mock).mockResolvedValue(makeActiveRound({ prizePoolTarget: 0, currentPool: 0 }));
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(makeUser());
     mockFullTransaction({ newRoundPool: 0 });
 

@@ -61,9 +61,10 @@ function validTotp() {
 }
 
 function mockWhitelistedUser(cooldownPassed = true) {
-  const createdAt = cooldownPassed
-    ? new Date(Date.now() - 25 * 60 * 60 * 1000) // 25h ago — past 24h cooldown
-    : new Date(Date.now() - 1 * 60 * 60 * 1000);  // 1h ago — still in cooldown
+  // New code checks activatesAt field (not createdAt + COOLDOWN_MS)
+  const activatesAt = cooldownPassed
+    ? null // null = no pending cooldown (passed or devnet)
+    : new Date(Date.now() + 23 * 60 * 60 * 1000); // 23h remaining
 
   (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
     id: "user-1",
@@ -76,7 +77,7 @@ function mockWhitelistedUser(cooldownPassed = true) {
       id: "addr-1",
       address: ADDRESS,
       isVerified: true,
-      createdAt,
+      activatesAt,
     }],
   });
 }
@@ -140,14 +141,14 @@ describe("WalletService.processDeposit (legacy)", () => {
   });
 
   test("rejects duplicate txHash", async () => {
-    (mockPrisma.transaction.findFirst as jest.Mock).mockResolvedValue({ id: "existing-tx" });
+    const p2002 = Object.assign(new Error("Unique constraint"), { code: "P2002" });
+    (mockPrisma.$transaction as jest.Mock).mockRejectedValue(p2002);
     await expect(
       (WalletService as any).processDeposit("user-1", 10, "dup-hash")
     ).rejects.toThrow("already processed");
   });
 
   test("credits balance on first-time deposit", async () => {
-    (mockPrisma.transaction.findFirst as jest.Mock).mockResolvedValue(null);
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
         wallet: { update: jest.fn().mockResolvedValue({ usdcBalance: "110" }) },
@@ -445,6 +446,8 @@ describe("WalletService.processWithdrawal — min amount", () => {
 // ===========================================================================
 describe("WalletService.processWithdrawal — whitelist cooldown singular hour", () => {
   test("error message uses singular 'hour' when ~1 hour of cooldown remains", async () => {
+    // activatesAt = 30min from now → ceil(0.5h) = 1 hour remaining → singular "hour"
+    const activatesAt = new Date(Date.now() + 30 * 60 * 1000);
     (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue({
       id: "user-1",
       twoFaEnabled: true,
@@ -456,8 +459,7 @@ describe("WalletService.processWithdrawal — whitelist cooldown singular hour",
         id: "addr-1",
         address: ADDRESS,
         isVerified: true,
-        // 23h 30min ago → ~30min cooldown remaining → ceil(0.5) = 1 hour
-        createdAt: new Date(Date.now() - (23 * 60 + 30) * 60 * 1000),
+        activatesAt,
       }],
     });
 
