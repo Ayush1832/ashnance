@@ -230,6 +230,12 @@
 }
 .animate-slide-in-top { animation: slide-in-top 0.3s ease-out; }
 
+@keyframes burst-particle {
+  0%   { transform: translate(0, 0) scale(1.4); opacity: 1; }
+  60%  { opacity: 0.8; }
+  100% { transform: translate(var(--bx), var(--by)) scale(0); opacity: 0; }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }

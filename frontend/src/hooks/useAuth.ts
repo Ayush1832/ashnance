@@ -1,19 +1,24 @@
-import { mockUser } from "@/lib/mock";
+import { useEffect, useState, useCallback } from "react";
+import { userStore } from "@/lib/userStore";
 
-// Mock auth hook — always returns the fixture user so every authenticated
-// screen renders. TODO: replace with real auth state.
 export function useAuth() {
+  const [user, setUser] = useState(userStore.get());
+
+  useEffect(() => userStore.subscribe(() => setUser(userStore.get())), []);
+
+  const logout = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      window.location.href = "/";
+    }
+  }, []);
+
   return {
-    user: mockUser,
+    user,
     isAuthenticated: true,
-    isAdmin: mockUser.role === "ADMIN" || mockUser.role === "OWNER",
-    isOwner: mockUser.role === "OWNER",
-    logout: () => {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
-        window.location.href = "/";
-      }
-    },
+    isAdmin: user.role === "ADMIN" || user.role === "OWNER",
+    isOwner: user.role === "OWNER",
+    logout,
   };
 }

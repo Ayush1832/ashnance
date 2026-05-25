@@ -1,15 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import Link from "next/link";
 import { Flame, Zap, Star, Users, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
-import {
-  GlassCard, SectionHeader, FireButton,
-  RankBadge,
-} from "@/components/ashnance/primitives";
+import { GlassCard, SectionHeader, FireButton, RankBadge } from "@/components/ashnance/primitives";
 import { RoundProgressRing } from "@/components/ashnance/RoundProgressRing";
+import { BurnResultModal, type BurnResult } from "@/components/ashnance/BurnResultModal";
 import { useAuth } from "@/hooks/useAuth";
 import { mockRound, mockBurnConfig, calcWeight, calcAsh } from "@/lib/mock";
 import { fmtUsd, fmtNum, fmtAsh, countdown } from "@/lib/format";
@@ -17,12 +15,52 @@ import { api } from "@/lib/apiClient";
 
 const PRESETS = [5, 10, 25, 50, 100, 250];
 
+function playFireSound() {
+  try {
+    type AudioCtxCtor = typeof AudioContext;
+    const Ctor: AudioCtxCtor | undefined =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: AudioCtxCtor }).webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+
+    // White-noise crackle burst
+    const len = Math.floor(ctx.sampleRate * 0.55);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 700;
+    bp.Q.value = 0.7;
+    const g1 = ctx.createGain();
+    g1.gain.setValueAtTime(1.1, ctx.currentTime);
+    g1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.55);
+    noise.connect(bp); bp.connect(g1); g1.connect(ctx.destination);
+    noise.start(); noise.stop(ctx.currentTime + 0.55);
+
+    // Low-frequency rumble thump
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(120, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(35, ctx.currentTime + 0.3);
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.45, ctx.currentTime);
+    g2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.connect(g2); g2.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.3);
+  } catch (_e) { /* audio not supported */ }
+}
+
 export default function BurnPage() {
   const { user } = useAuth();
   const [amount, setAmount] = useState(25);
   const [custom, setCustom] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [burning, setBurning] = useState(false);
+  const [boostLoading, setBoostLoading] = useState(false);
+  const [burnResult, setBurnResult] = useState<BurnResult | null>(null);
 
   const effective = useCustom ? (parseFloat(custom) || 0) : amount;
   const isVip = user.vip === "HOLY_FIRE";
@@ -44,15 +82,35 @@ export default function BurnPage() {
 
   async function handleBurn() {
     if (!canBurn) return;
+    playFireSound();
     setBurning(true);
     try {
-      await api.burn(effective);
-      toast.success(`Burned ${fmtUsd(effective)} — +${w.final.toFixed(2)} weight, +${fmtAsh(ash)}`);
+      const res = await api.burn(effective);
+      setBurnResult({
+        amount: effective,
+        weight: res.data.weight,
+        ash: res.data.ash,
+        newRank: res.data.rank,
+        prizePool: res.data.newPool,
+        prizePoolTarget: mockRound.prizePoolTarget,
+      });
     } catch {
       toast.error("Burn failed. Try again.");
     }
     setBurning(false);
   }
+
+  const handleBoost = useCallback(async () => {
+    if (user.ashBalance < 1000) { toast.error("Need 1,000 ASH to activate boost"); return; }
+    setBoostLoading(true);
+    try {
+      await api.activateBoost();
+      toast.success("🔥 Weight Boost active for 1 hour! +0.5 weight per burn");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Boost failed");
+    }
+    setBoostLoading(false);
+  }, [user.ashBalance]);
 
   return (
     <AppShell>
@@ -138,9 +196,9 @@ export default function BurnPage() {
             </div>
           </GlassCard>
 
-          {/* ASH reward */}
+          {/* ASH reward + boost */}
           <GlassCard>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="text-sm font-medium">ASH reward</div>
                 <div className="text-xs text-muted-foreground mt-0.5">
@@ -149,6 +207,21 @@ export default function BurnPage() {
               </div>
               <div className="font-mono text-2xl font-bold text-ash">+{fmtNum(ash)}</div>
             </div>
+            {hasBoost ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-ash/10 border border-ash/30 text-xs text-ash">
+                <Zap className="h-3.5 w-3.5" />
+                Boost active — +0.5 weight per burn · expires {new Date(user.ashBoostExpiresAt!).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </div>
+            ) : (
+              <button
+                onClick={handleBoost}
+                disabled={boostLoading || user.ashBalance < 1000}
+                className="w-full h-9 rounded-md border border-ash/30 bg-ash/5 text-ash text-sm font-medium transition hover:bg-ash/15 hover:border-ash/50 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                {boostLoading ? "Activating…" : `Activate Boost · 1,000 ASH (you have ${fmtNum(user.ashBalance)})`}
+              </button>
+            )}
           </GlassCard>
 
           {/* Burn button */}
@@ -210,6 +283,8 @@ export default function BurnPage() {
           )}
         </div>
       </div>
+
+      {burnResult && <BurnResultModal result={burnResult} onClose={() => setBurnResult(null)} />}
     </AppShell>
   );
 }

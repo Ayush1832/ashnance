@@ -44,7 +44,7 @@ export function GhostButton({ children, onClick, className, size = "md", disable
     <button type={type} onClick={onClick} disabled={disabled}
       className={cn(
         "rounded-md border border-border bg-transparent text-foreground transition",
-        "hover:bg-white/[0.04] hover:border-primary/40",
+        "hover:bg-white/4 hover:border-primary/40",
         "disabled:opacity-40 disabled:cursor-not-allowed",
         sizes[size], className,
       )}>{children}</button>

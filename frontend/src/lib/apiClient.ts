@@ -7,6 +7,7 @@ import {
   mockAdminUsers, mockBurnConfig, mockOwnerSolvency, mockProfitPool,
   mockPendingWithdrawal, calcWeight, calcAsh,
 } from "./mock";
+import { userStore } from "./userStore";
 
 const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 
@@ -53,9 +54,11 @@ export const api = {
     // TODO: replace with real API call (GET /api/auth/profile)
     await maybeRefresh(); return { success: true, data: mockUser };
   },
-  async updateProfile(_b: Partial<typeof mockUser>) {
+  async updateProfile(patch: Partial<typeof mockUser>) {
     // TODO: replace with real API call (PUT /api/auth/profile)
-    await wait(); return { success: true };
+    await wait();
+    userStore.update(patch);
+    return { success: true };
   },
   async updatePassword(_b: { currentPassword: string; newPassword: string }) {
     // TODO: replace with real API call (PUT /api/auth/password)
@@ -101,13 +104,24 @@ export const api = {
   async burn(amount: number) {
     // TODO: replace with real API call (POST /api/burn)
     await wait(800);
-    const w = calcWeight(amount, { vip: !!mockUser.vip, boost: !!mockUser.ashBoostExpiresAt, activeReferrals: 3 });
-    const ash = calcAsh(amount, !!mockUser.vip);
-    return { success: true, data: { weight: w.final, ash, newPool: mockRound.prizePool + amount * 0.4, rank: 5 } };
+    const u = userStore.get();
+    const w = calcWeight(amount, { vip: !!u.vip, boost: !!u.ashBoostExpiresAt && new Date(u.ashBoostExpiresAt) > new Date(), activeReferrals: 3 });
+    const ash = calcAsh(amount, !!u.vip);
+    userStore.update({ usdcBalance: u.usdcBalance - amount, ashBalance: u.ashBalance + ash });
+    mockRound.prizePool = Math.min(mockRound.prizePoolTarget, mockRound.prizePool + amount * 0.4);
+    const newRank = Math.max(1, 5 - Math.floor(amount / 25));
+    return { success: true, data: { weight: w.final, ash, newPool: mockRound.prizePool, rank: newRank } };
   },
   async activateBoost() {
     // TODO: replace with real API call (POST /api/burn/boost)
-    await wait(); return { success: true };
+    await wait();
+    const u = userStore.get();
+    if (u.ashBalance < 1000) throw new Error("Insufficient ASH balance");
+    userStore.update({
+      ashBalance: u.ashBalance - 1000,
+      ashBoostExpiresAt: new Date(Date.now() + 3600000).toISOString(),
+    });
+    return { success: true };
   },
   async deposit(_b: { txHash: string }) {
     // TODO: replace with real API call (POST /api/wallet/deposit)

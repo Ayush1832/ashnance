@@ -1,18 +1,35 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { Flame, ArrowDown, ArrowUp, Zap, Sprout } from "lucide-react";
+import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, FireButton, GhostButton, RankBadge, FireProgress } from "@/components/ashnance/primitives";
 import { LiveBurnFeed } from "@/components/ashnance/LiveBurnFeed";
 import { useAuth } from "@/hooks/useAuth";
 import { mockRound } from "@/lib/mock";
 import { fmtUsd, fmtNum, countdown } from "@/lib/format";
+import { api } from "@/lib/apiClient";
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const [boostLoading, setBoostLoading] = useState(false);
   const me = mockRound.leaderboard.find((r) => r.isYou);
   const top = mockRound.leaderboard[0];
+  const hasBoost = !!user.ashBoostExpiresAt && new Date(user.ashBoostExpiresAt) > new Date();
+
+  async function handleBoost() {
+    if (user.ashBalance < 1000) { toast.error("Need 1,000 ASH to activate boost"); return; }
+    setBoostLoading(true);
+    try {
+      await api.activateBoost();
+      toast.success("🔥 Weight Boost active for 1 hour! +0.5 weight per burn");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Boost failed");
+    }
+    setBoostLoading(false);
+  }
   return (
     <AppShell>
       <div className="mb-6">
@@ -36,7 +53,10 @@ export default function Dashboard() {
           <div className="mt-2 text-3xl font-mono font-semibold text-ash">{fmtNum(user.ashBalance)}</div>
           <div className="text-xs text-muted-foreground mt-1">Earned from burns</div>
           <div className="mt-4 flex gap-2">
-            <FireButton size="sm" className="w-full"><Zap className="h-3 w-3"/> Boost · 1k ASH</FireButton>
+            <FireButton size="sm" className="w-full" onClick={handleBoost} disabled={boostLoading || hasBoost || user.ashBalance < 1000}>
+              <Zap className="h-3 w-3"/>
+              {hasBoost ? "Boosted ✓" : boostLoading ? "Activating…" : "Boost · 1k ASH"}
+            </FireButton>
             <Link href="/staking" className="flex-1"><GhostButton size="sm" className="w-full"><Sprout className="h-3 w-3 inline mr-1"/>Stake</GhostButton></Link>
           </div>
         </GlassCard>

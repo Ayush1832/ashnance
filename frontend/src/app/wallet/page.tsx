@@ -137,7 +137,7 @@ function HistoryTab() {
     <GlassCard className="p-0 overflow-hidden">
       <div className="divide-y divide-border">
         {mockTransactions.map((tx) => (
-          <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/[0.02]">
+          <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/2">
             <span className="text-xl w-7 text-center shrink-0">{typeIcon[tx.type] ?? "•"}</span>
             <div className="flex-1 min-w-0">
               <div className="text-sm truncate">{tx.description}</div>
