@@ -1,34 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-const navItems = [
-  { icon: "📊", label: "DASHBOARD",   href: "/dashboard" },
-  { icon: "🔥", label: "BURN NOW",    href: "/burn" },
-  { icon: "💰", label: "WALLET",      href: "/wallet" },
-  { icon: "👥", label: "REFERRALS",   href: "/referrals" },
-  { icon: "👑", label: "VIP",         href: "/subscribe" },
-  { icon: "📋", label: "HISTORY",     href: "/transactions" },
-  { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
-  { icon: "💎", label: "STAKING",     href: "/staking" },
-  { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
-];
+import { AppShell } from "@/components/ashnance/AppShell";
+import { GlassCard, SectionHeader } from "@/components/ashnance/primitives";
+import { api } from "@/lib/apiClient";
+import { fmtNum } from "@/lib/format";
 
 type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAWAL" | "REFERRAL_REWARD" | "VIP_PURCHASE";
 
 const FILTER_TABS: { key: TxType; label: string }[] = [
-  { key: "ALL",             label: "ALL"         },
-  { key: "BURN",            label: "🔥 BURNS"    },
-  { key: "WIN",             label: "💥 WINS"     },
-  { key: "DEPOSIT",         label: "💵 DEPOSITS" },
-  { key: "WITHDRAWAL",      label: "→ WITHDRAWALS" },
-  { key: "REFERRAL_REWARD", label: "👥 REFERRAL" },
+  { key: "ALL",             label: "All"         },
+  { key: "BURN",            label: "🔥 Burns"    },
+  { key: "WIN",             label: "💥 Wins"     },
+  { key: "DEPOSIT",         label: "💵 Deposits" },
+  { key: "WITHDRAWAL",      label: "↗ Withdrawals" },
+  { key: "REFERRAL_REWARD", label: "👥 Referral" },
   { key: "VIP_PURCHASE",    label: "👑 VIP"      },
 ];
+
+const TX_ICONS: Record<string, string> = {
+  BURN:            "🔥",
+  WIN:             "💥",
+  DEPOSIT:         "💵",
+  WITHDRAWAL:      "↗",
+  REFERRAL_REWARD: "👥",
+  VIP_PURCHASE:    "👑",
+};
 
 interface Tx {
   id: string;
@@ -40,67 +37,47 @@ interface Tx {
   date: string;
 }
 
+function amountColor(tx: Tx) {
+  if (tx.currency === "ASH") return "text-ash";
+  if (tx.type === "WIN" || tx.type === "DEPOSIT" || tx.type === "REFERRAL_REWARD") return "text-success";
+  if (tx.type === "BURN" || tx.type === "WITHDRAWAL") return "text-fire";
+  return "text-foreground";
+}
 
-const TX_ICONS: Record<string, string> = {
-  BURN:            "🔥",
-  WIN:             "💥",
-  DEPOSIT:         "💵",
-  WITHDRAWAL:      "→",
-  REFERRAL_REWARD: "👥",
-  VIP_PURCHASE:    "👑",
-};
-
-const TX_COLORS: Record<string, string> = {
-  BURN:            "var(--fire-red)",
-  WIN:             "var(--usdc-green)",
-  DEPOSIT:         "#3498db",
-  WITHDRAWAL:      "var(--fire-orange)",
-  REFERRAL_REWARD: "#9b59b6",
-  VIP_PURCHASE:    "var(--gold)",
-};
+function statusBadge(status: string) {
+  if (status === "COMPLETED") return <span className="text-[10px] text-success">✓ Completed</span>;
+  if (status === "PROCESSING") return <span className="text-[10px] text-warning">⏳ Processing</span>;
+  if (status === "PENDING")    return <span className="text-[10px] text-warning">⏳ Pending</span>;
+  return <span className="text-[10px] text-muted-foreground">{status}</span>;
+}
 
 export default function TransactionsPage() {
-  const pathname = usePathname();
-  const router   = useRouter();
-
   const [filter, setFilter]   = useState<TxType>("ALL");
   const [search, setSearch]   = useState("");
   const [txList, setTxList]   = useState<Tx[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) return;
     setLoading(true);
-    const params = filter !== "ALL" ? `?type=${filter}` : "";
-    fetch(`${API}/api/wallet/transactions${params}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
+    api.transactions({ type: filter !== "ALL" ? filter : undefined })
       .then((res) => {
-        const txs = res?.data?.transactions ?? res?.transactions ?? (Array.isArray(res) ? res : []);
-        if (Array.isArray(txs) && txs.length > 0) {
-          setTxList(txs.map((t: any) => ({
+        if (res.success) {
+          setTxList(res.data.items.map((t: any) => ({
             id:       t.id,
             type:     t.type,
             amount:   Number(t.amount),
-            currency: t.currency ?? "USDC",
+            currency: t.currency ?? t.asset ?? "USDC",
             status:   t.status,
             desc:     t.description ?? t.desc ?? t.type,
-            date:     new Date(t.createdAt ?? t.date).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+            date:     new Date(t.createdAt ?? t.at ?? t.date ?? Date.now()).toLocaleDateString("en-US", {
+              month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+            }),
           })));
-        } else if (Array.isArray(txs)) {
-          setTxList([]); // real empty list — don't show mock
         }
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [filter]);
-
-  function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
-    router.push("/");
-  }
 
   const filtered = txList.filter((tx) => {
     if (filter !== "ALL" && tx.type !== filter) return false;
@@ -109,161 +86,97 @@ export default function TransactionsPage() {
     return true;
   });
 
+  const totalIn  = filtered.filter((t) => t.amount > 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0);
+  const totalOut = Math.abs(filtered.filter((t) => t.amount < 0 && t.currency === "USDC").reduce((s, t) => s + t.amount, 0));
+
   return (
-    <div className="dash-layout">
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
-        </div>
-        <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`nav-item${pathname.startsWith(item.href) ? " active" : ""}`}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="user-info">
-            <div className="user-avatar">🔥</div>
-            <div>
-              <div className="user-name">BURNER</div>
-              <div className="user-status">STANDARD</div>
-            </div>
-          </div>
+    <AppShell>
+      <SectionHeader eyebrow="Wallet" title="Transaction History" sub="All your burns, wins, deposits, and withdrawals." />
+
+      {/* Filter tabs */}
+      <div className="flex gap-1.5 flex-wrap mb-4">
+        {FILTER_TABS.map((tab) => (
           <button
-            className="nav-item"
-            onClick={handleLogout}
-            style={{ width: "100%", background: "none", border: "none", marginTop: "8px" }}
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={`h-8 px-3 rounded-md text-xs font-semibold transition border ${
+              filter === tab.key
+                ? "bg-fire text-background border-transparent"
+                : "glass border-border hover:border-primary/40 text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <span className="nav-icon">🚪</span>LOGOUT
+            {tab.label}
           </button>
+        ))}
+      </div>
+
+      {/* Search */}
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search transactions..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-10 px-3 rounded-md bg-muted border border-border text-sm w-full max-w-sm placeholder:text-muted-foreground"
+        />
+      </div>
+
+      {/* Summary stats */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <GlassCard className="text-center py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total Txs</div>
+            <div className="font-mono text-xl font-bold">{filtered.length}</div>
+          </GlassCard>
+          <GlassCard className="text-center py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total In</div>
+            <div className="font-mono text-xl font-bold text-success">+${fmtNum(totalIn, 2)}</div>
+          </GlassCard>
+          <GlassCard className="text-center py-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total Out</div>
+            <div className="font-mono text-xl font-bold text-fire">-${fmtNum(totalOut, 2)}</div>
+          </GlassCard>
         </div>
-      </aside>
+      )}
 
-      {/* MAIN */}
-      <div className="dash-content">
-        <div className="dash-header">
-          <h1 className="dash-title">TRANSACTION <span>HISTORY</span></h1>
-        </div>
-
-        {/* Filter tab bar */}
-        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", marginBottom: "16px" }}>
-          {FILTER_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={filter === tab.key ? "btn-fire btn" : "btn-ghost btn"}
-              style={{ fontSize: "9px", letterSpacing: "1px", padding: "6px 12px" }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Search bar */}
-        <div style={{ marginBottom: "20px" }}>
-          <input
-            type="text"
-            placeholder="SEARCH TRANSACTIONS..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: "100%",
-              maxWidth: "440px",
-              background: "var(--black)",
-              border: "1px solid var(--border)",
-              color: "var(--text)",
-              padding: "10px 14px",
-              fontFamily: "var(--font-body)",
-              fontSize: "11px",
-              letterSpacing: "1px",
-              outline: "none",
-            }}
-          />
-        </div>
-
-        {/* Transaction list */}
-        <div className="panel-box">
-          {loading ? (
-            <div style={{ padding: "30px", textAlign: "center", color: "var(--text-dim)", letterSpacing: "2px", fontSize: "11px" }}>
-              LOADING...
-            </div>
-          ) : (
-            <div className="tx-list">
-              {filtered.map((tx) => (
-                <div key={tx.id} className="tx-item">
-                  {/* Icon */}
-                  <div className="tx-icon" style={{ color: TX_COLORS[tx.type] || "var(--text-dim)" }}>
-                    {TX_ICONS[tx.type] || "◆"}
-                  </div>
-
-                  {/* Details */}
-                  <div className="tx-details">
-                    <div className="tx-type">{tx.desc}</div>
-                    <div className="tx-date">{tx.date} · {tx.id}</div>
-                  </div>
-
-                  {/* Type badge */}
-                  <div style={{ marginRight: "12px" }}>
-                    <span style={{
-                      fontSize: "8px",
-                      letterSpacing: "1px",
-                      padding: "2px 8px",
-                      background: `${TX_COLORS[tx.type] || "var(--border)"}18`,
-                      border: `1px solid ${TX_COLORS[tx.type] || "var(--border)"}40`,
-                      color: TX_COLORS[tx.type] || "var(--text-dim)",
-                    }}>
-                      {tx.type.replace("_", " ")}
-                    </span>
-                  </div>
-
-                  {/* Amount */}
-                  <div className="tx-amount">
-                    <div className={`amount ${tx.amount > 0 ? "pos" : tx.currency === "ASH" ? "ash-col" : "neg"}`}>
-                      {tx.amount > 0 ? "+" : ""}{tx.amount} {tx.currency}
-                    </div>
-                    <div className="tx-status">
-                      {tx.status === "COMPLETED" ? "✓ COMPLETED" : tx.status === "PROCESSING" ? "⏳ PROCESSING" : tx.status}
-                    </div>
-                  </div>
+      {/* Transaction list */}
+      <GlassCard>
+        {loading ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">Loading...</div>
+        ) : filtered.length === 0 ? (
+          <div className="py-12 text-center text-muted-foreground text-sm">No transactions found</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {filtered.map((tx) => (
+              <div key={tx.id} className="flex items-center gap-3 py-3 px-1 first:pt-0 last:pb-0">
+                {/* Icon */}
+                <div className="w-9 h-9 rounded-full glass flex items-center justify-center text-base shrink-0">
+                  {TX_ICONS[tx.type] ?? "◆"}
                 </div>
-              ))}
 
-              {filtered.length === 0 && (
-                <div style={{ padding: "40px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
-                  NO TRANSACTIONS FOUND
+                {/* Details */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{tx.desc}</div>
+                  <div className="text-xs text-muted-foreground truncate">{tx.date} · {tx.id.slice(0, 12)}…</div>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
 
-        {/* Summary stats */}
-        {filtered.length > 0 && (
-          <div style={{ marginTop: "16px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-            {[
-              { label: "TOTAL TXS",   value: String(filtered.length),                                      cls: "" },
-              { label: "TOTAL IN",    value: `+$${filtered.filter((t) => Number(t.amount) > 0 && t.currency === "USDC").reduce((s, t) => s + Number(t.amount), 0).toFixed(2)}`, cls: "usdc" },
-              { label: "TOTAL OUT",   value: `-$${Math.abs(filtered.filter((t) => Number(t.amount) < 0 && t.currency === "USDC").reduce((s, t) => s + Number(t.amount), 0)).toFixed(2)}`, cls: "fire" },
-            ].map((s) => (
-              <div key={s.label} style={{
-                background: "var(--panel)",
-                border: "1px solid var(--border)",
-                padding: "10px 16px",
-              }}>
-                <div className="stat-label">{s.label}</div>
-                <div className={`stat-value ${s.cls}`} style={{ fontSize: "22px" }}>{s.value}</div>
+                {/* Status + type badge */}
+                <div className="text-right shrink-0 hidden sm:block">
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">
+                    {tx.type.replace("_", " ")}
+                  </div>
+                  {statusBadge(tx.status)}
+                </div>
+
+                {/* Amount */}
+                <div className={`font-mono text-sm font-semibold text-right shrink-0 ${amountColor(tx)}`}>
+                  {tx.amount > 0 ? "+" : ""}{fmtNum(tx.amount, 2)} {tx.currency}
+                </div>
               </div>
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </GlassCard>
+    </AppShell>
   );
 }
