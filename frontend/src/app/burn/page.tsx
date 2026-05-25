@@ -1,637 +1,234 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
-import styles from "./burn.module.css";
-import CoinBurn3D from "@/components/effects/CoinBurn3D";
+import { useState } from "react";
+import Link from "next/link";
+import { Flame, Zap, Star, Users, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/ashnance/AppShell";
+import {
+  GlassCard, SectionHeader, FireButton,
+  RankBadge,
+} from "@/components/ashnance/primitives";
+import { RoundProgressRing } from "@/components/ashnance/RoundProgressRing";
+import { useAuth } from "@/hooks/useAuth";
+import { mockRound, mockBurnConfig, calcWeight, calcAsh } from "@/lib/mock";
+import { fmtUsd, fmtNum, fmtAsh, countdown } from "@/lib/format";
+import { api } from "@/lib/apiClient";
 
-// ---- Types ----
-type BurnPhase = "idle" | "burning" | "result";
-
-interface BurnResult {
-  ashEarned: number;
-  finalWeight: number;
-  userCumulativeWeight: number;
-  userRoundRank: number | null;
-  roundCurrentPool: number;
-  roundTargetPool: number;
-  roundProgressPercent: number;
-  roundEnded: boolean;
-  roundWinner: string | null;
-  roundPrize: number | null;
-  roundNumber: number | null;
-}
-
-interface UserStats {
-  totalBurns: number;
-  cumulativeWeight: number;
-  ashBalance: number;
-  totalAshEarned: number;
-  usdcBalance: number;
-}
-
-interface RoundStatus {
-  roundNumber: number;
-  currentPool: number;
-  prizePoolTarget: number;
-  progressPercent: number;
-  status: string;
-  startedAt: string;
-}
-
-// ---- Presets ----
-const PRESETS = [
-  { label: "5 USDC",  amount: 5,  sub: "1.0x WEIGHT" },
-  { label: "10 USDC", amount: 10, sub: "2.0x WEIGHT" },
-  { label: "25 USDC", amount: 25, sub: "5.0x WEIGHT" },
-  { label: "CUSTOM",  amount: 0,  sub: "YOU CHOOSE" },
-];
-
-const BURN_MSGS = [
-  "FEEDING THE FLAMES...",
-  "CLIMBING THE LEADERBOARD...",
-  "ACCUMULATING WEIGHT...",
-  "THE FIRE GROWS...",
-];
-
-function calcWeight(amount: number): number {
-  if (amount <= 0) return 0;
-  return Math.round((amount / 4.99) * 100) / 100;
-}
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const PRESETS = [5, 10, 25, 50, 100, 250];
 
 export default function BurnPage() {
-  const [presetIdx, setPresetIdx] = useState(0);
-  const [customAmt, setCustomAmt] = useState("");
-  const [phase, setPhase] = useState<BurnPhase>("idle");
-  const [result, setResult] = useState<BurnResult | null>(null);
-  const [burnMsg, setBurnMsg] = useState("");
-  const [stats, setStats] = useState<UserStats | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [round, setRound] = useState<RoundStatus | null>(null);
-  const [userRoundRank, setUserRoundRank] = useState<number | null>(null);
-  const [userRoundWeight, setUserRoundWeight] = useState<number>(0);
-  // Boost timer state
-  const [boostActive, setBoostActive] = useState(false);
-  const [boostSecsLeft, setBoostSecsLeft] = useState(0);
-  const [boostLoading, setBoostLoading] = useState(false);
+  const { user } = useAuth();
+  const [amount, setAmount] = useState(25);
+  const [custom, setCustom] = useState("");
+  const [useCustom, setUseCustom] = useState(false);
+  const [burning, setBurning] = useState(false);
 
-  // Load user stats + round status on mount
-  const loadStats = useCallback(async () => {
-    try {
-      setStatsLoading(true);
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      if (token) api.setToken(token);
+  const effective = useCustom ? (parseFloat(custom) || 0) : amount;
+  const isVip = user.vip === "HOLY_FIRE";
+  const hasBoost = !!user.ashBoostExpiresAt && new Date(user.ashBoostExpiresAt) > new Date();
+  const activeReferrals = 3;
 
-      const authHeaders: Record<string, string> = token
-        ? { Authorization: `Bearer ${token}` }
-        : {};
+  const w = calcWeight(effective, { vip: isVip, boost: hasBoost, activeReferrals });
+  const ash = calcAsh(effective, isVip);
 
-      const [walletRes, burnStatsRes, boostRes, roundRes] = await Promise.allSettled([
-        api.wallet.balance(),
-        api.burn.stats(),
-        fetch(`${API_BASE}/api/burn/boost-status`, { headers: authHeaders }).then(r => r.json()),
-        fetch(`${API_BASE}/api/round/current`, { headers: authHeaders }).then(r => r.json()),
-      ]);
+  const poolReward = effective * mockBurnConfig.reward_pool_split;
+  const poolProfit = effective * mockBurnConfig.profit_pool_split;
+  const poolReferral = effective * mockBurnConfig.referral_pool_split;
 
-      let merged: Partial<UserStats> = {};
-
-      if (walletRes.status === "fulfilled") {
-        const d =
-          (walletRes.value as { data?: UserStats }).data ??
-          (walletRes.value as UserStats);
-        merged = {
-          ...merged,
-          usdcBalance: Number(d.usdcBalance ?? 0),
-          ashBalance:  Number(d.ashBalance  ?? 0),
-        };
-      }
-      if (burnStatsRes.status === "fulfilled") {
-        const d = (burnStatsRes.value as { data?: { totalBurns?: number; totalAshEarned?: number; cumulativeWeight?: number } }).data ??
-          (burnStatsRes.value as { totalBurns?: number; totalAshEarned?: number; cumulativeWeight?: number });
-        merged = {
-          ...merged,
-          totalBurns:       Number(d?.totalBurns       ?? merged.totalBurns       ?? 0),
-          totalAshEarned:   Number(d?.totalAshEarned   ?? 0),
-          cumulativeWeight: Number(d?.cumulativeWeight ?? 0),
-        };
-      }
-      if (boostRes.status === "fulfilled") {
-        const bd = (boostRes.value as { data?: { active?: boolean; secondsLeft?: number } }).data ?? boostRes.value as { active?: boolean; secondsLeft?: number };
-        setBoostActive(!!bd?.active);
-        setBoostSecsLeft(Number(bd?.secondsLeft ?? 0));
-      }
-      if (roundRes.status === "fulfilled") {
-        const rd = (roundRes.value as { data?: { round?: RoundStatus | null; userRank?: number | null; userWeight?: number } }).data ?? (roundRes.value as { round?: RoundStatus | null; userRank?: number | null; userWeight?: number });
-        setRound(rd?.round ?? null);
-        setUserRoundRank(rd?.userRank ?? null);
-        setUserRoundWeight(Number(rd?.userWeight ?? 0));
-      }
-
-      setStats(merged as UserStats);
-    } catch {
-      // stats are cosmetic — ignore errors
-    } finally {
-      setStatsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStats();
-  }, [loadStats]);
-
-  // Countdown timer for active boost — only restart when boostActive changes
-  useEffect(() => {
-    if (!boostActive) return;
-    const tick = setInterval(() => {
-      setBoostSecsLeft(s => {
-        if (s <= 1) { setBoostActive(false); return 0; }
-        return s - 1;
-      });
-    }, 1000);
-    return () => clearInterval(tick);
-  }, [boostActive]);
-
-  // Derived state
-  const isCustom     = presetIdx === 3;
-  const amount       = isCustom ? parseFloat(customAmt) || 0 : PRESETS[presetIdx].amount;
-  const weight       = calcWeight(amount);
-  const fillPct      = Math.min(100, (weight / 6) * 100);
-  const usdcBalance  = stats?.usdcBalance ?? 0;
-  const ashBalance   = stats?.ashBalance  ?? 0;
-  const BOOST_COST   = 1000;
-  const canBurn      = amount >= 5.0 && phase === "idle" && !statsLoading && usdcBalance >= amount;
-
-  // Round progress bar fill
-  const roundProgress = round
-    ? Math.min(100, (round.currentPool / round.prizePoolTarget) * 100)
-    : 0;
+  const canBurn =
+    effective >= mockBurnConfig.min_burn_amount &&
+    effective <= mockBurnConfig.max_burn_amount &&
+    effective <= user.usdcBalance &&
+    mockRound.status === "ACTIVE";
 
   async function handleBurn() {
     if (!canBurn) return;
-    setError(null);
-    setPhase("burning");
-    setBurnMsg(BURN_MSGS[Math.floor(Math.random() * BURN_MSGS.length)]);
-
+    setBurning(true);
     try {
-      const token =
-        typeof window !== "undefined"
-          ? localStorage.getItem("accessToken")
-          : null;
-      if (token) api.setToken(token);
-
-      const res = (await api.burn.execute(amount)) as any;
-      const raw = res?.data ?? res;
-
-      const data: BurnResult = {
-        ashEarned:            Number(raw.ashReward   ?? raw.ashEarned   ?? 0),
-        finalWeight:          Number(raw.finalWeight ?? 0),
-        userCumulativeWeight: Number(raw.userCumulativeWeight ?? 0),
-        userRoundRank:        raw.userRoundRank ?? null,
-        roundCurrentPool:     Number(raw.roundCurrentPool   ?? 0),
-        roundTargetPool:      Number(raw.roundTargetPool    ?? 0),
-        roundProgressPercent: Number(raw.roundProgressPercent ?? 0),
-        roundEnded:   !!raw.roundEnded,
-        roundWinner:  raw.roundWinner  ?? null,
-        roundPrize:   raw.roundPrize != null ? Number(raw.roundPrize) : null,
-        roundNumber:  raw.roundNumber  ?? null,
-      };
-
-      setResult(data);
-
-      // Update round display from burn result
-      if (raw.roundId) {
-        setRound(prev => prev ? {
-          ...prev,
-          currentPool:    data.roundCurrentPool,
-          progressPercent: data.roundProgressPercent,
-        } : prev);
-        setUserRoundRank(data.userRoundRank);
-        setUserRoundWeight(data.userCumulativeWeight);
-      }
-
-      if (data.roundEnded && data.roundWinner) {
-        speak(
-          `Round ${data.roundNumber} complete! ${data.roundWinner} wins $${data.roundPrize?.toFixed(2)} U S D C!`
-        );
-      } else {
-        speak(
-          `Burn complete! Earned ${data.ashEarned} A S H tokens. Weight now ${data.userCumulativeWeight.toFixed(2)}.`
-        );
-      }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Burn failed. Please try again.";
-      setError(msg.toUpperCase());
-      setPhase("idle");
-      return;
+      await api.burn(effective);
+      toast.success(`Burned ${fmtUsd(effective)} — +${w.final.toFixed(2)} weight, +${fmtAsh(ash)}`);
+    } catch {
+      toast.error("Burn failed. Try again.");
     }
-    setPhase("result");
-    await loadStats();
-  }
-
-  function speak(text: string) {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.9;
-    utt.pitch = 0.8;
-    utt.volume = 0.9;
-    window.speechSynthesis.speak(utt);
-  }
-
-  function resetBurn() {
-    if (typeof window !== "undefined") window.speechSynthesis?.cancel();
-    setPhase("idle");
-    setResult(null);
-    setError(null);
+    setBurning(false);
   }
 
   return (
-    <>
-      {/* ===== DASH HEADER ===== */}
-      <div className="dash-header">
-        <div className="dash-title">
-          BURN <span>NOW</span>
-        </div>
-        <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px" }}>
-          BALANCE:{" "}
-          {statsLoading ? (
-            <span style={{ color: "var(--text-dim)" }}>LOADING...</span>
-          ) : (
-            <span style={{ color: "var(--usdc-green)" }}>
-              ${Number(stats?.usdcBalance ?? 0).toFixed(2)} USDC
-            </span>
-          )}
-        </div>
-      </div>
+    <AppShell>
+      <SectionHeader eyebrow="Compete" title="Burn USDC" sub="Burn USDC to earn weight, climb the leaderboard, and win the prize pool." />
 
-      {error && <div className={styles.loadErr}>⚠ {error}</div>}
+      <div className="grid lg:grid-cols-[1fr_340px] gap-6">
+        {/* Left column */}
+        <div className="space-y-5">
 
-      {/* ===== ROUND PROGRESS PANEL ===== */}
-      <div className="panel-box" style={{ marginBottom: "16px" }}>
-        <div className="panel-title">
-          🏆 ROUND{round ? ` #${round.roundNumber}` : ""} — PRIZE POOL
-        </div>
-        {!round ? (
-          <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px", padding: "8px 0" }}>
-            NO ACTIVE ROUND — WAITING FOR OWNER TO START ONE
-          </div>
-        ) : (
-          <>
-            {/* Progress Bar */}
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginBottom: "6px" }}>
-              <span>CURRENT: <span style={{ color: "var(--usdc-green)" }}>${round.currentPool.toFixed(2)}</span></span>
-              <span>TARGET: <span style={{ color: "var(--fire-orange)" }}>${round.prizePoolTarget.toFixed(2)}</span></span>
-            </div>
-            <div style={{
-              height: "12px", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,140,66,0.2)",
-              position: "relative", overflow: "hidden",
-            }}>
-              <div style={{
-                height: "100%", width: `${roundProgress}%`,
-                background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
-                boxShadow: "0 0 12px rgba(255,140,66,0.5)",
-                transition: "width 0.4s ease",
-              }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", flexWrap: "wrap", gap: "8px" }}>
-              <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>
-                {roundProgress.toFixed(1)}% TO PRIZE
-              </div>
-              <div style={{ display: "flex", gap: "16px", fontSize: "10px", letterSpacing: "1px" }}>
-                {userRoundRank != null ? (
-                  <span style={{ color: userRoundRank === 1 ? "var(--gold)" : "var(--fire-orange)" }}>
-                    YOUR RANK: <strong>#{userRoundRank}</strong>
-                  </span>
-                ) : (
-                  <span style={{ color: "var(--text-dim)" }}>BURN TO JOIN ROUND</span>
-                )}
-                {userRoundWeight > 0 && (
-                  <span style={{ color: "var(--text-dim)" }}>
-                    WEIGHT: <span style={{ color: "var(--fire-orange)" }}>{userRoundWeight.toFixed(2)}</span>
-                  </span>
-                )}
-              </div>
-            </div>
-            <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "1px", marginTop: "8px" }}>
-              WINNER = #1 ON LEADERBOARD WHEN POOL HITS TARGET
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className={styles.burnLayout}>
-        {/* ===== LEFT — MAIN BURN AREA ===== */}
-        <div>
-          {/* Amount Selection */}
-          <div className="panel-box">
-            <div className="panel-title">SELECT AMOUNT</div>
-
-            <div className={styles.amountGrid}>
-              {PRESETS.map((p, i) => (
-                <button
-                  key={i}
-                  className={`${styles.amountBtn}${presetIdx === i ? " " + styles.selected + " " + styles.selectedFireBorder : ""}`}
-                  onClick={() => {
-                    setPresetIdx(i);
-                    if (i !== 3) setCustomAmt("");
-                  }}
+          {/* Amount selector */}
+          <GlassCard>
+            <div className="text-sm font-medium mb-3">Select amount</div>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+              {PRESETS.map((p) => (
+                <button key={p}
+                  onClick={() => { setAmount(p); setUseCustom(false); }}
+                  className={`h-10 rounded-md text-sm font-semibold transition border ${
+                    !useCustom && amount === p
+                      ? "bg-fire text-background border-fire glow-fire"
+                      : "border-border glass hover:border-primary/40"
+                  }`}
                 >
-                  <span className={styles.amountBig}>{p.label}</span>
-                  <span className={styles.amountSub}>{p.sub}</span>
+                  ${p}
                 </button>
               ))}
             </div>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                placeholder="Custom amount"
+                value={custom}
+                onChange={(e) => { setCustom(e.target.value); setUseCustom(true); }}
+                onFocus={() => setUseCustom(true)}
+                className="flex-1 h-10 px-3 rounded-md bg-muted border border-border text-sm"
+                min={mockBurnConfig.min_burn_amount}
+                max={mockBurnConfig.max_burn_amount}
+              />
+              <span className="h-10 flex items-center px-3 text-sm text-muted-foreground">USDC</span>
+            </div>
+            <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+              <span>Min: {fmtUsd(mockBurnConfig.min_burn_amount)} · Max: {fmtUsd(mockBurnConfig.max_burn_amount)}</span>
+              <span>Balance: <span className="font-mono text-foreground">{fmtUsd(user.usdcBalance)}</span></span>
+            </div>
+          </GlassCard>
 
-            {/* Custom input */}
-            {isCustom && (
-              <div className={styles.customRow}>
-                <label>AMOUNT</label>
-                <input
-                  type="number"
-                  min="5.00"
-                  step="0.01"
-                  placeholder="0.00"
-                  className={styles.customInput}
-                  value={customAmt}
-                  onChange={(e) => setCustomAmt(e.target.value)}
-                  autoFocus
-                />
-                <span className={styles.customUnit}>USDC</span>
+          {/* Weight breakdown */}
+          <GlassCard>
+            <div className="text-sm font-medium mb-4">Weight preview</div>
+            <div className="space-y-2">
+              <WeightRow label="Base weight" value={w.base} icon={<Flame className="h-3.5 w-3.5 text-fire" />} />
+              <WeightRow label="VIP bonus (+0.5)" value={w.vipBonus} icon={<Star className="h-3.5 w-3.5 text-gold" />}
+                muted={!isVip} mutedMsg="Unlock Holy Fire VIP" />
+              <WeightRow label="Boost bonus (+0.5)" value={w.boostBonus} icon={<Zap className="h-3.5 w-3.5 text-ash" />}
+                muted={!hasBoost} mutedMsg="Activate boost · 1k ASH" />
+              <WeightRow label="Referral bonus" value={w.referralBonus} icon={<Users className="h-3.5 w-3.5 text-muted-foreground" />}
+                muted={w.referralBonus === 0} mutedMsg="Invite friends to earn bonus" />
+              <div className="border-t border-border pt-2 mt-2 flex justify-between items-center">
+                <span className="text-sm font-semibold">Final weight</span>
+                <span className="font-mono text-xl font-bold text-fire">{w.final.toFixed(2)}</span>
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* Pool split */}
+          <GlassCard>
+            <div className="text-sm font-medium mb-3">Pool split</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="glass rounded-lg p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Reward Pool</div>
+                <div className="font-mono text-lg font-bold text-fire mt-1">{fmtUsd(poolReward)}</div>
+                <div className="text-xs text-muted-foreground">40%</div>
+              </div>
+              <div className="glass rounded-lg p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit Pool</div>
+                <div className="font-mono text-lg font-bold text-[oklch(0.7_0.13_245)] mt-1">{fmtUsd(poolProfit)}</div>
+                <div className="text-xs text-muted-foreground">40%</div>
+              </div>
+              <div className="glass rounded-lg p-3 text-center">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Referral Pool</div>
+                <div className="font-mono text-lg font-bold text-ash mt-1">{fmtUsd(poolReferral)}</div>
+                <div className="text-xs text-muted-foreground">20%</div>
+              </div>
+            </div>
+          </GlassCard>
+
+          {/* ASH reward */}
+          <GlassCard>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium">ASH reward</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {isVip ? "+20% VIP multiplier applied" : "Upgrade to VIP for +20%"}
+                </div>
+              </div>
+              <div className="font-mono text-2xl font-bold text-ash">+{fmtNum(ash)}</div>
+            </div>
+          </GlassCard>
+
+          {/* Burn button */}
+          <div className="space-y-2">
+            {mockRound.status !== "ACTIVE" && (
+              <div className="glass rounded-lg px-4 py-3 text-sm text-warning border border-warning/30">
+                No active round — burns are currently paused.
               </div>
             )}
-
-            {/* Weight Meter */}
-            <div className={styles.luckSection}>
-              <div className={styles.luckLabel}>
-                ⚡ WEIGHT ACCUMULATION
+            {effective > user.usdcBalance && (
+              <div className="glass rounded-lg px-4 py-3 text-sm text-danger border border-danger/30">
+                Insufficient USDC balance.
               </div>
-              <div className={styles.luckBar}>
-                <div
-                  className={styles.luckFill}
-                  style={{ width: `${fillPct}%` }}
-                />
-                {/* Flame marker at current fill position */}
-                {fillPct > 0 && (
-                  <span
-                    className={styles.luckFlame}
-                    style={{ left: `${fillPct}%` }}
-                  >
-                    🔥
-                  </span>
-                )}
-              </div>
-              <div className={styles.luckMeta}>
-                <span style={{ color: "var(--fire-orange)" }}>
-                  +{weight.toFixed(2)} WEIGHT THIS BURN
-                </span>
-                {" → "}
-                <span>
-                  TOTAL: {((stats?.cumulativeWeight ?? 0) + weight).toFixed(2)}
-                </span>
-              </div>
-            </div>
-
-            {/* 3D Coin Burn Button */}
-            <div className={styles.burnBtnWrap}>
-              {/* Radial fire glow behind coin */}
-              <div className={styles.coinGlowBg} />
-              <CoinBurn3D
-                currency="USDC"
-                amount={amount >= 5.0 && !statsLoading ? amount : undefined}
-                size={200}
-                phase={
-                  phase === "burning"
-                    ? "burning"
-                    : phase === "result"
-                    ? "done"
-                    : "idle"
-                }
-                onClick={handleBurn}
-                disabled={!canBurn}
-              />
-              {!statsLoading && amount >= 5.0 && usdcBalance < amount && phase === "idle" && (
-                <div style={{ fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
-                  INSUFFICIENT BALANCE — YOU HAVE ${usdcBalance.toFixed(2)} USDC
-                </div>
-              )}
-              {!statsLoading && !canBurn && amount < 5.0 && phase === "idle" && (
-                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", textAlign: "center", marginTop: "8px" }}>
-                  SELECT AN AMOUNT TO BURN
-                </div>
-              )}
-            </div>
-
-            <div className={styles.disclaimer}>
-              MIN BURN: $5.00 USDC &nbsp;•&nbsp; WINNER = #1 WHEN POOL HITS TARGET
+            )}
+            <FireButton size="xl" className="w-full" onClick={handleBurn} disabled={!canBurn || burning}>
+              <Flame className="h-5 w-5" />
+              {burning ? "Burning…" : `BURN ${effective > 0 ? fmtUsd(effective) : "—"}`}
+            </FireButton>
+            <div className="text-center text-xs text-muted-foreground">
+              Anti-snipe: {mockBurnConfig.anti_snipe_seconds}s cooldown applies in the last 60s of a round
             </div>
           </div>
         </div>
 
-        {/* ===== RIGHT — SIDE STATS ===== */}
-        <div className={styles.sidePanel}>
-          <div className="panel-box">
-            <div className="panel-title">YOUR STATS</div>
-            {statsLoading ? (
-              <div style={{ color: "var(--text-dim)", fontSize: "10px", letterSpacing: "2px" }}>
-                LOADING...
-              </div>
-            ) : (
-              <>
-                <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>TOTAL BURNS</span>
-                  <span className={`${styles.sideStatVal} ${styles.sideStatFire}`}>
-                    {stats?.totalBurns ?? 0}
-                  </span>
-                </div>
-                <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>TOTAL WEIGHT</span>
-                  <span className={`${styles.sideStatVal} ${styles.sideStatGold}`}>
-                    {Number(stats?.cumulativeWeight ?? 0).toFixed(2)}
-                  </span>
-                </div>
-                <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>TOTAL ASH EARNED</span>
-                  <span className={`${styles.sideStatVal} ${styles.sideStatAsh}`}>
-                    {(stats?.totalAshEarned ?? 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className={styles.sideStat}>
-                  <span className={styles.sideStatLabel}>ASH BALANCE</span>
-                  <span
-                    className={`${styles.sideStatVal} ${styles.sideStatAsh}`}
-                    style={{ color: ashBalance >= BOOST_COST ? undefined : "#ff6b6b" }}
-                  >
-                    {ashBalance.toLocaleString()}
-                  </span>
-                </div>
-              </>
+        {/* Right column */}
+        <div className="space-y-5">
+          <GlassCard className="text-center">
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Round #{mockRound.number}</div>
+            <RoundProgressRing size={160} />
+            <div className="mt-3 font-mono text-2xl font-bold text-fire">{fmtUsd(mockRound.prizePool)}</div>
+            <div className="text-xs text-muted-foreground">of {fmtUsd(mockRound.prizePoolTarget)} prize pool</div>
+            {mockRound.endsAt && (
+              <div className="mt-2 text-xs text-muted-foreground">Ends in <span className="font-mono text-foreground">{countdown(mockRound.endsAt)}</span></div>
             )}
-          </div>
+          </GlassCard>
 
-          {/* ASH Boost */}
-          <div className={styles.ashBoostPanel}>
-            <div className={styles.ashBoostTitle}>🔥 BOOST WITH ASH</div>
-            <div className={styles.ashBoostDesc}>
-              PAY 1,000 ASH TO ACTIVATE +0.5 WEIGHT FOR 1 FULL HOUR — APPLIES
-              TO EVERY BURN YOU DO WHILE ACTIVE.
+          <GlassCard>
+            <div className="text-sm font-semibold mb-3">Current Standings</div>
+            <div className="space-y-1.5">
+              {mockRound.leaderboard.slice(0, 8).map((r) => (
+                <div key={r.userId}
+                  className={`flex items-center gap-2 px-2.5 py-2 rounded-md text-sm ${r.isYou ? "bg-[rgba(255,69,0,0.12)] border border-primary/40" : "glass"}`}>
+                  <RankBadge rank={r.rank} />
+                  <span className="flex-1 truncate">{r.isAnonymous ? "Anonymous" : r.username}{r.isYou && " (you)"}</span>
+                  <span className="font-mono text-xs">{r.weight.toFixed(2)}</span>
+                </div>
+              ))}
             </div>
+          </GlassCard>
 
-            {boostActive ? (
-              <div style={{ marginTop: "12px" }}>
-                <div style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  background: "rgba(255,140,66,0.12)", border: "1px solid var(--fire-orange)",
-                  padding: "10px 14px",
-                }}>
-                  <span style={{ color: "var(--fire-orange)", fontSize: "16px" }}>⚡</span>
-                  <div>
-                    <div style={{ fontSize: "11px", letterSpacing: "1px", color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>
-                      BOOST ACTIVE +0.5 WEIGHT
-                    </div>
-                    <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginTop: "2px" }}>
-                      {Math.floor(boostSecsLeft / 60)}m {boostSecsLeft % 60}s REMAINING
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ marginTop: "12px" }}>
-                <button
-                  onClick={async () => {
-                    if (boostLoading || statsLoading) return;
-                    if (ashBalance < BOOST_COST) return;
-                    setBoostLoading(true);
-                    try {
-                      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-                      const res = await fetch(`${API_BASE}/api/burn/boost`, {
-                        method: "POST",
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                      });
-                      const data = await res.json();
-                      if (res.ok && data.data) {
-                        setBoostActive(true);
-                        setBoostSecsLeft(3600);
-                        await loadStats();
-                      }
-                    } catch {
-                      // ignore
-                    } finally {
-                      setBoostLoading(false);
-                    }
-                  }}
-                  disabled={statsLoading || boostLoading || ashBalance < BOOST_COST}
-                  style={{
-                    width: "100%", padding: "10px", background: "rgba(255,140,66,0.1)",
-                    border: "1px solid rgba(255,140,66,0.4)", color: ashBalance >= BOOST_COST ? "var(--fire-orange)" : "#666",
-                    fontSize: "10px", letterSpacing: "2px", cursor: ashBalance >= BOOST_COST ? "pointer" : "not-allowed",
-                    fontFamily: "var(--font-display)",
-                  }}
-                >
-                  {boostLoading ? "ACTIVATING..." : "⚡ ACTIVATE BOOST (1,000 ASH / 1 HR)"}
-                </button>
-                {!statsLoading && ashBalance < BOOST_COST && (
-                  <div style={{ fontSize: "9px", color: "#ff6b6b", letterSpacing: "1px", marginTop: "8px" }}>
-                    ⚠ NEED {(BOOST_COST - ashBalance).toLocaleString()} MORE ASH
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {!isVip && (
+            <GlassCard className="border border-gold/30">
+              <div className="text-xs uppercase tracking-wider text-gold mb-2">Holy Fire VIP</div>
+              <p className="text-sm text-muted-foreground">+0.5 weight per burn · +20% ASH · VIP badge</p>
+              <Link href="/subscribe" className="mt-3 flex items-center gap-1 text-xs text-gold hover:underline">
+                Unlock VIP <ChevronRight className="h-3 w-3" />
+              </Link>
+            </GlassCard>
+          )}
         </div>
       </div>
+    </AppShell>
+  );
+}
 
-      {/* ===== BURNING OVERLAY ===== */}
-      {phase === "burning" && (
-        <div className={styles.burningOverlay}>
-          <div className={styles.burningEmoji}>🔥</div>
-          <div className={styles.burningText}>{burnMsg}</div>
-          <div className={styles.burningSub}>
-            UPDATING LEADERBOARD...
-          </div>
-        </div>
+function WeightRow({ label, value, icon, muted, mutedMsg }: {
+  label: string; value: number; icon: React.ReactNode;
+  muted?: boolean; mutedMsg?: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      {icon}
+      <span className="flex-1 text-sm text-muted-foreground">{label}</span>
+      {muted ? (
+        <span className="text-xs text-muted-foreground italic">{mutedMsg}</span>
+      ) : (
+        <span className={`font-mono text-sm ${value > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+          +{value.toFixed(2)}
+        </span>
       )}
-
-      {/* ===== RESULT OVERLAY ===== */}
-      {phase === "result" && result && (
-        <div className={styles.resultOverlay}>
-          {/* CSS particle burst decorations */}
-          <div className={styles.resultBurst} aria-hidden="true">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className={styles.burstParticle} style={{ "--burst-i": i } as React.CSSProperties} />
-            ))}
-          </div>
-          <div className={styles.resultCard}>
-            {result.roundEnded ? (
-              <>
-                <div className={styles.resultEmoji}>🏆</div>
-                <div className={`${styles.resultTitle} ${styles.resultTitleWin}`}>
-                  ROUND {result.roundNumber} ENDED!
-                </div>
-                <div style={{ textAlign: "center", marginBottom: "12px" }}>
-                  <div style={{ fontSize: "14px", color: "var(--gold)", letterSpacing: "2px", fontFamily: "var(--font-display)", marginBottom: "4px" }}>
-                    WINNER: {result.roundWinner}
-                  </div>
-                  <div className={`${styles.resultAmt} ${styles.resultAmtWin}`}>
-                    ${result.roundPrize?.toFixed(2)} USDC
-                  </div>
-                </div>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", textAlign: "center", marginBottom: "16px" }}>
-                  A NEW ROUND WILL BEGIN SOON
-                </div>
-              </>
-            ) : (
-              <>
-                <div className={styles.resultEmoji}>🔥</div>
-                <div className={`${styles.resultTitle} ${styles.resultTitleLose}`}>
-                  BURNED
-                </div>
-                <div className={`${styles.resultAmt} ${styles.resultAmtAsh}`}>
-                  +{result.ashEarned} ASH
-                </div>
-                <div style={{ display: "flex", gap: "16px", justifyContent: "center", fontSize: "10px", letterSpacing: "1px", marginBottom: "12px", flexWrap: "wrap" }}>
-                  <span style={{ color: "var(--fire-orange)" }}>
-                    +{result.finalWeight.toFixed(2)} WEIGHT
-                  </span>
-                  {result.userRoundRank != null && (
-                    <span style={{ color: result.userRoundRank === 1 ? "var(--gold)" : "var(--text-dim)" }}>
-                      RANK #{result.userRoundRank}
-                    </span>
-                  )}
-                </div>
-                {/* Mini progress bar in result */}
-                <div style={{ width: "100%", marginBottom: "16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "9px", color: "var(--text-dim)", marginBottom: "4px" }}>
-                    <span>POOL: ${result.roundCurrentPool.toFixed(2)}</span>
-                    <span>TARGET: ${result.roundTargetPool.toFixed(2)}</span>
-                  </div>
-                  <div style={{ height: "8px", background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-                    <div style={{
-                      height: "100%", width: `${result.roundProgressPercent}%`,
-                      background: "linear-gradient(90deg, #ff4500, var(--fire-orange))",
-                      transition: "width 0.4s ease",
-                    }} />
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className={styles.resultActions}>
-              <button className="btn btn-fire" onClick={resetBurn}>
-                🔥 BURN AGAIN
-              </button>
-              <button className="btn btn-ghost" onClick={resetBurn}>
-                CLOSE
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }

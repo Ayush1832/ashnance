@@ -1,639 +1,340 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
+import { Shield, Key, User, Coins, Eye, EyeOff, Check, Copy } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/ashnance/AppShell";
+import { GlassCard, SectionHeader, FireButton, GhostButton } from "@/components/ashnance/primitives";
+import { useAuth } from "@/hooks/useAuth";
+import { fmtNum } from "@/lib/format";
+import { api } from "@/lib/apiClient";
+import { cn } from "@/lib/utils";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+type Tab = "profile" | "security" | "2fa" | "ash";
 
-const navItems = [
-  { icon: "📊", label: "DASHBOARD",   href: "/dashboard" },
-  { icon: "🔥", label: "BURN NOW",    href: "/burn" },
-  { icon: "💰", label: "WALLET",      href: "/wallet" },
-  { icon: "👥", label: "REFERRALS",   href: "/referrals" },
-  { icon: "👑", label: "VIP",         href: "/subscribe" },
-  { icon: "📋", label: "HISTORY",     href: "/transactions" },
-  { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
-  { icon: "💎", label: "STAKING",     href: "/staking" },
-  { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
-];
-
-type SettingsTab = "profile" | "security" | "notifications" | "addresses";
-
-const TABS: { key: SettingsTab; label: string }[] = [
-  { key: "profile",       label: "PROFILE" },
-  { key: "security",      label: "SECURITY" },
-  { key: "notifications", label: "NOTIFICATIONS" },
-  { key: "addresses",     label: "ADDRESSES" },
+const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "profile",  label: "Profile",   icon: <User className="h-4 w-4" /> },
+  { key: "security", label: "Security",  icon: <Shield className="h-4 w-4" /> },
+  { key: "2fa",      label: "2FA",       icon: <Key className="h-4 w-4" /> },
+  { key: "ash",      label: "ASH Claim", icon: <Coins className="h-4 w-4" /> },
 ];
 
 export default function SettingsPage() {
-  const pathname = usePathname();
-  const router   = useRouter();
+  const [tab, setTab] = useState<Tab>("profile");
+  return (
+    <AppShell>
+      <SectionHeader eyebrow="Account" title="Settings" sub="Manage your profile, security, and ASH claims." />
+      <div className="flex gap-2 mb-6 overflow-x-auto">
+        {TABS.map((t) => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={cn(
+              "flex items-center gap-2 h-9 px-4 rounded-md text-sm border transition whitespace-nowrap",
+              tab === t.key
+                ? "bg-fire text-background border-fire font-semibold"
+                : "border-border glass text-muted-foreground hover:text-foreground",
+            )}>
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "profile"  && <ProfileTab />}
+      {tab === "security" && <SecurityTab />}
+      {tab === "2fa"      && <TwoFaTab />}
+      {tab === "ash"      && <AshClaimTab />}
+    </AppShell>
+  );
+}
 
-  const [activeTab, setActiveTab]       = useState<SettingsTab>("profile");
-  const [username, setUsername]         = useState("");
-  const [email, setEmail]               = useState("");
-  const [privacyMode, setPrivacyMode]   = useState(false);
-  const [saveMsg, setSaveMsg]           = useState("");
+function ProfileTab() {
+  const { user } = useAuth();
+  const [username, setUsername] = useState(user.username);
+  const [privacy, setPrivacy] = useState(user.privacy);
+  const [loading, setLoading] = useState(false);
 
-  // Security
-  const [twoFaEnabled, setTwoFaEnabled] = useState(false);
-  const [showQR, setShowQR]             = useState(false);
-  const [qrSecret, setQrSecret]         = useState("");
-  const [showSecret, setShowSecret]     = useState(false);
-  const [totpCode, setTotpCode]         = useState("");
-  const [currentPass, setCurrentPass]   = useState("");
-  const [newPass, setNewPass]           = useState("");
-  const [confirmPass, setConfirmPass]   = useState("");
-  const [passMsg, setPassMsg]           = useState("");
-
-  // Notifications
-  const [emailNotifs, setEmailNotifs]       = useState(true);
-  const [burnNotifs, setBurnNotifs]         = useState(true);
-  const [referralNotifs, setReferralNotifs] = useState(true);
-  const [winNotifs, setWinNotifs]           = useState(true);
-
-  // Addresses
-  const [addrLabel, setAddrLabel] = useState("");
-  const [addrValue, setAddrValue] = useState("");
-  const [addrMsg, setAddrMsg]     = useState("");
-  const [addresses, setAddresses] = useState<{ id?: string; label: string; address: string; verified: boolean }[]>([]);
-
-  useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) { router.replace("/login"); return; }
-
-    Promise.all([
-      fetch(`${API}/api/auth/profile`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).catch(() => null),
-      fetch(`${API}/api/wallet/whitelist`, { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()).catch(() => null),
-    ]).then(([profileRes, whitelistRes]) => {
-      const data = profileRes?.data ?? profileRes;
-      if (data?.username)   setUsername(data.username);
-      if (data?.email)      setEmail(data.email);
-      if (data?.twoFaEnabled !== undefined) setTwoFaEnabled(data.twoFaEnabled);
-      const wl = whitelistRes?.data ?? (Array.isArray(whitelistRes) ? whitelistRes : []);
-      if (Array.isArray(wl)) {
-        setAddresses(wl.map((a: any) => ({ id: a.id, label: a.label ?? "Wallet", address: a.address, verified: a.isVerified ?? false })));
-      }
-    }).catch(() => {});
-  }, [router]);
-
-  function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
-    router.push("/");
-  }
-
-  async function handleSaveProfile() {
-    setSaveMsg("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
     try {
-      const res = await fetch(`${API}/api/auth/profile`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ username, privacyMode }),
-      });
-      setSaveMsg(res.ok ? "SAVED SUCCESSFULLY" : "SAVE FAILED");
-    } catch {
-      setSaveMsg("SAVED LOCALLY");
-    }
-    setTimeout(() => setSaveMsg(""), 3000);
+      await api.updateProfile({ username, privacy });
+      toast.success("Profile updated");
+    } catch { toast.error("Failed to save"); }
+    setLoading(false);
   }
-
-  async function handleEnable2FA() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    try {
-      const res = await fetch(`${API}/api/2fa/enable`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ token: totpCode }),
-      });
-      if (res.ok) {
-        setTwoFaEnabled(true);
-        setShowQR(false);
-        setTotpCode("");
-      }
-    } catch {
-      // UI mock: enable anyway for demo
-      setTwoFaEnabled(true);
-      setShowQR(false);
-    }
-  }
-
-  async function handleGenerate2FA() {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    try {
-      const res = await fetch(`${API}/api/2fa/generate`, { method: "POST", headers });
-      const data = await res.json();
-      if (data?.secret) setQrSecret(data.secret);
-    } catch {}
-    setShowQR(true);
-  }
-
-  async function handleChangePass() {
-    setPassMsg("");
-    if (newPass !== confirmPass) { setPassMsg("PASSWORDS DO NOT MATCH"); return; }
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    try {
-      const res = await fetch(`${API}/api/auth/password`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ currentPassword: currentPass, newPassword: newPass }),
-      });
-      setPassMsg(res.ok ? "PASSWORD UPDATED" : "UPDATE FAILED");
-    } catch {
-      setPassMsg("PASSWORD UPDATED");
-    }
-    setCurrentPass(""); setNewPass(""); setConfirmPass("");
-    setTimeout(() => setPassMsg(""), 3000);
-  }
-
-  async function handleAddAddress() {
-    setAddrMsg("");
-    if (!addrLabel || !addrValue) { setAddrMsg("FILL ALL FIELDS"); return; }
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) return;
-    try {
-      const res = await fetch(`${API}/api/wallet/whitelist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ address: addrValue, label: addrLabel }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setAddrMsg((data.error ?? data.message ?? "FAILED").toUpperCase()); return; }
-      const newAddr = data?.data ?? data;
-      setAddresses((prev) => [...prev, { id: newAddr.id, label: addrLabel, address: addrValue, verified: false }]);
-      setAddrLabel(""); setAddrValue("");
-      setAddrMsg("ADDRESS ADDED — PENDING VERIFICATION");
-    } catch {
-      setAddrMsg("FAILED TO ADD ADDRESS");
-    }
-    setTimeout(() => setAddrMsg(""), 4000);
-  }
-
-  const initial = username.charAt(0).toUpperCase();
 
   return (
-    <div className="dash-layout">
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
+    <GlassCard>
+      <form onSubmit={save} className="space-y-5 max-w-md">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Username</label>
+          <input value={username} onChange={(e) => setUsername(e.target.value)}
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm" />
         </div>
-        <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`nav-item${pathname.startsWith(item.href) ? " active" : ""}`}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="user-info">
-            <div className="user-avatar">🔥</div>
-            <div>
-              <div className="user-name">{username.toUpperCase()}</div>
-              <div className="user-status">STANDARD</div>
-            </div>
-          </div>
-          <button
-            className="nav-item"
-            onClick={handleLogout}
-            style={{ width: "100%", background: "none", border: "none", marginTop: "8px" }}
-          >
-            <span className="nav-icon">🚪</span>LOGOUT
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Email</label>
+          <input value={user.email} disabled
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm opacity-60 cursor-not-allowed" />
+        </div>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => setPrivacy(!privacy)}
+            className={cn("relative w-10 h-6 rounded-full transition-colors", privacy ? "bg-fire" : "bg-muted")}>
+            <span className={cn("absolute top-1 w-4 h-4 rounded-full bg-white transition-[left]", privacy ? "left-5" : "left-1")} />
           </button>
+          <div>
+            <div className="text-sm font-medium">Anonymous mode</div>
+            <div className="text-xs text-muted-foreground">Show as &quot;Anonymous&quot; on leaderboards</div>
+          </div>
         </div>
-      </aside>
+        <FireButton type="submit" disabled={loading}>{loading ? "Saving…" : "Save Profile"}</FireButton>
+      </form>
+    </GlassCard>
+  );
+}
 
-      {/* MAIN */}
-      <div className="dash-content">
-        <div className="dash-header">
-          <h1 className="dash-title">ACCOUNT <span>SETTINGS</span></h1>
-        </div>
+function SecurityTab() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-        {/* Tab bar */}
-        <div style={{ display: "flex", gap: "4px", marginBottom: "24px", borderBottom: "1px solid var(--border)", paddingBottom: "1px" }}>
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: "10px 18px",
-                background: "none",
-                border: "none",
-                borderBottom: activeTab === tab.key ? "2px solid var(--fire-orange)" : "2px solid transparent",
-                color: activeTab === tab.key ? "var(--fire-orange)" : "var(--text-dim)",
-                fontFamily: "var(--font-body)",
-                fontSize: "10px",
-                letterSpacing: "2px",
-                cursor: "pointer",
-                textTransform: "uppercase",
-                transition: "all 0.15s",
-                marginBottom: "-1px",
-              }}
-            >
-              {tab.label}
+  async function changePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (next !== confirm) { toast.error("Passwords don't match"); return; }
+    setLoading(true);
+    try {
+      await api.updatePassword({ currentPassword: current, newPassword: next });
+      toast.success("Password changed");
+      setCurrent(""); setNext(""); setConfirm("");
+    } catch { toast.error("Failed to change password"); }
+    setLoading(false);
+  }
+
+  return (
+    <GlassCard>
+      <div className="text-sm font-semibold mb-4">Change Password</div>
+      <form onSubmit={changePassword} className="space-y-4 max-w-md">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Current password</label>
+          <div className="relative">
+            <input type={show ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
+              className="w-full h-11 px-3 pr-10 rounded-md bg-muted border border-border text-sm" />
+            <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-3 text-muted-foreground">
+              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
+          </div>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">New password</label>
+          <input type={show ? "text" : "password"} value={next} onChange={(e) => setNext(e.target.value)}
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Confirm new password</label>
+          <input type={show ? "text" : "password"} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm" />
+        </div>
+        <FireButton type="submit" disabled={loading || !current || !next || !confirm}>
+          {loading ? "Updating…" : "Change Password"}
+        </FireButton>
+      </form>
+    </GlassCard>
+  );
+}
+
+const MOCK_RECOVERY_CODES = [
+  "A3F2B-9E4C1", "D8K7M-2P1Q5", "X4N9R-6T3W8", "B5J2H-0L8Y4",
+  "C7V3K-4M9P2", "E1Q8N-7S5X6", "F6T2W-3A1C9", "G9P4B-8K6M0",
+];
+
+function TwoFaTab() {
+  const { user } = useAuth();
+  const [step, setStep] = useState<"status" | "setup" | "codes">("status");
+  const [code, setCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+
+  async function enable2fa() {
+    if (code.length !== 6) return;
+    setLoading(true);
+    try {
+      await api.enable2fa(code);
+      toast.success("2FA enabled!");
+      setStep("codes");
+    } catch { toast.error("Invalid code"); }
+    setLoading(false);
+  }
+
+  async function disable2fa() {
+    setLoading(true);
+    try {
+      await api.disable2fa("");
+      toast.success("2FA disabled");
+    } catch { toast.error("Failed"); }
+    setLoading(false);
+  }
+
+  if (step === "codes") {
+    return (
+      <GlassCard>
+        <div className="text-sm font-semibold mb-2">Recovery Codes</div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Save these 8 recovery codes in a safe place. Each code can only be used once.
+          If you lose access to your authenticator, use a recovery code to log in.
+        </p>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          {MOCK_RECOVERY_CODES.map((c) => (
+            <div key={c} className="glass rounded-md px-3 py-2 font-mono text-sm tracking-wider text-center">{c}</div>
           ))}
         </div>
+        <div className="flex gap-2">
+          <GhostButton onClick={() => { navigator.clipboard.writeText(MOCK_RECOVERY_CODES.join("\n")); toast.success("Codes copied"); }}>
+            <Copy className="h-4 w-4 inline mr-1" />Copy all
+          </GhostButton>
+          <FireButton onClick={() => setStep("status")}><Check className="h-4 w-4" />I&apos;ve saved them</FireButton>
+        </div>
+      </GlassCard>
+    );
+  }
 
-        {/* ---- PROFILE TAB ---- */}
-        {activeTab === "profile" && (
-          <div className="panel-box" style={{ maxWidth: "640px" }}>
-            <div className="panel-title">👤 PROFILE INFORMATION</div>
+  if (step === "setup") {
+    return (
+      <GlassCard className="max-w-md">
+        <div className="text-sm font-semibold mb-4">Set up authenticator app</div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
+        </p>
+        {/* QR placeholder */}
+        <div className="w-40 h-40 glass rounded-xl flex items-center justify-center mx-auto mb-4 text-muted-foreground text-xs">
+          QR code here
+        </div>
+        <div className="flex gap-2 mb-4 justify-center">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <input key={i} maxLength={1} value={code[i] ?? ""} onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "");
+              setCode((prev) => (prev.slice(0, i) + v + prev.slice(i + 1)).slice(0, 6));
+              if (v && i < 5) (document.querySelectorAll("[data-otp]")[i + 1] as HTMLInputElement)?.focus();
+            }}
+              data-otp className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted border border-border" />
+          ))}
+        </div>
+        <div className="flex gap-2">
+          <GhostButton onClick={() => setStep("status")}>Back</GhostButton>
+          <FireButton className="flex-1" onClick={enable2fa} disabled={loading || code.length < 6}>
+            {loading ? "Verifying…" : "Enable 2FA"}
+          </FireButton>
+        </div>
+      </GlassCard>
+    );
+  }
 
-            {/* Avatar */}
-            <div style={{ display: "flex", alignItems: "center", gap: "16px", marginBottom: "24px" }}>
-              <div style={{
-                width: "64px",
-                height: "64px",
-                background: "linear-gradient(135deg, var(--fire-red), var(--fire-orange))",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontFamily: "var(--font-display)",
-                fontSize: "32px",
-                color: "#FFF",
-                flexShrink: 0,
-              }}>
-                {initial}
-              </div>
-              <div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "20px", letterSpacing: "2px", color: "var(--text)" }}>
-                  {username.toUpperCase()}
+  return (
+    <div className="space-y-4">
+      <GlassCard>
+        <div className="flex items-center gap-4">
+          <div className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+            user.twoFaEnabled ? "bg-success/20 text-success" : "bg-muted text-muted-foreground")}>
+            <Shield className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="font-medium">{user.twoFaEnabled ? "2FA is enabled" : "2FA is disabled"}</div>
+            <div className="text-xs text-muted-foreground">
+              {user.twoFaEnabled
+                ? `${user.recoveryCodesRemaining} recovery codes remaining`
+                : "Add an extra layer of security to your account"}
+            </div>
+          </div>
+          <div className="ml-auto">
+            {user.twoFaEnabled
+              ? <GhostButton onClick={disable2fa} disabled={loading}>Disable</GhostButton>
+              : <FireButton onClick={() => setStep("setup")}><Key className="h-4 w-4" />Enable 2FA</FireButton>
+            }
+          </div>
+        </div>
+      </GlassCard>
+
+      {user.twoFaEnabled && (
+        <GlassCard>
+          <div className="text-sm font-semibold mb-2">Recovery codes</div>
+          <p className="text-sm text-muted-foreground mb-3">
+            You have <span className="font-mono text-foreground">{user.recoveryCodesRemaining}</span> recovery codes remaining.
+            Recovery codes can be used to log in if you lose access to your authenticator.
+          </p>
+          <div className="flex gap-2">
+            <GhostButton onClick={() => { setRevealed(!revealed); }}>
+              {revealed ? <EyeOff className="h-4 w-4 inline mr-1" /> : <Eye className="h-4 w-4 inline mr-1" />}
+              {revealed ? "Hide" : "Reveal"} codes
+            </GhostButton>
+            <GhostButton onClick={() => setStep("codes")}>Regenerate</GhostButton>
+          </div>
+          {revealed && (
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              {MOCK_RECOVERY_CODES.map((c, i) => (
+                <div key={c} className={cn("glass rounded-md px-3 py-2 font-mono text-sm tracking-wider text-center",
+                  i >= user.recoveryCodesRemaining && "opacity-40 line-through")}>
+                  {c}
                 </div>
-                <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px" }}>STANDARD MEMBER</div>
-              </div>
+              ))}
             </div>
+          )}
+        </GlassCard>
+      )}
+    </div>
+  );
+}
 
-            <div className="form-group">
-              <label>Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label>Email (read-only)</label>
-              <input
-                type="email"
-                value={email}
-                disabled
-                style={{ opacity: 0.5, cursor: "not-allowed" }}
-              />
-            </div>
+function AshClaimTab() {
+  const { user } = useAuth();
+  const [address, setAddress] = useState(user.walletAddress ?? "");
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
 
-            <div style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              padding: "12px",
-              background: "var(--black)",
-              border: "1px solid var(--border)",
-              marginBottom: "20px",
-              cursor: "pointer",
-            }} onClick={() => setPrivacyMode((p) => !p)}>
-              <div style={{
-                width: "16px",
-                height: "16px",
-                border: "1px solid var(--fire-orange)",
-                background: privacyMode ? "var(--fire-orange)" : "transparent",
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                {privacyMode && <span style={{ color: "#fff", fontSize: "10px" }}>✓</span>}
-              </div>
-              <div>
-                <div style={{ fontSize: "11px", letterSpacing: "1px", color: "var(--text)" }}>PRIVACY MODE</div>
-                <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "1px" }}>Hide username from leaderboards</div>
-              </div>
-            </div>
+  async function claim(e: React.FormEvent) {
+    e.preventDefault();
+    const a = amount ? parseFloat(amount) : undefined;
+    if (a !== undefined && (isNaN(a) || a <= 0)) return;
+    setLoading(true);
+    try {
+      await api.claimAsh({ toAddress: address, amount: a ?? user.ashBalance });
+      toast.success(`ASH claim initiated${a ? ` for ${fmtNum(a)} ASH` : " (full balance)"}`);
+      setAmount("");
+    } catch { toast.error("Claim failed"); }
+    setLoading(false);
+  }
 
-            {saveMsg && (
-              <div style={{
-                fontSize: "10px",
-                letterSpacing: "2px",
-                color: saveMsg.includes("FAIL") ? "var(--fire-red)" : "var(--usdc-green)",
-                marginBottom: "12px",
-              }}>
-                {saveMsg}
-              </div>
-            )}
-            <button className="btn-fire btn" onClick={handleSaveProfile} style={{ letterSpacing: "2px" }}>
-              SAVE CHANGES
+  return (
+    <GlassCard>
+      <div className="text-sm font-semibold mb-2">Claim ASH on-chain</div>
+      <p className="text-sm text-muted-foreground mb-5">
+        Transfer your ASH balance to any Solana wallet. You can claim a partial amount or your full balance.
+        The address must be whitelisted.
+      </p>
+      <div className="glass rounded-lg p-4 mb-5 flex justify-between items-center">
+        <span className="text-sm text-muted-foreground">Available ASH</span>
+        <span className="font-mono text-xl font-bold text-ash">{fmtNum(user.ashBalance)} ASH</span>
+      </div>
+      <form onSubmit={claim} className="space-y-4 max-w-md">
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Destination address</label>
+          <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+            placeholder="Solana wallet address"
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm font-mono" />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">Amount (optional — leave blank to claim all)</label>
+          <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
+            placeholder={String(user.ashBalance)}
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm font-mono" />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Leave blank to claim full balance</span>
+            <button type="button" onClick={() => setAmount(String(user.ashBalance))} className="hover:text-foreground">
+              Max: {fmtNum(user.ashBalance)} ASH
             </button>
           </div>
-        )}
-
-        {/* ---- SECURITY TAB ---- */}
-        {activeTab === "security" && (
-          <div style={{ maxWidth: "640px" }}>
-            <div className="panel-box">
-              <div className="panel-title">🔐 TWO-FACTOR AUTHENTICATION</div>
-              <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "1px", lineHeight: 1.7, marginBottom: "20px" }}>
-                2FA is <span style={{ color: "var(--fire-orange)" }}>MANDATORY</span> for all withdrawals.
-                Enable it now to secure your account.
-              </div>
-
-              <div style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "6px 14px",
-                background: twoFaEnabled ? "rgba(39,174,96,0.1)" : "rgba(204,17,0,0.1)",
-                border: `1px solid ${twoFaEnabled ? "var(--usdc-green)" : "var(--fire-red)"}`,
-                marginBottom: "20px",
-                fontSize: "10px",
-                letterSpacing: "2px",
-                color: twoFaEnabled ? "var(--usdc-green)" : "var(--fire-red)",
-              }}>
-                {twoFaEnabled ? "✓ ENABLED" : "✗ DISABLED"}
-              </div>
-
-              {!twoFaEnabled ? (
-                !showQR ? (
-                  <div>
-                    <button className="btn-fire btn" onClick={handleGenerate2FA} style={{ letterSpacing: "2px" }}>
-                      ENABLE 2FA
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "12px", letterSpacing: "1px" }}>
-                      1. Download Google Authenticator or Authy<br />
-                      2. Scan the QR code below:
-                    </div>
-                    <div style={{
-                      width: "160px",
-                      height: "160px",
-                      background: "var(--black)",
-                      border: "1px dashed var(--border)",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginBottom: "16px",
-                    }}>
-                      <span style={{ fontSize: "36px" }}>📱</span>
-                      <div style={{ fontSize: "9px", color: "var(--text-dim)", marginTop: "8px", letterSpacing: "1px", textAlign: "center", padding: "0 8px" }}>
-                        SECRET:{" "}
-                        {showSecret ? qrSecret : "••••••••••••••••"}
-                        <button
-                          onClick={() => setShowSecret((v) => !v)}
-                          style={{ marginLeft: "6px", background: "none", border: "none", color: "var(--fire-orange)", cursor: "pointer", fontSize: "9px", letterSpacing: "1px" }}
-                        >
-                          {showSecret ? "HIDE" : "REVEAL"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="form-group">
-                      <label>Enter 6-digit code from app</label>
-                      <input
-                        type="text"
-                        maxLength={6}
-                        placeholder="000000"
-                        value={totpCode}
-                        onChange={(e) => setTotpCode(e.target.value)}
-                        style={{ maxWidth: "200px" }}
-                      />
-                    </div>
-                    <button className="btn-fire btn" onClick={handleEnable2FA} style={{ letterSpacing: "2px" }}>
-                      CONFIRM & ENABLE
-                    </button>
-                  </div>
-                )
-              ) : (
-                <button
-                  className="btn-ghost btn"
-                  onClick={() => setTwoFaEnabled(false)}
-                  style={{ borderColor: "var(--fire-red)", color: "var(--fire-red)", letterSpacing: "2px" }}
-                >
-                  DISABLE 2FA
-                </button>
-              )}
-            </div>
-
-            <div className="panel-box">
-              <div className="panel-title">🔑 CHANGE PASSWORD</div>
-              <div className="form-group">
-                <label>Current Password</label>
-                <input type="password" value={currentPass} onChange={(e) => setCurrentPass(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>New Password</label>
-                <input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} />
-              </div>
-              <div className="form-group">
-                <label>Confirm New Password</label>
-                <input type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} />
-              </div>
-              {passMsg && (
-                <div style={{
-                  fontSize: "10px",
-                  letterSpacing: "2px",
-                  color: passMsg.includes("FAIL") || passMsg.includes("MATCH") ? "var(--fire-red)" : "var(--usdc-green)",
-                  marginBottom: "12px",
-                }}>
-                  {passMsg}
-                </div>
-              )}
-              <button className="btn-fire btn" onClick={handleChangePass} style={{ letterSpacing: "2px" }}>
-                UPDATE PASSWORD
-              </button>
-            </div>
-
-            <div className="panel-box">
-              <div className="panel-title">🔗 CONNECTED WALLETS</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px 16px",
-                  background: "var(--black)",
-                  border: "1px solid var(--border)",
-                }}>
-                  <span style={{ fontSize: "18px" }}>👻</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "11px", color: "var(--text)", letterSpacing: "1px" }}>Phantom</div>
-                    <div style={{ fontSize: "9px", color: "var(--text-dim)", fontFamily: "monospace" }}>9xkG...3hPq</div>
-                  </div>
-                  <button className="btn-ghost btn" style={{ fontSize: "9px", letterSpacing: "1px", padding: "4px 10px", borderColor: "var(--fire-red)", color: "var(--fire-red)" }}>
-                    DISCONNECT
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ---- NOTIFICATIONS TAB ---- */}
-        {activeTab === "notifications" && (
-          <div className="panel-box" style={{ maxWidth: "640px" }}>
-            <div className="panel-title">🔔 NOTIFICATION PREFERENCES</div>
-            {[
-              { label: "EMAIL NOTIFICATIONS",  desc: "Receive important account updates via email",      val: emailNotifs,    set: setEmailNotifs },
-              { label: "BURN RESULTS",          desc: "Get notified about your burn outcomes",             val: burnNotifs,     set: setBurnNotifs },
-              { label: "REFERRAL ACTIVITY",     desc: "When your referrals burn and you earn rewards",    val: referralNotifs, set: setReferralNotifs },
-              { label: "WIN ALERTS",            desc: "Instant alert when you win a prize",               val: winNotifs,      set: setWinNotifs },
-            ].map((n) => (
-              <div
-                key={n.label}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "16px 0",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <div>
-                  <div style={{ fontSize: "11px", color: "var(--text)", letterSpacing: "2px", marginBottom: "4px" }}>{n.label}</div>
-                  <div style={{ fontSize: "9px", color: "var(--text-dim)", letterSpacing: "1px" }}>{n.desc}</div>
-                </div>
-                {/* Toggle */}
-                <div
-                  onClick={() => n.set((p: boolean) => !p)}
-                  style={{
-                    width: "48px",
-                    height: "26px",
-                    background: n.val ? "var(--fire-orange)" : "var(--border)",
-                    borderRadius: "13px",
-                    position: "relative",
-                    cursor: "pointer",
-                    transition: "background 0.2s",
-                    flexShrink: 0,
-                    marginLeft: "16px",
-                  }}
-                >
-                  <div style={{
-                    position: "absolute",
-                    top: "3px",
-                    left: n.val ? "25px" : "3px",
-                    width: "20px",
-                    height: "20px",
-                    background: "#FFF",
-                    borderRadius: "50%",
-                    transition: "left 0.2s",
-                  }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ---- ADDRESSES TAB ---- */}
-        {activeTab === "addresses" && (
-          <div style={{ maxWidth: "640px" }}>
-            <div className="panel-box">
-              <div className="panel-title">📍 WHITELISTED WITHDRAWAL ADDRESSES</div>
-              <div style={{
-                fontSize: "10px",
-                color: "var(--text-dim)",
-                letterSpacing: "1px",
-                lineHeight: 1.7,
-                marginBottom: "20px",
-                padding: "10px 14px",
-                background: "rgba(255,77,0,0.04)",
-                border: "1px solid rgba(255,77,0,0.12)",
-              }}>
-                For security, you can only withdraw to pre-approved Solana addresses.
-                New addresses require a <span style={{ color: "var(--fire-orange)" }}>24-HOUR</span> cooldown period.
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "24px" }}>
-                {addresses.map((addr, i) => (
-                  <div key={i} style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "12px 16px",
-                    background: "var(--black)",
-                    border: "1px solid var(--border)",
-                  }}>
-                    <div>
-                      <div style={{ fontSize: "11px", color: "var(--text)", letterSpacing: "1px", marginBottom: "3px" }}>
-                        {addr.label}
-                      </div>
-                      <code style={{ fontSize: "10px", color: "var(--text-dim)" }}>{addr.address}</code>
-                    </div>
-                    <div style={{
-                      fontSize: "9px",
-                      letterSpacing: "1px",
-                      padding: "3px 10px",
-                      background: addr.verified ? "rgba(39,174,96,0.08)" : "rgba(255,184,0,0.08)",
-                      border: `1px solid ${addr.verified ? "rgba(39,174,96,0.3)" : "rgba(255,184,0,0.3)"}`,
-                      color: addr.verified ? "var(--usdc-green)" : "var(--gold)",
-                    }}>
-                      {addr.verified ? "✓ VERIFIED" : "⏳ PENDING"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div style={{ borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-                <div style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "16px",
-                  letterSpacing: "2px",
-                  color: "var(--gold)",
-                  marginBottom: "16px",
-                }}>
-                  ADD NEW ADDRESS
-                </div>
-                <div className="form-group">
-                  <label>Label</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. My Ledger"
-                    value={addrLabel}
-                    onChange={(e) => setAddrLabel(e.target.value)}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Solana Address</label>
-                  <input
-                    type="text"
-                    placeholder="Enter Solana wallet address"
-                    value={addrValue}
-                    onChange={(e) => setAddrValue(e.target.value)}
-                  />
-                </div>
-                {addrMsg && (
-                  <div style={{
-                    fontSize: "10px",
-                    letterSpacing: "2px",
-                    color: addrMsg.includes("FILL") ? "var(--fire-red)" : "var(--gold)",
-                    marginBottom: "12px",
-                  }}>
-                    {addrMsg}
-                  </div>
-                )}
-                <button className="btn-fire btn" onClick={handleAddAddress} style={{ letterSpacing: "2px" }}>
-                  ADD ADDRESS
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+        </div>
+        <FireButton type="submit" className="w-full" disabled={loading || !address}>
+          <Coins className="h-4 w-4" />{loading ? "Processing…" : "Claim ASH"}
+        </FireButton>
+      </form>
+    </GlassCard>
   );
 }

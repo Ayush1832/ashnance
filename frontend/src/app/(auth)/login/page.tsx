@@ -1,338 +1,121 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
-import styles from "../auth.module.css";
-import { api } from "@/lib/api";
-import type { WalletProvider } from "@/lib/wallets";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-type Tab = "LOGIN" | "REGISTER";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
+import { AuthShell } from "@/components/ashnance/AuthShell";
+import { FireButton } from "@/components/ashnance/primitives";
+import { api } from "@/lib/apiClient";
+import { walletOptions, connectWallet, signMessage, truncate } from "@/lib/solana";
+import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("LOGIN");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const nav = useRouter();
+  const [tab, setTab] = useState<"email"|"wallet"|"google">("email");
+  const [show, setShow] = useState(false);
+  const [otpMode, setOtpMode] = useState(false);
+  const [need2fa, setNeed2fa] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [walletModal, setWalletModal] = useState(false);
-  const [wallets, setWallets] = useState<WalletProvider[]>([]);
+  const [walletAddr, setWalletAddr] = useState<string|null>(null);
 
-  useEffect(() => {
-    import("@/lib/wallets").then(({ detectWallets }) => setWallets(detectWallets()));
-  }, []);
-
-  // ---- OTP helpers ----
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d?$/.test(value)) return;
-    const next = [...otp];
-    next[index] = value;
-    setOtp(next);
-    if (value && index < 5) {
-      document.getElementById(`login-otp-${index + 1}`)?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && !otp[index] && index > 0) {
-      document.getElementById(`login-otp-${index - 1}`)?.focus();
-    }
-  };
-
-  // ---- Step 1: send OTP ----
-  const handleSendOtp = async (e: React.FormEvent) => {
+  async function emailLogin(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    if (!email) return;
     setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/auth/send-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to send OTP");
-      setOtpSent(true);
-      setSuccess("OTP sent — check your inbox.");
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ---- Step 2: verify OTP & login ----
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    const otpCode = otp.join("");
-    if (otpCode.length < 6) {
-      setError("Enter all 6 digits");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp: otpCode, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || data.message || "Login failed");
-      const tokens = data.data;
-      if (tokens?.accessToken) {
-        localStorage.setItem("accessToken", tokens.accessToken);
-        localStorage.setItem("refreshToken", tokens.refreshToken || "");
-      }
-      window.location.href = "/connect-wallet";
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleWalletLogin = async (wallet: WalletProvider) => {
-    setError("");
-    setLoading(true);
-    setWalletModal(false);
-    try {
-      const { connectWallet, signMessage } = await import("@/lib/wallets");
-      const publicKey = await connectWallet(wallet.provider);
-      const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
-      const signature = await signMessage(wallet.provider, message);
-      const sigArray = Array.from(signature);
-      const res = await api.auth.wallet(publicKey, sigArray, message) as { data: { accessToken: string; refreshToken: string } };
-      localStorage.setItem("accessToken", res.data.accessToken);
-      localStorage.setItem("refreshToken", res.data.refreshToken || "");
-      localStorage.setItem("walletAddress", publicKey);
-      window.location.href = "/dashboard";
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Wallet connection failed";
-      setError(msg.toLowerCase().includes("rejected") ? "Signature rejected. Please approve to sign in." : msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const resetForm = () => {
-    setEmail("");
-    setPassword("");
-    setOtpSent(false);
-    setOtp(["", "", "", "", "", ""]);
-    setError("");
-    setSuccess("");
-  };
+    await api.login({ email: "you@ashnance.com", password: "demo" });
+    setLoading(false);
+    setNeed2fa(true);
+  }
 
   return (
-    <div className={styles["auth-page"]}>
-      <div className={styles["auth-container"]}>
-        {/* Logo */}
-        <Link href="/" className={styles["auth-logo"]}>
-          <img src="/logo.png" alt="Ashnance" style={{ width: "180px", height: "auto" }} />
-        </Link>
+    <AuthShell>
+      <div className="flex gap-1 p-1 rounded-md bg-muted mb-6 text-xs">
+        {(["email","wallet","google"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={cn("flex-1 h-8 rounded capitalize transition", tab===t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground")}>
+            {t === "email" ? "Email" : t === "wallet" ? "Solana Wallet" : "Google"}
+          </button>
+        ))}
+      </div>
 
-        {/* Card */}
-        <div className={styles["auth-card"]}>
-          {/* Tabs */}
-          <div className="auth-tabs">
-            <button
-              className={`auth-tab${activeTab === "REGISTER" ? "" : " active"}`}
-              onClick={() => {
-                resetForm();
-                setActiveTab("LOGIN");
-              }}
-            >
-              LOGIN
-            </button>
-            <Link
-              href="/register"
-              className="auth-tab"
-              style={{ textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
-            >
-              REGISTER
-            </Link>
+      {tab === "email" && (
+        otpMode ? (
+          <div className="space-y-4">
+            <h2 className="font-display text-xl">Sign in with code</h2>
+            <input className="w-full h-11 px-3 rounded-md bg-muted border border-border" placeholder="you@example.com" />
+            <FireButton className="w-full" onClick={() => { api.sendOtp("test"); toast.success("Code sent to your email"); }}>Send Code</FireButton>
+            <div className="text-center text-xs text-muted-foreground"><button onClick={() => setOtpMode(false)} className="hover:text-foreground">Use password instead</button></div>
           </div>
-
-          {/* Error / Success banners */}
-          {error && <div className={styles["auth-error"]}>{error}</div>}
-          {success && <div className={styles["auth-success"]}>{success}</div>}
-
-          {/* Step 1 — email entry */}
-          {!otpSent && (
-            <form className={styles["auth-form"]} onSubmit={handleSendOtp}>
-              <div className="form-group">
-                <label htmlFor="login-email">EMAIL</label>
-                <input
-                  id="login-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  autoComplete="email"
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="login-password">PASSWORD <span style={{ color: "var(--text-dim)", letterSpacing: "1px" }}>(OPTIONAL — LEAVE BLANK TO USE EMAIL OTP)</span></label>
-                <input
-                  id="login-password"
-                  type="password"
-                  placeholder="Leave blank to receive a one-time code by email"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                />
-              </div>
-
-              <button type="submit" className={styles["auth-submit"]} disabled={loading}>
-                {loading && <span className={styles["auth-loading"]} />}
-                {loading ? "SENDING..." : "LOGIN"}
+        ) : (
+          <form onSubmit={emailLogin} className="space-y-4">
+            <h2 className="font-display text-2xl mb-2">Welcome back</h2>
+            <input className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm" placeholder="Email" />
+            <div className="relative">
+              <input type={show?"text":"password"} className="w-full h-11 px-3 pr-10 rounded-md bg-muted border border-border text-sm" placeholder="Password" />
+              <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-3 text-muted-foreground">
+                {show ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
               </button>
-            </form>
-          )}
+            </div>
+            <FireButton type="submit" className="w-full" disabled={loading}>{loading ? "Signing in…" : "Sign In"}</FireButton>
+            <div className="flex justify-between text-xs text-muted-foreground">
+              <button type="button" onClick={() => setOtpMode(true)} className="hover:text-foreground">Use OTP instead</button>
+              <Link href="/register" className="hover:text-foreground">No account? Register →</Link>
+            </div>
+          </form>
+        )
+      )}
 
-          {/* Step 2 — OTP verification */}
-          {otpSent && (
-            <form className={styles["auth-form"]} onSubmit={handleLogin}>
-              <p style={{ fontSize: "10px", letterSpacing: "1px", color: "var(--text-dim)", textAlign: "center", marginBottom: "4px" }}>
-                CODE SENT TO
-              </p>
-              <p style={{ fontSize: "12px", color: "var(--text)", textAlign: "center", marginBottom: "4px", letterSpacing: "1px" }}>
-                {email}
-              </p>
-
-              <div className={styles["otp-group"]}>
-                {otp.map((digit, i) => (
-                  <input
-                    key={i}
-                    id={`login-otp-${i}`}
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={1}
-                    className={styles["otp-input"]}
-                    value={digit}
-                    onChange={(e) => handleOtpChange(i, e.target.value)}
-                    onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    autoFocus={i === 0}
-                  />
-                ))}
-              </div>
-
-              <button
-                type="submit"
-                className={styles["auth-submit"]}
-                disabled={loading || otp.some((d) => !d)}
-              >
-                {loading && <span className={styles["auth-loading"]} />}
-                {loading ? "VERIFYING..." : "LOGIN"}
-              </button>
-
-              <button
-                type="button"
-                className={styles["back-link"]}
-                onClick={() => { setOtpSent(false); setOtp(["", "", "", "", "", ""]); setError(""); setSuccess(""); }}
-              >
-                ← CHANGE EMAIL
-              </button>
-            </form>
-          )}
-
-          {/* Divider */}
-          <div className={styles["auth-divider"]}>— OR CONTINUE WITH —</div>
-
-          {/* Social buttons */}
-          <div className={styles["social-grid"]}>
-            {/* Google */}
-            <button
-              className={styles["social-btn-branded"]}
-              type="button"
-              onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-              </svg>
-              <span>Google</span>
+      {tab === "wallet" && (
+        <div className="space-y-3">
+          <h2 className="font-display text-xl mb-2">Connect a Solana wallet</h2>
+          {!walletAddr ? walletOptions.map((w) => (
+            <button key={w.id} onClick={async () => { const {address} = await connectWallet(w.id); setWalletAddr(address); toast.success(`Connected ${w.name}`); }}
+              className="w-full flex items-center gap-3 h-11 px-4 rounded-md glass hover:glow-fire text-sm">
+              <span className="text-lg">{w.icon}</span><span>{w.name}</span>
             </button>
-
-            {/* Wallet */}
-            <button
-              className={styles["social-btn-branded"]}
-              type="button"
-              onClick={() => setWalletModal(true)}
-              disabled={loading}
-            >
-              <span style={{ fontSize: "18px" }}>👛</span>
-              <span>Wallet</span>
-            </button>
-          </div>
+          )) : (
+            <>
+              <div className="glass rounded-md p-4 text-sm">
+                <div className="text-xs text-muted-foreground">Connected</div>
+                <div className="font-mono mt-1">{truncate(walletAddr, 6)}</div>
+              </div>
+              <FireButton className="w-full" onClick={async () => {
+                const sig = await signMessage(walletAddr, `Sign in to Ashnance\ntimestamp:${Date.now()}`);
+                await api.walletLogin({ address: walletAddr, signature: sig.signature, timestamp: sig.timestamp });
+                toast.success("Signed in"); nav.push("/dashboard");
+              }}>Sign & Login</FireButton>
+            </>
+          )}
         </div>
+      )}
 
-        {/* Wallet selection modal */}
-        {walletModal && (
-          <div
-            style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
-            onClick={(e) => e.target === e.currentTarget && setWalletModal(false)}
-          >
-            <div style={{ background: "var(--bg-panel, #111)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", padding: "28px 24px", width: "320px", maxWidth: "90vw" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: "13px", letterSpacing: "2px" }}>CONNECT WALLET</span>
-                <button onClick={() => setWalletModal(false)} style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: "16px" }}>✕</button>
-              </div>
+      {tab === "google" && (
+        <div className="space-y-4 text-center">
+          <h2 className="font-display text-xl">Continue with Google</h2>
+          <FireButton className="w-full" onClick={() => toast("Redirecting to Google… (stubbed)")}>
+            Continue with Google
+          </FireButton>
+        </div>
+      )}
 
-              {wallets.filter(w => w.installed).length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {wallets.filter(w => w.installed).map(w => (
-                    <button
-                      key={w.name}
-                      onClick={() => handleWalletLogin(w)}
-                      style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 16px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", cursor: "pointer", color: "inherit", fontSize: "13px", letterSpacing: "1px", width: "100%" }}
-                    >
-                      <span style={{ fontSize: "22px" }}>{w.icon}</span>
-                      {w.name.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: "11px", color: "#555", letterSpacing: "1px", textAlign: "center", marginBottom: "16px" }}>
-                  NO WALLET DETECTED — INSTALL ONE:
-                </div>
-              )}
-
-              {wallets.filter(w => !w.installed).length > 0 && (
-                <>
-                  <div style={{ fontSize: "9px", color: "#333", letterSpacing: "2px", margin: "16px 0 8px" }}>
-                    {wallets.filter(w => w.installed).length > 0 ? "MORE WALLETS" : "INSTALL A WALLET"}
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                    {wallets.filter(w => !w.installed).map(w => (
-                      <a key={w.name} href={w.downloadUrl} target="_blank" rel="noopener noreferrer"
-                        style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "4px", padding: "6px 12px", textDecoration: "none" }}>
-                        {w.icon} {w.name} ↗
-                      </a>
-                    ))}
-                  </div>
-                </>
-              )}
+      {need2fa && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-elevated ring-fire rounded-2xl p-8 max-w-md w-full">
+            <h2 className="font-display text-2xl">Two-Factor Authentication</h2>
+            <p className="text-sm text-muted-foreground mt-2">Enter the 6-digit code from your authenticator app.</p>
+            <div className="flex gap-2 my-6 justify-center">
+              {Array.from({length:6}).map((_,i) => (
+                <input key={i} maxLength={1} className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted border border-border" />
+              ))}
+            </div>
+            <FireButton className="w-full" onClick={() => { toast.success("Logged in"); nav.push("/dashboard"); }}>Verify</FireButton>
+            <div className="text-center text-xs text-muted-foreground mt-4">
+              <button className="hover:text-foreground">Use a backup recovery code instead</button>
             </div>
           </div>
-        )}
-
-        {/* Footer */}
-        <div className={styles["auth-footer"]}>
-          No account?&nbsp;
-          <Link href="/register">REGISTER HERE</Link>
         </div>
-      </div>
-    </div>
+      )}
+    </AuthShell>
   );
 }

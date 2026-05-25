@@ -40,18 +40,6 @@ interface Tx {
   date: string;
 }
 
-const MOCK_TXS: Tx[] = [
-  { id: "TX001", type: "BURN",            amount: -4.99,  currency: "USDC", status: "COMPLETED",  desc: "Burned $4.99 USDC",           date: "Today, 14:32" },
-  { id: "TX002", type: "WIN",             amount: 50,     currency: "USDC", status: "COMPLETED",  desc: "Won Small prize",              date: "Today, 14:32" },
-  { id: "TX003", type: "BURN",            amount: -10,    currency: "USDC", status: "COMPLETED",  desc: "Burned $10 USDC",              date: "Today, 12:15" },
-  { id: "TX004", type: "DEPOSIT",         amount: 100,    currency: "USDC", status: "COMPLETED",  desc: "Deposited 100 USDC",           date: "Yesterday" },
-  { id: "TX005", type: "REFERRAL_REWARD", amount: 0.49,   currency: "USDC", status: "COMPLETED",  desc: "Referral commission — AhmedX", date: "Yesterday" },
-  { id: "TX006", type: "WITHDRAWAL",      amount: -50,    currency: "USDC", status: "PROCESSING", desc: "Withdrawal to 9xkG...3hPq",    date: "2 days ago" },
-  { id: "TX007", type: "BURN",            amount: -50,    currency: "USDC", status: "COMPLETED",  desc: "Burned $50 USDC",              date: "2 days ago" },
-  { id: "TX008", type: "WIN",             amount: 200,    currency: "USDC", status: "COMPLETED",  desc: "Won Medium prize",             date: "3 days ago" },
-  { id: "TX009", type: "VIP_PURCHASE",    amount: -24.99, currency: "USDC", status: "COMPLETED",  desc: "Holy Fire VIP subscription",   date: "1 week ago" },
-  { id: "TX010", type: "BURN",            amount: -25,    currency: "USDC", status: "COMPLETED",  desc: "Burned $25 USDC",              date: "1 week ago" },
-];
 
 const TX_ICONS: Record<string, string> = {
   BURN:            "🔥",

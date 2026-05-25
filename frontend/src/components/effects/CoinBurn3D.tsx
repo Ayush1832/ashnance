@@ -43,7 +43,7 @@ export default function CoinBurn3D({
 
   // ---- Canvas fire animation ----
   const spawnParticles = useCallback(
-    (canvas: HTMLCanvasElement) => {
+    (_canvas: HTMLCanvasElement) => {
       const coinCenterX = canvasSize / 2;
       // Coin top edge: canvas is centered, coin occupies middle third
       const coinTopY = (canvasSize - size) / 2;

@@ -1,247 +1,115 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-const navItems = [
-  { icon: "📊", label: "DASHBOARD",   href: "/dashboard" },
-  { icon: "🔥", label: "BURN NOW",    href: "/burn" },
-  { icon: "💰", label: "WALLET",      href: "/wallet" },
-  { icon: "👥", label: "REFERRALS",   href: "/referrals" },
-  { icon: "👑", label: "VIP",         href: "/subscribe" },
-  { icon: "📋", label: "HISTORY",     href: "/transactions" },
-  { icon: "🏆", label: "LEADERBOARD", href: "/leaderboard" },
-  { icon: "💎", label: "STAKING",     href: "/staking" },
-  { icon: "⚙️", label: "SETTINGS",   href: "/settings" },
-];
-
-interface Referrer {
-  username: string;
-  referrals: number;
-  earned: string;
-}
+import { Copy, Users, TrendingUp, Zap } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/ashnance/AppShell";
+import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
+import { useAuth } from "@/hooks/useAuth";
+import { mockReferrals, mockBurnConfig } from "@/lib/mock";
+import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
 
 export default function ReferralsPage() {
-  const pathname = usePathname();
-  const router   = useRouter();
+  const { user } = useAuth();
+  const referralUrl = `https://ashnance.com/register?ref=${user.referralCode}`;
 
-  const [copied, setCopied]     = useState(false);
-  const [refCode, setRefCode]   = useState("LOADING...");
-  const [stats, setStats]       = useState({ friends: 0, earned: "0.00", commission: "10%" });
-  const [leaders, setLeaders]   = useState<Referrer[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const totalEarned = mockReferrals.reduce((s, r) => s + r.earned, 0);
+  const totalBurns  = mockReferrals.reduce((s, r) => s + r.burnCount, 0);
+  const active      = mockReferrals.filter((r) => r.active).length;
 
-  const referralLink = `https://www.ashnance.com/ref/${refCode}`;
-
-  useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) { router.replace("/login"); return; }
-    const headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${token}` };
-
-    Promise.all([
-      fetch(`${API}/api/auth/profile`, { headers }).then((r) => r.json()).catch(() => null),
-      fetch(`${API}/api/leaderboard/referrers`, { headers }).then((r) => r.json()).catch(() => null),
-    ]).then(([profileRes, lb]) => {
-      const profile = profileRes?.data ?? profileRes;
-      if (profile?.referralCode) setRefCode(profile.referralCode);
-      if (profile) {
-        setStats({
-          friends:    Number(profile.referralCount  ?? 0),
-          earned:     Number(profile.referralEarned ?? 0).toFixed(2),
-          commission: "10%",
-        });
-      }
-      const lbArr = lb?.data ?? lb;
-      if (Array.isArray(lbArr) && lbArr.length > 0) {
-        setLeaders(lbArr.slice(0, 8).map((e: any) => ({
-          username: e.username ?? "???",
-          referrals: Number(e.referrals ?? e.totalReferrals ?? 0),
-          earned: `$${Number(e.earned ?? e.totalEarned ?? 0).toFixed(2)}`,
-        })));
-      } else {
-        setLeaders([]);
-      }
-    }).finally(() => setLoading(false));
-  }, [router]);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(referralLink);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  function copyCode() {
+    navigator.clipboard.writeText(user.referralCode);
+    toast.success("Referral code copied");
   }
 
-  function handleLogout() {
-    if (typeof window !== "undefined") localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken");
-    router.push("/");
+  function copyLink() {
+    navigator.clipboard.writeText(referralUrl);
+    toast.success("Referral link copied");
   }
-
-  function shareX() {
-    window.open(`https://twitter.com/intent/tweet?text=Burn+USDC+and+win+big+on+%40Ashnance!+Use+my+ref+link:+${encodeURIComponent(referralLink)}`, "_blank");
-  }
-  function shareTelegram() {
-    window.open(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=Burn+USDC+and+win+big+on+Ashnance!`, "_blank");
-  }
-  function shareWhatsApp() {
-    window.open(`https://wa.me/?text=Burn+USDC+and+win+on+Ashnance!+${encodeURIComponent(referralLink)}`, "_blank");
-  }
-
-  const rankColor = (i: number) => i === 0 ? "var(--gold)" : i === 1 ? "#CCC" : i === 2 ? "#CD7F32" : "var(--text-dim)";
 
   return (
-    <div className="dash-layout">
-      {/* SIDEBAR */}
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <img src="/logo-horizontal.png" alt="Ashnance" style={{ width: "140px", height: "auto" }} />
-        </div>
-        <nav className="sidebar-nav">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`nav-item${pathname.startsWith(item.href) ? " active" : ""}`}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="user-info">
-            <div className="user-avatar">🔥</div>
-            <div>
-              <div className="user-name">BURNER</div>
-              <div className="user-status">STANDARD</div>
-            </div>
+    <AppShell>
+      <SectionHeader eyebrow="Bring burners" title="Referrals" sub={`Earn ${fmtNum(mockBurnConfig.referral_commission * 100)}% of every burn made by your referrals, sourced from the referral pool.`} />
+
+      {/* Stats */}
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        <StatTile label="Total Earned" value={fmtUsd(totalEarned)} sub="From referral pool" accent="usdc" />
+        <StatTile label="Active Referrals" value={active} sub={`${mockReferrals.length} total`} accent="fire" />
+        <StatTile label="Referral Burns" value={fmtNum(totalBurns)} sub="Burns by your referrals" accent="ash" />
+      </div>
+
+      {/* Code card */}
+      <GlassCard ring className="mb-5">
+        <div className="text-sm font-medium mb-4">Your referral code</div>
+        <div className="flex items-center gap-3 mb-3">
+          <div className="flex-1 glass rounded-lg px-4 py-3">
+            <div className="font-mono text-2xl font-bold tracking-[0.15em] text-fire">{user.referralCode}</div>
           </div>
-          <button
-            className="nav-item"
-            onClick={handleLogout}
-            style={{ width: "100%", background: "none", border: "none", marginTop: "8px" }}
-          >
-            <span className="nav-icon">🚪</span>LOGOUT
+          <FireButton onClick={copyCode}><Copy className="h-4 w-4" /> Copy code</FireButton>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground flex-1 truncate font-mono">{referralUrl}</span>
+          <button onClick={copyLink} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+            <Copy className="h-3 w-3" /> Copy link
           </button>
         </div>
-      </aside>
+      </GlassCard>
 
-      {/* MAIN */}
-      <div className="dash-content">
-        <div className="dash-header">
-          <h1 className="dash-title">REFERRAL <span>PROGRAM</span></h1>
+      {/* How it works */}
+      <GlassCard className="mb-5">
+        <div className="text-sm font-semibold mb-4">How referrals work</div>
+        <div className="grid sm:grid-cols-3 gap-4">
+          {[
+            { icon: <Users className="h-5 w-5 text-fire" />, step: "1. Share your link", desc: "Your referral registers using your code or link." },
+            { icon: <TrendingUp className="h-5 w-5 text-ash" />, step: "2. They burn USDC", desc: "Every burn they make triggers a 10% commission for you." },
+            { icon: <Zap className="h-5 w-5 text-gold" />, step: "3. You earn USDC", desc: "Commission is paid instantly from the dedicated referral pool." },
+          ].map((s) => (
+            <div key={s.step} className="flex gap-3">
+              <div className="shrink-0 mt-0.5">{s.icon}</div>
+              <div>
+                <div className="text-sm font-medium">{s.step}</div>
+                <div className="text-xs text-muted-foreground mt-0.5">{s.desc}</div>
+              </div>
+            </div>
+          ))}
         </div>
+      </GlassCard>
 
-        {/* Stats */}
-        <div className="stat-grid">
-          <div className="stat-card">
-            <div className="stat-label">Friends Joined</div>
-            <div className="stat-value fire">{loading ? "—" : stats.friends}</div>
-            <div className="stat-sub">Active burners referred</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">USDC Earned</div>
-            <div className="stat-value usdc">${loading ? "—" : stats.earned}</div>
-            <div className="stat-sub">Lifetime referral earnings</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-label">Your Commission</div>
-            <div className="stat-value gold">10%</div>
-            <div className="stat-sub">Per referral burn, instant</div>
-          </div>
+      {/* Weight bonus explainer */}
+      <GlassCard className="mb-5">
+        <div className="text-sm font-semibold mb-2">Weight bonus from referrals</div>
+        <p className="text-sm text-muted-foreground">
+          Having active referrals also boosts your own burn weight. For every 5 active referrals you have,
+          you gain +0.2 bonus weight per burn, capped at {fmtNum(mockBurnConfig.referral_weight_cap_pct * 100)}% of your base weight.
+        </p>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+          {[5, 10, 15].map((n, i) => (
+            <div key={n} className="glass rounded-lg p-2">
+              <div className="text-muted-foreground">{n} referrals</div>
+              <div className="font-mono font-bold text-fire mt-1">+{(0.2 * (i + 1)).toFixed(1)} wt</div>
+            </div>
+          ))}
         </div>
+      </GlassCard>
 
-        {/* Referral link */}
-        <div className="panel-box">
-          <div className="panel-title">🔗 YOUR REFERRAL LINK</div>
-          <div className="copy-box" style={{ marginBottom: "14px" }}>
-            <span className="addr">{referralLink}</span>
-            <button
-              className="copy-btn"
-              onClick={handleCopy}
-              style={copied ? { borderColor: "var(--usdc-green)", color: "var(--usdc-green)" } : {}}
-            >
-              {copied ? "COPIED!" : "COPY"}
-            </button>
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-dim)", letterSpacing: "1px", marginBottom: "16px" }}>
-            CODE: <span style={{ color: "var(--fire-orange)", fontWeight: 700 }}>{refCode}</span>
-          </div>
-
-          {/* Share buttons */}
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            <button
-              className="btn-ghost btn"
-              onClick={shareX}
-              style={{ fontSize: "11px", letterSpacing: "1px" }}
-            >
-              𝕏 SHARE ON X
-            </button>
-            <button
-              className="btn-ghost btn"
-              onClick={shareTelegram}
-              style={{ fontSize: "11px", letterSpacing: "1px" }}
-            >
-              ✈️ TELEGRAM
-            </button>
-            <button
-              className="btn-ghost btn"
-              onClick={shareWhatsApp}
-              style={{ fontSize: "11px", letterSpacing: "1px" }}
-            >
-              💬 WHATSAPP
-            </button>
-          </div>
-        </div>
-
-        {/* How it works */}
-        <div className="panel-box">
-          <div className="panel-title">⚡ HOW IT WORKS</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "16px" }}>
-            {[
-              { step: "01", title: "SHARE LINK", desc: "Share your unique referral link with friends" },
-              { step: "02", title: "THEY BURN",  desc: "Your referral signs up and burns USDC" },
-              { step: "03", title: "YOU EARN",   desc: "You instantly receive 10% of every burn they make" },
-            ].map((s) => (
-              <div key={s.step} style={{ borderLeft: "2px solid var(--fire-orange)", paddingLeft: "14px" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "28px", color: "var(--fire-orange)", lineHeight: 1 }}>{s.step}</div>
-                <div style={{ fontFamily: "var(--font-display)", fontSize: "16px", letterSpacing: "2px", color: "var(--text)", marginBottom: "4px" }}>{s.title}</div>
-                <div style={{ fontSize: "11px", color: "var(--text-dim)", lineHeight: 1.6 }}>{s.desc}</div>
+      {/* Referrals list */}
+      <GlassCard>
+        <div className="text-sm font-semibold mb-4">Your referrals ({mockReferrals.length})</div>
+        {mockReferrals.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No referrals yet — share your code!</div>
+        ) : (
+          <div className="space-y-2">
+            {mockReferrals.map((r) => (
+              <div key={r.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${r.active ? "bg-success" : "bg-muted-foreground"}`} />
+                <span className="text-sm flex-1">{r.username}</span>
+                <span className="text-xs text-muted-foreground">{timeAgo(r.joinedAt)}</span>
+                <span className="text-xs text-muted-foreground">{r.burnCount} burns</span>
+                <span className="font-mono text-sm text-success">+{fmtUsd(r.earned)}</span>
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Leaderboard */}
-        <div className="panel-box">
-          <div className="panel-title">🏆 TOP REFERRERS</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {leaders.map((user, i) => (
-              <div key={i} className="lb-item">
-                <div
-                  className={`lb-rank${i === 0 ? " gold-rank" : i === 1 ? " silver-rank" : i === 2 ? " bronze-rank" : ""}`}
-                  style={{ color: rankColor(i) }}
-                >
-                  {i + 1}
-                </div>
-                <div className="lb-name">{user.username ?? `****${i}`}</div>
-                <div style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "16px" }}>
-                  {user.referrals} refs
-                </div>
-                <div className="lb-val" style={{ color: "var(--usdc-green)", fontSize: "16px" }}>
-                  {user.earned}
-                </div>
-              </div>
-            ))}
-            {leaders.length === 0 && !loading && (
-              <div style={{ padding: "20px", textAlign: "center", color: "var(--text-dim)", fontSize: "11px", letterSpacing: "2px" }}>
-                NO DATA YET
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+        )}
+      </GlassCard>
+    </AppShell>
   );
 }

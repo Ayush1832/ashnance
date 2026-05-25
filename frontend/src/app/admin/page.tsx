@@ -1,627 +1,190 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState } from "react";
+import { Ban, UserCheck, Save } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/ashnance/AppShell";
+import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
+import { mockAdminUsers, mockBurnConfig, mockRound } from "@/lib/mock";
+import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
+import { api } from "@/lib/apiClient";
+import { cn } from "@/lib/utils";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-
-const ADMIN_NAV = [
-  { key: "overview",  icon: "📊", label: "OVERVIEW"   },
-  { key: "prizes",    icon: "🏆", label: "PRIZES"     },
-  { key: "pool",      icon: "💰", label: "POOL"       },
-  { key: "users",     icon: "👥", label: "USERS"      },
-  { key: "vip",       icon: "👑", label: "VIP"        },
-  { key: "ash",       icon: "🪙", label: "ASH TOKEN"  },
-  { key: "referrals", icon: "🔗", label: "REFERRALS"  },
-  { key: "audit",     icon: "📋", label: "AUDIT LOG"  },
-];
-
-const MOCK_STATS = [
-  { label: "TOTAL BURNS",    value: "89,231", sub: "+1,247 today",   cls: "fire" },
-  { label: "REWARD POOL",    value: "$142,890", sub: "+$6,230 today", cls: "usdc" },
-  { label: "PROFIT POOL",    value: "$48,220",  sub: "+$2,100 today", cls: "gold" },
-  { label: "ACTIVE PLAYERS", value: "12,458",   sub: "+342 today",    cls: "fire" },
-];
-
-const MOCK_PRIZES = [
-  { tier: "JACKPOT", value: 2500, poolPercent: 10, probability: 1,  active: true  },
-  { tier: "BIG",     value: 500,  poolPercent: 5,  probability: 4,  active: true  },
-  { tier: "MEDIUM",  value: 200,  poolPercent: 2,  probability: 15, active: true  },
-  { tier: "SMALL",   value: 50,   poolPercent: 1,  probability: 80, active: true  },
-];
-
-interface AdminUser {
-  id: string;
-  username: string;
-  email: string;
-  isVip: boolean;
-  role: string;
-  createdAt: string;
-  _count: { burns: number };
-  lockedUntil?: string | null;
-}
-
-const MOCK_AUDIT = [
-  { time: "14:32", admin: "Admin1", action: "Updated JACKPOT prize probability",      type: "PRIZE"  },
-  { time: "13:15", admin: "Admin1", action: "Approved withdrawal #4521 ($500 USDC)",  type: "WALLET" },
-  { time: "12:01", admin: "System", action: "Daily reward pool top-up: +$2,000",      type: "POOL"   },
-  { time: "11:45", admin: "Admin2", action: "Banned user SuspiciousUser99",           type: "USER"   },
-  { time: "10:30", admin: "System", action: "VIP subscription renewal: 42 users",    type: "VIP"    },
-];
-
-interface Prize { tier: string; value: number; poolPercent: number; probability: number; active: boolean; }
+type Tab = "users" | "config";
 
 export default function AdminPage() {
-  const [section, setSection]         = useState("overview");
-  const [stats, setStats]             = useState(MOCK_STATS);
-  const [prizes, setPrizes]           = useState<Prize[]>(MOCK_PRIZES);
-  const [rewardPct, setRewardPct]     = useState(50);
-  const [profitPct, setProfitPct]     = useState(40);
-  const [refPct, setRefPct]           = useState(10);
-  const [saveMsg, setSaveMsg]         = useState("");
-  const [editPrize, setEditPrize]     = useState<number | null>(null);
-  const [editVals, setEditVals]       = useState<Partial<Prize>>({});
-  const [adminUsers, setAdminUsers]   = useState<AdminUser[]>([]);
-  const [usersError, setUsersError]   = useState<string | null>(null);
-  const [statsError, setStatsError]   = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [tab, setTab] = useState<Tab>("users");
 
-  // Route guard — redirect non-admins before rendering any content
-  useEffect(() => {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    if (!token) {
-      window.location.replace("/login");
-      return;
-    }
-    fetch(`${API}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
-        if (r.status === 401 || r.status === 403) {
-          window.location.replace("/dashboard");
-        } else {
-          setAuthChecked(true);
-        }
-      })
-      .catch(() => setAuthChecked(true));
-  }, []);
+  return (
+    <AppShell>
+      <SectionHeader eyebrow="Operations" title="Admin" sub="Manage users and platform config." />
 
-  useEffect(() => {
-    if (!authChecked) return;
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    fetch(`${API}/api/admin/stats`, { headers })
-      .then((r) => r.json())
-      .then((data) => {
-        const d = data?.data ?? data;
-        if (d?.totalBurns !== undefined) {
-          setStats([
-            { label: "TOTAL BURNS",    value: String(d.totalBurns),    sub: "", cls: "fire" },
-            { label: "REWARD POOL",    value: `$${d.rewardPoolBalance ?? 0}`, sub: "", cls: "usdc" },
-            { label: "TOTAL BURNED",   value: `$${d.totalBurned ?? 0}`,  sub: "", cls: "gold" },
-            { label: "ACTIVE VIPS",    value: String(d.activeVips ?? 0), sub: "", cls: "fire" },
-          ]);
-        }
-      })
-      .catch(() => { setStatsError("Failed to load platform stats"); });
-
-    fetch(`${API}/api/admin/prizes`, { headers })
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setPrizes(data); })
-      .catch(() => {});
-
-    fetch(`${API}/api/admin/pool`, { headers })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data?.rewardPercent !== undefined) setRewardPct(data.rewardPercent);
-        if (data?.profitPercent !== undefined) setProfitPct(data.profitPercent);
-        if (data?.referralPercent !== undefined) setRefPct(data.referralPercent);
-      })
-      .catch(() => {});
-
-    fetch(`${API}/api/admin/users?limit=50`, { headers })
-      .then((r) => r.json())
-      .then((data) => {
-        const users = data?.data?.users ?? data?.users;
-        if (Array.isArray(users)) setAdminUsers(users);
-        else setUsersError("Failed to load users");
-      })
-      .catch(() => { setUsersError("Failed to load users"); });
-  }, [authChecked]);
-
-  async function handleBanUser(userId: string, ban: boolean) {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    try {
-      await fetch(`${API}/api/admin/users/${userId}/ban`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ ban }),
-      });
-      setAdminUsers((prev) =>
-        prev.map((u) => u.id === userId ? { ...u, lockedUntil: ban ? "2099-01-01" : null } : u)
-      );
-    } catch {}
-  }
-
-  async function handleSavePool() {
-    setSaveMsg("");
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    try {
-      await fetch(`${API}/api/admin/pool`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ rewardPercent: rewardPct, profitPercent: profitPct, referralPercent: refPct }),
-      });
-    } catch {}
-    setSaveMsg("SAVED");
-    setTimeout(() => setSaveMsg(""), 2500);
-  }
-
-  async function handleSavePrize(i: number) {
-    const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const updated = { ...prizes[i], ...editVals };
-    try {
-      await fetch(`${API}/api/admin/prizes/${prizes[i].tier.toLowerCase()}`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify(updated),
-      });
-    } catch {}
-    setPrizes((prev) => prev.map((p, idx) => idx === i ? updated : p));
-    setEditPrize(null);
-    setEditVals({});
-  }
-
-  if (!authChecked) {
-    return (
-      <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", color: "#FF4D00", fontSize: "24px", letterSpacing: "4px" }}>
-        VERIFYING ACCESS...
+      {/* Stats */}
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
+        <StatTile label="Total Users" value={fmtNum(mockAdminUsers.length)} accent="fire" />
+        <StatTile label="Active Round" value={`#${mockRound.number}`} sub={mockRound.status} accent="usdc" />
+        <StatTile label="Prize Pool" value={fmtUsd(mockRound.prizePool)} sub={`of ${fmtUsd(mockRound.prizePoolTarget)}`} accent="gold" />
+        <StatTile label="Burns / min" value={fmtNum(mockRound.burnsLast60s)} sub="last 60 seconds" accent="ash" />
       </div>
-    );
+
+      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs w-fit">
+        {(["users","config"] as Tab[]).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={cn("h-8 px-5 rounded capitalize transition",
+              tab === t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground")}>
+            {t === "users" ? "Users" : "Config"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "users" && <UsersTab />}
+      {tab === "config" && <ConfigTab />}
+    </AppShell>
+  );
+}
+
+function UsersTab() {
+  const [users, setUsers] = useState(mockAdminUsers);
+  const [search, setSearch] = useState("");
+
+  const filtered = users.filter((u) =>
+    u.username.toLowerCase().includes(search.toLowerCase()) ||
+    u.email.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  async function toggleBan(id: string, banned: boolean) {
+    try {
+      await api.adminBanUser(id, !banned);
+      setUsers((prev) => prev.map((u) => u.id === id ? { ...u, banned: !banned } : u));
+      toast.success(!banned ? "User banned" : "User unbanned");
+    } catch { toast.error("Action failed"); }
+  }
+
+  async function setRole(id: string, role: string) {
+    try {
+      await api.adminSetUserRole(id, role);
+      setUsers((prev) => prev.map((u) => u.id === id ? { ...u, role } : u));
+      toast.success(`Role updated to ${role}`);
+    } catch { toast.error("Failed"); }
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--deep)" }}>
-      {/* Admin sidebar */}
-      <aside style={{
-        width: "220px",
-        minHeight: "100vh",
-        background: "var(--panel)",
-        borderRight: "1px solid var(--border)",
-        padding: "20px 0",
-        flexShrink: 0,
-        display: "flex",
-        flexDirection: "column",
-      }}>
-        <div style={{
-          padding: "10px 20px 24px",
-          borderBottom: "1px solid var(--border)",
-          fontFamily: "var(--font-display)",
-          fontSize: "18px",
-          letterSpacing: "3px",
-          color: "var(--fire-orange)",
-          lineHeight: 1.2,
-        }}>
-          ASHNANCE
-          <span style={{
-            color: "var(--fire-red)",
-            fontSize: "11px",
-            display: "block",
-            letterSpacing: "2px",
-            fontFamily: "var(--font-body)",
-          }}>ADMIN PANEL</span>
+    <div className="space-y-4">
+      <input
+        type="text"
+        placeholder="Search users…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm max-w-md"
+      />
+      <GlassCard className="p-0 overflow-hidden">
+        <div className="grid text-xs uppercase tracking-wider text-muted-foreground px-5 py-2.5 border-b border-border"
+          style={{ gridTemplateColumns: "1fr 1fr auto auto auto" }}>
+          <span>User</span><span>Email</span><span className="text-center">VIP</span>
+          <span className="text-center">Role</span><span className="text-center">Actions</span>
         </div>
-        <nav style={{ padding: "16px 0", flex: 1 }}>
-          {ADMIN_NAV.map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setSection(item.key)}
-              className={`nav-item${section === item.key ? " active" : ""}`}
-              style={{ width: "100%", background: "none", border: "none" }}
-            >
-              <span className="nav-icon">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div style={{ borderTop: "1px solid var(--border)", padding: "16px 20px" }}>
-          <Link href="/dashboard" style={{
-            fontSize: "10px",
-            color: "var(--text-dim)",
-            letterSpacing: "1px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}>
-            ← BACK TO DASHBOARD
-          </Link>
-        </div>
-      </aside>
-
-      {/* Main */}
-      <div style={{ flex: 1, padding: "30px", overflowY: "auto" }}>
-
-        {/* ---- OVERVIEW ---- */}
-        {section === "overview" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              PLATFORM <span>OVERVIEW</span>
-            </div>
-            {statsError && (
-              <div style={{ color: "var(--fire-red)", fontSize: "11px", letterSpacing: "1px", marginBottom: "16px" }}>
-                ⚠ {statsError} — showing cached values
+        <div className="divide-y divide-border">
+          {filtered.map((u) => (
+            <div key={u.id} className={cn("grid items-center px-5 py-3 gap-3 text-sm", u.banned && "opacity-60")}
+              style={{ gridTemplateColumns: "1fr 1fr auto auto auto" }}>
+              <div>
+                <div className="font-medium truncate">{u.username}</div>
+                <div className="text-xs text-muted-foreground">{timeAgo(u.createdAt)}</div>
               </div>
-            )}
-            <div className="stat-grid">
-              {stats.map((s) => (
-                <div key={s.label} className="stat-card">
-                  <div className="stat-label">{s.label}</div>
-                  <div className={`stat-value ${s.cls}`}>{s.value}</div>
-                  <div className="stat-sub" style={{ color: "var(--usdc-green)" }}>{s.sub}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* Mini bar charts */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "24px" }}>
-              {[
-                { title: "BURNS — LAST 7 DAYS", data: [65,48,72,55,80,64,90], color: "var(--fire-orange)" },
-                { title: "REVENUE — LAST 7 DAYS", data: [50,60,45,70,55,75,85], color: "var(--usdc-green)" },
-              ].map((chart) => (
-                <div key={chart.title} className="panel-box" style={{ marginBottom: 0 }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "2px", color: "var(--text-dim)", marginBottom: "16px" }}>
-                    {chart.title}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", height: "100px" }}>
-                    {chart.data.map((h, i) => (
-                      <div key={i} style={{
-                        flex: 1,
-                        height: `${h}%`,
-                        background: chart.color,
-                        opacity: 0.7,
-                        transition: "height 0.5s",
-                      }} />
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ---- PRIZES ---- */}
-        {section === "prizes" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              PRIZE <span>MANAGEMENT</span>
-            </div>
-            <div className="panel-box">
-              <table className="ash-table" style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    {["TIER","VALUE (USDC)","POOL %","PROBABILITY","ACTIVE","ACTIONS"].map((h) => (
-                      <th key={h}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {prizes.map((p, i) => (
-                    <tr key={p.tier}>
-                      <td>
-                        <span style={{ fontFamily: "var(--font-display)", fontSize: "16px", letterSpacing: "2px", color: "var(--fire-orange)" }}>
-                          {p.tier}
-                        </span>
-                      </td>
-                      <td>
-                        {editPrize === i
-                          ? <input type="number" defaultValue={p.value} onChange={(e) => setEditVals((v) => ({ ...v, value: Number(e.target.value) }))} style={{ width: "80px", background: "var(--black)", border: "1px solid var(--border)", color: "var(--text)", padding: "4px 8px", fontSize: "11px" }} />
-                          : `$${p.value}`}
-                      </td>
-                      <td>
-                        {editPrize === i
-                          ? <input type="number" defaultValue={p.poolPercent} onChange={(e) => setEditVals((v) => ({ ...v, poolPercent: Number(e.target.value) }))} style={{ width: "60px", background: "var(--black)", border: "1px solid var(--border)", color: "var(--text)", padding: "4px 8px", fontSize: "11px" }} />
-                          : `${p.poolPercent}%`}
-                      </td>
-                      <td>
-                        {editPrize === i
-                          ? <input type="number" defaultValue={p.probability} onChange={(e) => setEditVals((v) => ({ ...v, probability: Number(e.target.value) }))} style={{ width: "60px", background: "var(--black)", border: "1px solid var(--border)", color: "var(--text)", padding: "4px 8px", fontSize: "11px" }} />
-                          : `${p.probability}%`}
-                      </td>
-                      <td>
-                        <span style={{ color: p.active ? "var(--usdc-green)" : "var(--fire-red)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
-                          {p.active ? "YES" : "NO"}
-                        </span>
-                      </td>
-                      <td>
-                        {editPrize === i ? (
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <button className="btn-fire btn" style={{ padding: "4px 10px", fontSize: "9px" }} onClick={() => handleSavePrize(i)}>SAVE</button>
-                            <button className="btn-ghost btn" style={{ padding: "4px 10px", fontSize: "9px" }} onClick={() => { setEditPrize(null); setEditVals({}); }}>CANCEL</button>
-                          </div>
-                        ) : (
-                          <button className="btn-ghost btn" style={{ padding: "4px 12px", fontSize: "9px" }} onClick={() => { setEditPrize(i); setEditVals({}); }}>EDIT</button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ---- POOL DISTRIBUTION ---- */}
-        {section === "pool" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              POOL <span>DISTRIBUTION</span>
-            </div>
-            <div className="panel-box" style={{ maxWidth: "560px" }}>
-              {[
-                { label: "REWARD %",    val: rewardPct, set: setRewardPct, color: "var(--usdc-green)" },
-                { label: "PROFIT %",    val: profitPct, set: setProfitPct, color: "var(--gold)" },
-                { label: "REFERRAL %",  val: refPct,    set: setRefPct,    color: "var(--fire-orange)" },
-              ].map((s) => (
-                <div key={s.label} className="range-control">
-                  <label>
-                    {s.label}
-                    <span style={{ color: s.color }}>{s.val}%</span>
-                  </label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={s.val}
-                    onChange={(e) => s.set(Number(e.target.value))}
-                    style={{ accentColor: s.color }}
-                  />
-                </div>
-              ))}
-
-              <div style={{
-                padding: "12px 16px",
-                background: "var(--black)",
-                border: "1px solid var(--border)",
-                marginBottom: "20px",
-                fontSize: "10px",
-                letterSpacing: "1px",
-                color: "var(--text-dim)",
-              }}>
-                TOTAL: <span style={{ color: rewardPct + profitPct + refPct === 100 ? "var(--usdc-green)" : "var(--fire-red)", fontFamily: "var(--font-display)", fontSize: "16px" }}>
-                  {rewardPct + profitPct + refPct}%
-                </span>
-                {rewardPct + profitPct + refPct !== 100 && (
-                  <span style={{ color: "var(--fire-red)", marginLeft: "10px" }}>MUST EQUAL 100%</span>
-                )}
+              <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+              <div className="text-center">
+                {u.vip ? <span className="text-gold text-xs">VIP</span> : <span className="text-muted-foreground text-xs">—</span>}
               </div>
-
-              {saveMsg && (
-                <div style={{ fontSize: "10px", color: "var(--usdc-green)", letterSpacing: "2px", marginBottom: "12px" }}>{saveMsg}</div>
-              )}
-              <button className="btn-fire btn" onClick={handleSavePool} style={{ letterSpacing: "2px" }}>
-                SAVE DISTRIBUTION
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- USERS ---- */}
-        {section === "users" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              USER <span>MANAGEMENT</span>
-            </div>
-            {usersError && (
-              <div style={{ color: "var(--fire-red)", fontSize: "11px", letterSpacing: "1px", marginBottom: "16px" }}>
-                ⚠ {usersError}
-              </div>
-            )}
-            <div className="panel-box">
-              <table className="ash-table" style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    {["USERNAME","EMAIL","BURNS","STATUS","VIP","ACTIONS"].map((h) => (
-                      <th key={h}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminUsers.length === 0 && !usersError && (
-                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "11px", padding: "24px" }}>LOADING...</td></tr>
-                  )}
-                  {adminUsers.map((u) => {
-                    const isBanned = u.lockedUntil && new Date(u.lockedUntil) > new Date("2090-01-01");
-                    return (
-                      <tr key={u.id}>
-                        <td style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "1px" }}>{u.username}</td>
-                        <td style={{ fontSize: "10px", color: "var(--text-dim)" }}>{u.email}</td>
-                        <td style={{ color: "var(--fire-orange)", fontFamily: "var(--font-display)" }}>{u._count?.burns ?? 0}</td>
-                        <td>
-                          <span style={{
-                            fontSize: "9px", letterSpacing: "1px", padding: "2px 8px",
-                            background: isBanned ? "rgba(204,17,0,0.1)" : "rgba(39,174,96,0.1)",
-                            border: `1px solid ${isBanned ? "rgba(204,17,0,0.3)" : "rgba(39,174,96,0.3)"}`,
-                            color: isBanned ? "var(--fire-red)" : "var(--usdc-green)",
-                          }}>
-                            {isBanned ? "BANNED" : "ACTIVE"}
-                          </span>
-                        </td>
-                        <td style={{ color: u.isVip ? "var(--gold)" : "var(--text-dim)", fontFamily: "var(--font-display)", fontSize: "14px" }}>
-                          {u.isVip ? "YES" : "—"}
-                        </td>
-                        <td>
-                          <div style={{ display: "flex", gap: "6px" }}>
-                            <a
-                              href={`/admin/users/${u.id}`}
-                              className="btn-ghost btn"
-                              style={{ padding: "3px 10px", fontSize: "9px", textDecoration: "none" }}
-                            >
-                              VIEW
-                            </a>
-                            <button
-                              className="btn-ghost btn"
-                              style={{ padding: "3px 10px", fontSize: "9px", borderColor: isBanned ? "var(--usdc-green)" : "var(--fire-red)", color: isBanned ? "var(--usdc-green)" : "var(--fire-red)" }}
-                              onClick={() => handleBanUser(u.id, !isBanned)}
-                            >
-                              {isBanned ? "UNBAN" : "BAN"}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* ---- VIP ---- */}
-        {section === "vip" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              VIP <span>MANAGEMENT</span>
-            </div>
-            <div className="panel-box" style={{ maxWidth: "560px" }}>
-              <div className="stat-grid" style={{ marginBottom: "24px" }}>
-                <div className="stat-card">
-                  <div className="stat-label">ACTIVE VIPS</div>
-                  <div className="stat-value gold">891</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">VIP REVENUE</div>
-                  <div className="stat-value usdc">$22,249</div>
-                </div>
-              </div>
-              {[
-                { label: "HOLY FIRE PRICE (USDC/MONTH)", val: 24.99, step: 0.01 },
-                { label: "ACTIVE ASH PRICE (USDC/MONTH)", val: 9.99, step: 0.01 },
-                { label: "SPARK PRICE (USDC/MONTH)", val: 4.99, step: 0.01 },
-                { label: "HOLY FIRE WEIGHT BONUS", val: 0.50, step: 0.05 },
-                { label: "HOLY FIRE ASH BONUS (%)", val: 20, step: 1 },
-              ].map((f) => (
-                <div key={f.label} className="form-group">
-                  <label>{f.label}</label>
-                  <input type="number" defaultValue={f.val} step={f.step} style={{ maxWidth: "200px" }} />
-                </div>
-              ))}
-              <button className="btn-fire btn" style={{ letterSpacing: "2px" }}>SAVE VIP CONFIG</button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- ASH TOKEN ---- */}
-        {section === "ash" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              ASH <span>TOKEN</span>
-            </div>
-            <div className="panel-box" style={{ maxWidth: "640px" }}>
-              <div className="stat-grid" style={{ marginBottom: "24px" }}>
-                <div className="stat-card">
-                  <div className="stat-label">TOTAL SUPPLY</div>
-                  <div className="stat-value ash">1B</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">DISTRIBUTED</div>
-                  <div className="stat-value ash">142.5M</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">REMAINING</div>
-                  <div className="stat-value ash">857.5M</div>
-                </div>
-              </div>
-              {[
-                { label: "REWARD MIN (ON LOSE)", val: 200 },
-                { label: "REWARD MAX (ON LOSE)", val: 500 },
-                { label: "BOOST COST (ASH)",     val: 1000 },
-                { label: "BOOST DURATION (MIN)", val: 60   },
-              ].map((f) => (
-                <div key={f.label} className="form-group">
-                  <label>{f.label}</label>
-                  <input type="number" defaultValue={f.val} style={{ maxWidth: "200px" }} />
-                </div>
-              ))}
-              <button className="btn-fire btn" style={{ letterSpacing: "2px" }}>SAVE ASH CONFIG</button>
-            </div>
-          </div>
-        )}
-
-        {/* ---- REFERRALS ---- */}
-        {section === "referrals" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              REFERRAL <span>SYSTEM</span>
-            </div>
-            <div className="panel-box" style={{ maxWidth: "560px" }}>
-              {[
-                { label: "COMMISSION RATE (%)", val: 10, step: 1 },
-                { label: "MAX DAILY EARNINGS (USDC)", val: 1000, step: 10 },
-              ].map((f) => (
-                <div key={f.label} className="form-group">
-                  <label>{f.label}</label>
-                  <input type="number" defaultValue={f.val} step={f.step} style={{ maxWidth: "200px" }} />
-                </div>
-              ))}
-              <div className="form-group">
-                <label>REWARD SOURCE</label>
-                <select style={{ maxWidth: "300px" }}>
-                  <option>FROM REWARD POOL</option>
-                  <option>FROM PROFIT POOL</option>
+              <div className="text-center">
+                <select value={u.role} onChange={(e) => setRole(u.id, e.target.value)}
+                  className="text-xs bg-muted border border-border rounded px-2 py-1">
+                  <option value="USER">USER</option>
+                  <option value="ADMIN">ADMIN</option>
                 </select>
               </div>
-              <button className="btn-fire btn" style={{ letterSpacing: "2px" }}>SAVE REFERRAL CONFIG</button>
+              <div className="flex gap-1 justify-center">
+                <button onClick={() => toggleBan(u.id, u.banned)}
+                  className={cn("p-1.5 rounded transition", u.banned
+                    ? "text-success hover:bg-success/10"
+                    : "text-danger hover:bg-danger/10")}>
+                  {u.banned ? <UserCheck className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          ))}
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
 
-        {/* ---- AUDIT LOG ---- */}
-        {section === "audit" && (
-          <div>
-            <div className="dash-title" style={{ marginBottom: "24px" }}>
-              AUDIT <span>LOG</span>
+function ConfigTab() {
+  const [cfg, setCfg] = useState({ ...mockBurnConfig });
+  const [loading, setLoading] = useState(false);
+
+  function update(key: keyof typeof cfg, val: number) {
+    setCfg((prev) => ({ ...prev, [key]: val }));
+  }
+
+  async function save() {
+    setLoading(true);
+    try {
+      await api.ownerSetBurnConfig(cfg);
+      toast.success("Config saved");
+    } catch { toast.error("Failed to save"); }
+    setLoading(false);
+  }
+
+  const fields: { key: keyof typeof cfg; label: string; step?: number; pct?: boolean }[] = [
+    { key: "ash_reward_percent",   label: "ASH reward multiplier",    step: 0.1 },
+    { key: "reward_pool_split",    label: "Reward pool split",        step: 0.01, pct: true },
+    { key: "profit_pool_split",    label: "Profit pool split",        step: 0.01, pct: true },
+    { key: "referral_pool_split",  label: "Referral pool split",      step: 0.01, pct: true },
+    { key: "referral_commission",  label: "Referral commission",      step: 0.01, pct: true },
+    { key: "min_burn_amount",      label: "Min burn ($USDC)",         step: 1 },
+    { key: "max_burn_amount",      label: "Max burn ($USDC)",         step: 100 },
+    { key: "base_unit",            label: "Base weight unit",         step: 0.01 },
+    { key: "boost_cost_ash",       label: "Boost cost (ASH)",         step: 100 },
+    { key: "prize_pool_target",    label: "Prize pool target ($)",    step: 50 },
+    { key: "round_time_limit_hours", label: "Round time limit (hrs)", step: 1 },
+    { key: "anti_snipe_seconds",   label: "Anti-snipe (secs)",        step: 1 },
+    { key: "auto_round_creation",  label: "Auto round creation",      step: 1 },
+  ];
+
+  const splitTotal = cfg.reward_pool_split + cfg.profit_pool_split + cfg.referral_pool_split;
+  const splitOk = Math.abs(splitTotal - 1) < 0.001;
+
+  return (
+    <div className="space-y-4">
+      {!splitOk && (
+        <div className="glass rounded-lg px-4 py-3 text-sm text-warning border border-warning/30">
+          Pool splits must sum to 100% (currently {(splitTotal * 100).toFixed(1)}%).
+        </div>
+      )}
+      <GlassCard>
+        <div className="grid sm:grid-cols-2 gap-4">
+          {fields.map((f) => (
+            <div key={f.key}>
+              <label className="text-xs text-muted-foreground mb-1 block">{f.label}</label>
+              <input
+                type="number"
+                step={f.step}
+                value={f.pct ? (cfg[f.key] as number) : cfg[f.key]}
+                onChange={(e) => update(f.key, parseFloat(e.target.value))}
+                className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm font-mono"
+              />
+              {f.pct && (
+                <div className="text-xs text-muted-foreground mt-0.5">{((cfg[f.key] as number) * 100).toFixed(1)}%</div>
+              )}
             </div>
-            <div className="panel-box">
-              <table className="ash-table" style={{ width: "100%" }}>
-                <thead>
-                  <tr>
-                    {["TIME","ADMIN","ACTION","TYPE"].map((h) => <th key={h}>{h}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {MOCK_AUDIT.map((log, i) => (
-                    <tr key={i}>
-                      <td style={{ color: "var(--text-dim)", fontSize: "10px", whiteSpace: "nowrap" }}>{log.time}</td>
-                      <td style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "1px", color: "var(--fire-orange)" }}>
-                        {log.admin}
-                      </td>
-                      <td style={{ fontSize: "11px" }}>{log.action}</td>
-                      <td>
-                        <span style={{
-                          fontSize: "9px",
-                          letterSpacing: "1px",
-                          padding: "2px 8px",
-                          background: "rgba(255,77,0,0.08)",
-                          border: "1px solid rgba(255,77,0,0.15)",
-                          color: "var(--fire-orange)",
-                        }}>
-                          {log.type}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+        <div className="mt-5">
+          <FireButton onClick={save} disabled={loading || !splitOk}>
+            <Save className="h-4 w-4" />{loading ? "Saving…" : "Save Config"}
+          </FireButton>
+        </div>
+      </GlassCard>
     </div>
   );
 }

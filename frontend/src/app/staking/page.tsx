@@ -1,351 +1,196 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
+import { useState } from "react";
+import { Sprout, Lock, X } from "lucide-react";
+import { toast } from "sonner";
+import { AppShell } from "@/components/ashnance/AppShell";
+import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
+import { useAuth } from "@/hooks/useAuth";
+import { stakingPools, mockStakingPositions } from "@/lib/mock";
+import { fmtNum, countdown } from "@/lib/format";
+import { api } from "@/lib/apiClient";
+import type { StakingPool } from "@/lib/types";
 
-interface Pool {
-  id: string;
-  name: string;
-  apy: number;
-  lockDays: number;
-  minStake: number;
-  description: string;
-}
-
-interface Position {
-  id: string;
-  amount: number;
-  pendingRewards: number;
-  rewardsClaimed: number;
-  status: "ACTIVE" | "UNLOCKED" | "WITHDRAWN";
-  lockedUntil: string;
-  isUnlocked: boolean;
-  pool: Pool;
-  createdAt: string;
-}
-
-interface Summary {
-  totalStaked: number;
-  totalPendingRewards: number;
-  totalClaimedAllTime: number;
-  activePositions: number;
-}
+const POOL_COLORS: Record<string, string> = {
+  EMBER:   "text-orange-400 border-orange-400/30",
+  FLAME:   "text-fire border-fire/30",
+  INFERNO: "text-red-400 border-red-400/30",
+};
 
 export default function StakingPage() {
-  const [pools, setPools] = useState<Pool[]>([]);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [ashBalance, setAshBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [selectedPool, setSelectedPool] = useState<Pool | null>(null);
-  const [stakeAmount, setStakeAmount] = useState("");
-  const [staking, setStaking] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [modal, setModal] = useState<StakingPool | null>(null);
 
-  const loadData = useCallback(async () => {
-    try {
-      const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-      if (token) api.setToken(token);
+  const totalStaked = mockStakingPositions.reduce((s, p) => s + p.staked, 0);
+  const totalPending = mockStakingPositions.reduce((s, p) => s + p.pending, 0);
 
-      const [poolsRes, posRes, sumRes, walletRes] = await Promise.allSettled([
-        api.staking.pools(),
-        api.staking.positions(),
-        api.staking.summary(),
-        api.wallet.balance(),
-      ]);
+  return (
+    <AppShell>
+      <SectionHeader eyebrow="Earn yield" title="Stake ASH" sub="Lock ASH in EMBER, FLAME, or INFERNO pools to earn passive yield." />
 
-      if (poolsRes.status === "fulfilled") {
-        const d = (poolsRes.value as { data: Pool[] }).data;
-        setPools(d.map(p => ({ ...p, apy: Number(p.apy), lockDays: Number(p.lockDays), minStake: Number(p.minStake) })));
-      }
-      if (posRes.status === "fulfilled") {
-        const d = (posRes.value as { data: Position[] }).data;
-        setPositions(d.map(p => ({ ...p, amount: Number(p.amount), pendingRewards: Number(p.pendingRewards), rewardsClaimed: Number(p.rewardsClaimed) })));
-      }
-      if (sumRes.status === "fulfilled") {
-        const d = (sumRes.value as { data: Summary }).data;
-        setSummary({ totalStaked: Number(d.totalStaked), totalPendingRewards: Number(d.totalPendingRewards), totalClaimedAllTime: Number(d.totalClaimedAllTime), activePositions: Number(d.activePositions) });
-      }
-      if (walletRes.status === "fulfilled") {
-        const d = (walletRes.value as { data: { ashBalance: number } }).data;
-        setAshBalance(Number(d.ashBalance ?? 0));
-      }
-    } catch {
-      setError("Failed to load staking data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  async function handleStake() {
-    if (!selectedPool || !stakeAmount) return;
-    const amount = parseFloat(stakeAmount);
-    if (isNaN(amount) || amount <= 0) return setError("Enter a valid amount");
-    if (amount < selectedPool.minStake) return setError(`Minimum stake is ${selectedPool.minStake} ASH`);
-    if (amount > ashBalance) return setError("Insufficient ASH balance");
-
-    setStaking(true);
-    setError(null);
-    try {
-      await api.staking.stake(selectedPool.id, amount);
-      setSuccess(`Successfully staked ${amount} ASH in ${selectedPool.name}!`);
-      setSelectedPool(null);
-      setStakeAmount("");
-      await loadData();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Staking failed");
-    } finally {
-      setStaking(false);
-    }
-  }
-
-  async function handleClaim(positionId: string) {
-    setError(null);
-    try {
-      const res = await api.staking.claim(positionId) as { data: { claimed: number } };
-      setSuccess(`Claimed ${Number(res.data.claimed).toFixed(2)} ASH rewards!`);
-      await loadData();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Claim failed");
-    }
-  }
-
-  async function handleUnstake(positionId: string) {
-    setError(null);
-    try {
-      const res = await api.staking.unstake(positionId) as { data: { total: number } };
-      setSuccess(`Unstaked! Received ${Number(res.data.total).toFixed(2)} ASH total.`);
-      await loadData();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Unstake failed");
-    }
-  }
-
-  const cardStyle: React.CSSProperties = {
-    background: "var(--panel-bg, #111)",
-    border: "1px solid rgba(255,77,0,0.2)",
-    borderRadius: "4px",
-    padding: "20px",
-    marginBottom: "16px",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: "10px",
-    letterSpacing: "2px",
-    color: "var(--text-dim, #666)",
-    textTransform: "uppercase" as const,
-  };
-
-  const valStyle: React.CSSProperties = {
-    fontSize: "20px",
-    fontFamily: "var(--font-display, monospace)",
-    color: "var(--fire-orange, #FF4D00)",
-    marginTop: "4px",
-  };
-
-  if (loading) {
-    return (
-      <div style={{ padding: "40px", textAlign: "center", color: "var(--text-dim, #666)", letterSpacing: "4px", fontSize: "12px" }}>
-        LOADING STAKING DATA...
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        <StatTile label="ASH Balance" value={fmtNum(user.ashBalance) + " ASH"} sub="Available to stake" accent="ash" />
+        <StatTile label="Total Staked" value={fmtNum(totalStaked) + " ASH"} sub="Across all pools" accent="fire" />
+        <StatTile label="Pending Yield" value={fmtNum(totalPending, 2) + " ASH"} sub="Claimable now" accent="gold" />
       </div>
-    );
+
+      {/* Pool cards */}
+      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+        {stakingPools.map((pool) => {
+          const myPos = mockStakingPositions.find((p) => p.poolId === pool.id);
+          const color = POOL_COLORS[pool.id];
+          return (
+            <GlassCard key={pool.id} className={`border ${color.split(" ")[1]}`}>
+              <div className={`text-xs uppercase tracking-wider font-bold mb-3 ${color.split(" ")[0]}`}>{pool.name}</div>
+              <div className="space-y-2 text-sm mb-4">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">APY</span>
+                  <span className="font-mono font-bold text-foreground">{pool.apy}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Lock period</span>
+                  <span className="font-mono">{pool.lockDays}d</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Minimum</span>
+                  <span className="font-mono">{fmtNum(pool.minAsh)} ASH</span>
+                </div>
+                {myPos && (
+                  <>
+                    <div className="border-t border-border pt-2" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Your stake</span>
+                      <span className="font-mono text-foreground">{fmtNum(myPos.staked)} ASH</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Pending</span>
+                      <span className="font-mono text-ash">+{fmtNum(myPos.pending, 2)} ASH</span>
+                    </div>
+                  </>
+                )}
+              </div>
+              <FireButton size="sm" className="w-full" onClick={() => setModal(pool)}
+                disabled={user.ashBalance < pool.minAsh}>
+                <Sprout className="h-3.5 w-3.5" />
+                {myPos ? "Stake More" : "Stake Now"}
+              </FireButton>
+            </GlassCard>
+          );
+        })}
+      </div>
+
+      {/* Positions */}
+      {mockStakingPositions.length > 0 && (
+        <GlassCard>
+          <div className="text-sm font-semibold mb-4">Your Positions</div>
+          <div className="space-y-3">
+            {mockStakingPositions.map((pos) => {
+              const pool = stakingPools.find((p) => p.id === pos.poolId)!;
+              const unlocked = new Date(pos.unlocksAt) <= new Date();
+              return (
+                <div key={pos.id} className="flex items-center gap-4 glass rounded-lg px-4 py-3">
+                  <div className={`text-xs font-bold uppercase ${POOL_COLORS[pos.poolId].split(" ")[0]}`}>{pool.name}</div>
+                  <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Staked</div>
+                      <div className="font-mono">{fmtNum(pos.staked)} ASH</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Pending yield</div>
+                      <div className="font-mono text-ash">+{fmtNum(pos.pending, 2)} ASH</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">{unlocked ? "Unlocked" : "Unlocks in"}</div>
+                      <div className="font-mono">{unlocked ? "Now" : countdown(pos.unlocksAt)}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {unlocked ? (
+                        <FireButton size="sm" onClick={() => toast.success("Unstake request submitted")}>Unstake</FireButton>
+                      ) : (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Locked</div>
+                      )}
+                      <GhostButton size="sm" onClick={() => toast.success("Yield claimed!")}>Claim</GhostButton>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </GlassCard>
+      )}
+
+      {modal && <StakeModal pool={modal} maxAsh={user.ashBalance} onClose={() => setModal(null)} />}
+    </AppShell>
+  );
+}
+
+function StakeModal({ pool, maxAsh, onClose }: { pool: StakingPool; maxAsh: number; onClose: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const a = parseFloat(amount);
+    if (!a || a < pool.minAsh || a > maxAsh) return;
+    setLoading(true);
+    try {
+      await api.stake({ poolId: pool.id, amount: a });
+      toast.success(`Staked ${fmtNum(a)} ASH in ${pool.name}`);
+      onClose();
+    } catch { toast.error("Staking failed"); }
+    setLoading(false);
   }
 
   return (
-    <>
-      <div className="dash-header">
-        <div className="dash-title">ASH <span>STAKING</span></div>
-        <div style={{ fontSize: "11px", color: "var(--text-dim)", letterSpacing: "2px" }}>
-          BALANCE: <span style={{ color: "#FFB800" }}>{ashBalance.toLocaleString()} ASH</span>
+    <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="glass-elevated ring-fire rounded-2xl p-8 max-w-md w-full">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="font-display text-xl font-bold">Stake — {pool.name}</h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
         </div>
-      </div>
-
-      {error && (
-        <div style={{ background: "rgba(255,0,0,0.1)", border: "1px solid #ff4444", color: "#ff4444", padding: "12px 16px", borderRadius: "4px", marginBottom: "16px", fontSize: "11px", letterSpacing: "2px" }}>
-          ⚠ {error.toUpperCase()}
+        <div className="grid grid-cols-3 gap-3 mb-5 text-center">
+          <div className="glass rounded-lg p-3">
+            <div className="text-xs text-muted-foreground">APY</div>
+            <div className="font-mono font-bold text-fire">{pool.apy}%</div>
+          </div>
+          <div className="glass rounded-lg p-3">
+            <div className="text-xs text-muted-foreground">Lock</div>
+            <div className="font-mono font-bold">{pool.lockDays}d</div>
+          </div>
+          <div className="glass rounded-lg p-3">
+            <div className="text-xs text-muted-foreground">Min</div>
+            <div className="font-mono font-bold">{fmtNum(pool.minAsh)} ASH</div>
+          </div>
         </div>
-      )}
-      {success && (
-        <div style={{ background: "rgba(0,255,100,0.1)", border: "1px solid #00ff64", color: "#00ff64", padding: "12px 16px", borderRadius: "4px", marginBottom: "16px", fontSize: "11px", letterSpacing: "2px" }} onClick={() => setSuccess(null)}>
-          ✓ {success.toUpperCase()} (CLICK TO DISMISS)
-        </div>
-      )}
-
-      {/* Summary Stats */}
-      {summary && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "24px" }}>
-          {[
-            { label: "TOTAL STAKED",    val: `${summary.totalStaked.toLocaleString()} ASH`,          color: "#FFB800" },
-            { label: "PENDING REWARDS", val: `${summary.totalPendingRewards.toFixed(2)} ASH`,         color: "#FF4D00" },
-            { label: "CLAIMED ALL TIME",val: `${summary.totalClaimedAllTime.toFixed(2)} ASH`,         color: "#00ff64" },
-            { label: "ACTIVE POSITIONS",val: summary.activePositions.toString(),                      color: "#fff"    },
-          ].map((s) => (
-            <div key={s.label} style={cardStyle}>
-              <div style={labelStyle}>{s.label}</div>
-              <div style={{ ...valStyle, color: s.color, fontSize: "16px" }}>{s.val}</div>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">Amount (ASH)</label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder={String(pool.minAsh)}
+              className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm font-mono"
+            />
+            <div className="flex justify-between text-xs text-muted-foreground mt-1">
+              <span>Min: {fmtNum(pool.minAsh)} ASH</span>
+              <button type="button" onClick={() => setAmount(String(maxAsh))} className="hover:text-foreground">
+                Max: {fmtNum(maxAsh)} ASH
+              </button>
             </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-        {/* Pools */}
-        <div>
-          <div className="panel-box">
-            <div className="panel-title">STAKING POOLS</div>
-            {pools.map((pool) => (
-              <div
-                key={pool.id}
-                onClick={() => { setSelectedPool(pool); setStakeAmount(""); setError(null); }}
-                style={{
-                  border: `1px solid ${selectedPool?.id === pool.id ? "var(--fire-orange,#FF4D00)" : "rgba(255,255,255,0.1)"}`,
-                  borderRadius: "4px",
-                  padding: "16px",
-                  marginBottom: "12px",
-                  cursor: "pointer",
-                  background: selectedPool?.id === pool.id ? "rgba(255,77,0,0.08)" : "transparent",
-                  transition: "all 0.2s",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <span style={{ fontFamily: "var(--font-display)", fontSize: "14px", letterSpacing: "2px" }}>{pool.name}</span>
-                  <span style={{ color: "#00ff64", fontFamily: "var(--font-display)", fontSize: "18px" }}>{Number(pool.apy).toFixed(0)}% APY</span>
-                </div>
-                <div style={{ display: "flex", gap: "16px", fontSize: "10px", color: "var(--text-dim,#666)", letterSpacing: "1px" }}>
-                  <span>🔒 {pool.lockDays}-DAY LOCK</span>
-                  <span>MIN: {Number(pool.minStake).toLocaleString()} ASH</span>
-                </div>
-                {pool.description && (
-                  <div style={{ fontSize: "10px", color: "var(--text-dim,#666)", marginTop: "6px", letterSpacing: "1px" }}>
-                    {pool.description.toUpperCase()}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Stake Input */}
-            {selectedPool && (
-              <div style={{ marginTop: "16px", padding: "16px", background: "rgba(255,77,0,0.05)", border: "1px solid rgba(255,77,0,0.3)", borderRadius: "4px" }}>
-                <div style={{ ...labelStyle, marginBottom: "8px" }}>STAKE IN {selectedPool.name}</div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                  <input
-                    type="number"
-                    min={selectedPool.minStake}
-                    step="1"
-                    placeholder={`Min ${selectedPool.minStake}`}
-                    value={stakeAmount}
-                    onChange={(e) => setStakeAmount(e.target.value)}
-                    style={{
-                      flex: 1,
-                      background: "#0a0a0a",
-                      border: "1px solid rgba(255,77,0,0.4)",
-                      color: "#fff",
-                      padding: "10px 12px",
-                      borderRadius: "4px",
-                      fontFamily: "var(--font-mono, monospace)",
-                      fontSize: "14px",
-                      letterSpacing: "1px",
-                    }}
-                  />
-                  <span style={{ fontSize: "11px", color: "#FFB800", letterSpacing: "1px" }}>ASH</span>
-                </div>
-                <div style={{ display: "flex", gap: "8px", marginTop: "10px" }}>
-                  <button
-                    onClick={handleStake}
-                    disabled={staking}
-                    className="btn btn-fire"
-                    style={{ flex: 1, fontSize: "11px" }}
-                  >
-                    {staking ? "STAKING..." : "🔥 STAKE NOW"}
-                  </button>
-                  <button
-                    onClick={() => { setSelectedPool(null); setStakeAmount(""); }}
-                    className="btn btn-ghost"
-                    style={{ fontSize: "11px" }}
-                  >
-                    CANCEL
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
-        </div>
-
-        {/* Active Positions */}
-        <div>
-          <div className="panel-box">
-            <div className="panel-title">YOUR POSITIONS</div>
-            {positions.filter(p => p.status !== "WITHDRAWN").length === 0 ? (
-              <div style={{ color: "var(--text-dim,#666)", fontSize: "11px", letterSpacing: "2px", padding: "20px 0", textAlign: "center" }}>
-                NO ACTIVE POSITIONS
-              </div>
-            ) : (
-              positions.filter(p => p.status !== "WITHDRAWN").map((pos) => (
-                <div key={pos.id} style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", padding: "14px", marginBottom: "12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span style={{ fontFamily: "var(--font-display)", fontSize: "12px", letterSpacing: "2px", color: "#FFB800" }}>
-                      {pos.pool.name}
-                    </span>
-                    <span style={{
-                      fontSize: "9px",
-                      letterSpacing: "1px",
-                      padding: "2px 8px",
-                      borderRadius: "2px",
-                      background: pos.isUnlocked ? "rgba(0,255,100,0.15)" : "rgba(255,77,0,0.15)",
-                      color: pos.isUnlocked ? "#00ff64" : "#FF4D00",
-                    }}>
-                      {pos.isUnlocked ? "UNLOCKED" : "LOCKED"}
-                    </span>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
-                    <div>
-                      <div style={labelStyle}>STAKED</div>
-                      <div style={{ fontSize: "14px", color: "#fff", fontFamily: "var(--font-mono,monospace)" }}>
-                        {Number(pos.amount).toLocaleString()} ASH
-                      </div>
-                    </div>
-                    <div>
-                      <div style={labelStyle}>PENDING REWARDS</div>
-                      <div style={{ fontSize: "14px", color: "#00ff64", fontFamily: "var(--font-mono,monospace)" }}>
-                        +{Number(pos.pendingRewards).toFixed(2)} ASH
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ fontSize: "10px", color: "var(--text-dim,#666)", letterSpacing: "1px", marginBottom: "10px" }}>
-                    {pos.isUnlocked
-                      ? "✓ LOCK PERIOD COMPLETE — READY TO UNSTAKE"
-                      : `🔒 UNLOCKS ${new Date(pos.lockedUntil).toLocaleDateString()}`}
-                  </div>
-
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    <button
-                      onClick={() => handleClaim(pos.id)}
-                      className="btn btn-ghost"
-                      style={{ flex: 1, fontSize: "10px", padding: "6px" }}
-                    >
-                      CLAIM REWARDS
-                    </button>
-                    {pos.isUnlocked && (
-                      <button
-                        onClick={() => handleUnstake(pos.id)}
-                        className="btn btn-fire"
-                        style={{ flex: 1, fontSize: "10px", padding: "6px" }}
-                      >
-                        UNSTAKE
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+          {amount && parseFloat(amount) >= pool.minAsh && (
+            <div className="glass rounded-lg px-4 py-3 text-sm text-muted-foreground">
+              Estimated yield: <span className="font-mono text-ash">
+                +{fmtNum(parseFloat(amount) * pool.apy / 100 * pool.lockDays / 365, 2)} ASH
+              </span> after {pool.lockDays} days
+            </div>
+          )}
+          <FireButton type="submit" className="w-full" disabled={loading || !amount}>
+            <Lock className="h-4 w-4" />{loading ? "Staking…" : "Confirm Stake"}
+          </FireButton>
+        </form>
       </div>
-    </>
+    </div>
   );
 }
