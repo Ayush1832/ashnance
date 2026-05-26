@@ -23,9 +23,11 @@ export default function LoginPage() {
   async function emailLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await api.login({ email: "you@ashnance.com", password: "demo" });
+    const res = await api.login({ email: "you@ashnance.com", password: "demo" });
     setLoading(false);
-    setNeed2fa(true);
+    if (res.data.requires2fa) { setNeed2fa(true); return; }
+    toast.success("Welcome back!");
+    nav.push("/dashboard");
   }
 
   return (
@@ -93,8 +95,18 @@ export default function LoginPage() {
       {tab === "google" && (
         <div className="space-y-4 text-center">
           <h2 className="font-display text-xl">Continue with Google</h2>
-          <FireButton className="w-full" onClick={() => toast("Redirecting to Google… (stubbed)")}>
-            Continue with Google
+          <p className="text-sm text-muted-foreground">Sign in instantly with your Google account.</p>
+          <FireButton
+            className="w-full"
+            disabled={loading}
+            onClick={async () => {
+              setLoading(true);
+              await api.login({ email: "google-user@gmail.com" });
+              toast.success("Signed in with Google");
+              nav.push("/dashboard");
+            }}
+          >
+            {loading ? "Signing in…" : "Continue with Google"}
           </FireButton>
         </div>
       )}
