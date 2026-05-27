@@ -28,11 +28,12 @@ router.get("/stats", async (req: AuthRequest, res: Response, next: NextFunction)
 // GET /api/owner/profit-pool
 router.get("/profit-pool", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const [pool, withdrawals] = await Promise.all([
-      OwnerService.getProfitPool(),
-      OwnerService.getWithdrawals(),
-    ]);
-    res.json({ success: true, data: { pool, withdrawals } });
+    const pool = await OwnerService.getProfitPool();
+    res.json({ success: true, data: {
+      balance:         Number(pool.balance),
+      totalDeposited:  Number(pool.totalDeposited),
+      totalWithdrawn:  Number(pool.totalWithdrawn),
+    }});
   } catch (err) { next(err); }
 });
 
@@ -101,8 +102,15 @@ router.put("/burn-config", async (req: AuthRequest, res: Response, next: NextFun
 // GET /api/owner/solvency
 router.get("/solvency", async (_req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const data = await OwnerService.getSolvency();
-    res.json({ success: true, data });
+    const s = await OwnerService.getSolvency();
+    res.json({ success: true, data: {
+      onChainUsdc: s.onChainUsdc,
+      liabilities: s.breakdown,   // frontend expects 'liabilities' key
+      total:       s.totalLiabilities, // frontend expects 'total' key
+      surplus:     s.surplus,
+      ratio:       s.ratio,
+      solvent:     s.solvent,
+    }});
   } catch (err) { next(err); }
 });
 
