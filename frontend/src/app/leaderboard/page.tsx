@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, RankBadge } from "@/components/ashnance/primitives";
-import { mockLeaderboards, mockRound } from "@/lib/mock";
 import { fmtUsd, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { LeaderboardRow } from "@/lib/types";
+import { api } from "@/lib/apiClient";
+import type { LeaderboardRow, Round, RoundEntry } from "@/lib/types";
 
 type Tab = "round" | "winners" | "burners" | "referrers" | "ash";
 
@@ -20,6 +20,32 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function LeaderboardPage() {
   const [tab, setTab] = useState<Tab>("round");
+  const [round, setRound] = useState<Round | null>(null);
+  const [boards, setBoards] = useState<Record<string, LeaderboardRow[]>>({});
+  const [loadingTab, setLoadingTab] = useState<Tab | null>(null);
+
+  // Load round on mount
+  useEffect(() => {
+    api.publicRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {});
+  }, []);
+
+  // Load global leaderboard when tab changes
+  useEffect(() => {
+    if (tab === "round") return;
+    if (boards[tab]) return; // already loaded
+    setLoadingTab(tab);
+    const kind = tab as "winners" | "burners" | "referrers" | "ash";
+    api.leaderboard(kind)
+      .then((res) => {
+        if (res.success && res.data) {
+          setBoards((prev) => ({ ...prev, [tab]: res.data as LeaderboardRow[] }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingTab(null));
+  }, [tab, boards]);
 
   return (
     <AppShell>
@@ -37,12 +63,36 @@ export default function LeaderboardPage() {
         ))}
       </div>
 
-      {tab === "round" && <RoundTab />}
-      {tab === "winners" && <GlobalTab rows={mockLeaderboards.winners} primary="USDC Won" secondary="Rounds Won" primaryFmt={(v) => fmtUsd(v)} />}
-      {tab === "burners" && <GlobalTab rows={mockLeaderboards.burners} primary="Total Burned" secondary="Burns" primaryFmt={(v) => fmtUsd(v)} />}
-      {tab === "referrers" && <GlobalTab rows={mockLeaderboards.referrers} primary="Referral Earned" secondary="Referrals" primaryFmt={(v) => fmtUsd(v)} />}
-      {tab === "ash" && <GlobalTab rows={mockLeaderboards.ash} primary="ASH Earned" primaryFmt={(v) => fmtNum(v) + " ASH"} />}
+      {tab === "round" && <RoundTab round={round} />}
+      {tab === "winners" && (
+        loadingTab === "winners"
+          ? <LoadingCard />
+          : <GlobalTab rows={boards.winners ?? []} primary="USDC Won" secondary="Rounds Won" primaryFmt={(v) => fmtUsd(v)} />
+      )}
+      {tab === "burners" && (
+        loadingTab === "burners"
+          ? <LoadingCard />
+          : <GlobalTab rows={boards.burners ?? []} primary="Total Burned" secondary="Burns" primaryFmt={(v) => fmtUsd(v)} />
+      )}
+      {tab === "referrers" && (
+        loadingTab === "referrers"
+          ? <LoadingCard />
+          : <GlobalTab rows={boards.referrers ?? []} primary="Referral Earned" secondary="Referrals" primaryFmt={(v) => fmtUsd(v)} />
+      )}
+      {tab === "ash" && (
+        loadingTab === "ash"
+          ? <LoadingCard />
+          : <GlobalTab rows={boards.ash ?? []} primary="ASH Earned" primaryFmt={(v) => fmtNum(v) + " ASH"} />
+      )}
     </AppShell>
+  );
+}
+
+function LoadingCard() {
+  return (
+    <GlassCard>
+      <div className="text-sm text-muted-foreground text-center py-8">Loading…</div>
+    </GlassCard>
   );
 }
 
@@ -71,11 +121,19 @@ function Podium({ rows }: { rows: { rank: number; username: string; primary: num
   );
 }
 
-function RoundTab() {
+function RoundTab({ round }: { round: Round | null }) {
+  if (!round) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">No active round right now.</div>
+      </GlassCard>
+    );
+  }
+
   return (
     <div>
       <div className="mb-4">
-        <Podium rows={mockRound.leaderboard.slice(0, 3).map((r) => ({
+        <Podium rows={round.leaderboard.slice(0, 3).map((r: RoundEntry) => ({
           rank: r.rank,
           username: r.username,
           primary: r.weight,
@@ -86,7 +144,7 @@ function RoundTab() {
       </div>
       <GlassCard className="p-0 overflow-hidden">
         <div className="divide-y divide-border">
-          {mockRound.leaderboard.map((r) => (
+          {round.leaderboard.map((r: RoundEntry) => (
             <div key={r.userId} className={cn(
               "flex items-center gap-3 px-5 py-3 text-sm",
               r.isYou && "bg-[rgba(255,69,0,0.08)]",
@@ -108,6 +166,14 @@ function GlobalTab({ rows, primary, secondary, primaryFmt }: {
   secondary?: string;
   primaryFmt: (v: number) => string;
 }) {
+  if (rows.length === 0) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">No data yet.</div>
+      </GlassCard>
+    );
+  }
+
   return (
     <div>
       <div className="mb-4">

@@ -1,14 +1,28 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Flame, Trophy, Wallet, Zap, Sprout, Send, Sparkles } from "lucide-react";
 import { Logo } from "@/components/ashnance/Logo";
 import { RoundProgressRing } from "@/components/ashnance/RoundProgressRing";
 import { FireButton, GhostButton, GlassCard, RankBadge } from "@/components/ashnance/primitives";
-import { mockRound, mockLeaderboards } from "@/lib/mock";
+import { api } from "@/lib/apiClient";
 import { fmtUsd, fmtNum } from "@/lib/format";
+import type { Round, LeaderboardRow } from "@/lib/types";
 
 export default function LandingPage() {
+  const [round, setRound] = useState<Round | null>(null);
+  const [winners, setWinners] = useState<LeaderboardRow[]>([]);
+
+  useEffect(() => {
+    api.publicRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {});
+    api.leaderboard("winners")
+      .then((res) => { if (res.success && res.data) setWinners(res.data as LeaderboardRow[]); })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen">
       {/* NAV */}
@@ -49,13 +63,15 @@ export default function LandingPage() {
             <Link href="/register"><FireButton size="lg">Start Competing <ArrowRight className="h-4 w-4" /></FireButton></Link>
             <a href="#how"><GhostButton size="lg">How It Works</GhostButton></a>
           </div>
-          <div className="mt-12 inline-flex items-center gap-4 px-5 py-3 rounded-full glass text-sm">
-            <span className="text-muted-foreground">Round #{mockRound.number}</span>
-            <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
-            <span className="font-mono">Pool: <span className="text-fire font-semibold">{fmtUsd(mockRound.prizePool)}</span> / {fmtUsd(mockRound.prizePoolTarget)}</span>
-            <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
-            <span className="text-muted-foreground"><span className="text-success">●</span> {mockRound.leaderboard.length} active</span>
-          </div>
+          {round && (
+            <div className="mt-12 inline-flex items-center gap-4 px-5 py-3 rounded-full glass text-sm">
+              <span className="text-muted-foreground">Round #{round.number}</span>
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+              <span className="font-mono">Pool: <span className="text-fire font-semibold">{fmtUsd(round.prizePool)}</span> / {fmtUsd(round.prizePoolTarget)}</span>
+              <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
+              <span className="text-muted-foreground"><span className="text-success">●</span> {round.leaderboard.length} active</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -88,18 +104,20 @@ export default function LandingPage() {
             <div className="text-xs uppercase tracking-[0.2em] text-primary mb-3">Live now</div>
             <h2 className="font-display text-4xl md:text-5xl font-bold tracking-tight">Prize pool is filling.</h2>
             <p className="mt-4 text-muted-foreground">The current round is open. Burns are coming in. Climb the leaderboard before the pool tops out.</p>
-            <div className="mt-6 space-y-2">
-              {mockRound.leaderboard.slice(0,3).map((r) => (
-                <div key={r.userId} className="flex items-center gap-3 px-4 py-2.5 rounded-md glass">
-                  <RankBadge rank={r.rank} />
-                  <span className="text-sm">{r.isAnonymous ? "Anonymous" : r.username}</span>
-                  <span className="ml-auto font-mono text-sm text-primary">{r.weight.toFixed(2)} weight</span>
-                </div>
-              ))}
-            </div>
+            {round && (
+              <div className="mt-6 space-y-2">
+                {round.leaderboard.slice(0, 3).map((r) => (
+                  <div key={r.userId} className="flex items-center gap-3 px-4 py-2.5 rounded-md glass">
+                    <RankBadge rank={r.rank} />
+                    <span className="text-sm">{r.isAnonymous ? "Anonymous" : r.username}</span>
+                    <span className="ml-auto font-mono text-sm text-primary">{r.weight.toFixed(2)} weight</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="mt-6"><Link href="/leaderboard"><GhostButton>View full leaderboard →</GhostButton></Link></div>
           </div>
-          <div className="flex justify-center"><RoundProgressRing size={320} /></div>
+          <div className="flex justify-center"><RoundProgressRing size={320} round={round} /></div>
         </div>
       </section>
 
@@ -168,16 +186,22 @@ export default function LandingPage() {
           </div>
           <Link href="/leaderboard" className="text-sm text-muted-foreground hover:text-foreground">View full →</Link>
         </div>
-        <div className="space-y-2">
-          {mockLeaderboards.winners.slice(0, 5).map((r) => (
-            <div key={r.rank} className="flex items-center gap-4 px-4 py-3 rounded-md glass">
-              <RankBadge rank={r.rank} />
-              <span className="font-medium">{r.anonymous ? "Anonymous" : r.username}</span>
-              <span className="ml-auto font-mono text-gold">${fmtNum(r.primary, 2)}</span>
-              <span className="text-xs text-muted-foreground hidden sm:inline">{r.secondary} wins</span>
-            </div>
-          ))}
-        </div>
+        {winners.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : (
+          <div className="space-y-2">
+            {winners.slice(0, 5).map((r) => (
+              <div key={r.rank} className="flex items-center gap-4 px-4 py-3 rounded-md glass">
+                <RankBadge rank={r.rank} />
+                <span className="font-medium">{r.anonymous ? "Anonymous" : r.username}</span>
+                <span className="ml-auto font-mono text-gold">${fmtNum(r.primary, 2)}</span>
+                {r.secondary !== undefined && (
+                  <span className="text-xs text-muted-foreground hidden sm:inline">{r.secondary} wins</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* FOOTER */}

@@ -1,20 +1,36 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Copy, Users, TrendingUp, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
-import { mockReferrals, mockBurnConfig } from "@/lib/mock";
+import { api } from "@/lib/apiClient";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
+import type { Referral } from "@/lib/types";
+
+const REFERRAL_COMMISSION = 0.10; // 10% — matches backend default
 
 export default function ReferralsPage() {
   const { user } = useAuth();
-  const referralUrl = `https://ashnance.com/register?ref=${user.referralCode}`;
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const totalEarned = mockReferrals.reduce((s, r) => s + r.earned, 0);
-  const totalBurns  = mockReferrals.reduce((s, r) => s + r.burnCount, 0);
-  const active      = mockReferrals.filter((r) => r.active).length;
+  useEffect(() => {
+    api.referrals()
+      .then((res) => {
+        if (res.success && res.data) setReferrals(res.data as Referral[]);
+      })
+      .catch(() => toast.error("Failed to load referrals"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://ashnance.com";
+  const referralUrl = `${origin}/register?ref=${user.referralCode}`;
+  const totalEarned = referrals.reduce((s, r) => s + r.earned, 0);
+  const totalBurns  = referrals.reduce((s, r) => s + r.burnCount, 0);
+  const active      = referrals.filter((r) => r.active).length;
 
   function copyCode() {
     navigator.clipboard.writeText(user.referralCode);
@@ -28,12 +44,16 @@ export default function ReferralsPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Bring burners" title="Referrals" sub={`Earn ${fmtNum(mockBurnConfig.referral_commission * 100)}% of every burn made by your referrals, sourced from the referral pool.`} />
+      <SectionHeader
+        eyebrow="Bring burners"
+        title="Referrals"
+        sub={`Earn ${fmtNum(REFERRAL_COMMISSION * 100)}% of every burn made by your referrals, sourced from the referral pool.`}
+      />
 
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
         <StatTile label="Total Earned" value={fmtUsd(totalEarned)} sub="From referral pool" accent="usdc" />
-        <StatTile label="Active Referrals" value={active} sub={`${mockReferrals.length} total`} accent="fire" />
+        <StatTile label="Active Referrals" value={active} sub={`${referrals.length} total`} accent="fire" />
         <StatTile label="Referral Burns" value={fmtNum(totalBurns)} sub="Burns by your referrals" accent="ash" />
       </div>
 
@@ -42,9 +62,11 @@ export default function ReferralsPage() {
         <div className="text-sm font-medium mb-4">Your referral code</div>
         <div className="flex items-center gap-3 mb-3">
           <div className="flex-1 glass rounded-lg px-4 py-3">
-            <div className="font-mono text-2xl font-bold tracking-[0.15em] text-fire">{user.referralCode}</div>
+            <div className="font-mono text-2xl font-bold tracking-[0.15em] text-fire">
+              {user.referralCode || "—"}
+            </div>
           </div>
-          <FireButton onClick={copyCode}><Copy className="h-4 w-4" /> Copy code</FireButton>
+          <FireButton onClick={copyCode} disabled={!user.referralCode}><Copy className="h-4 w-4" /> Copy code</FireButton>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground flex-1 truncate font-mono">{referralUrl}</span>
@@ -79,7 +101,7 @@ export default function ReferralsPage() {
         <div className="text-sm font-semibold mb-2">Weight bonus from referrals</div>
         <p className="text-sm text-muted-foreground">
           Having active referrals also boosts your own burn weight. For every 5 active referrals you have,
-          you gain +0.2 bonus weight per burn, capped at {fmtNum(mockBurnConfig.referral_weight_cap_pct * 100)}% of your base weight.
+          you gain +0.2 bonus weight per burn, capped at 40% of your base weight.
         </p>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
           {[5, 10, 15].map((n, i) => (
@@ -93,12 +115,16 @@ export default function ReferralsPage() {
 
       {/* Referrals list */}
       <GlassCard>
-        <div className="text-sm font-semibold mb-4">Your referrals ({mockReferrals.length})</div>
-        {mockReferrals.length === 0 ? (
+        <div className="text-sm font-semibold mb-4">
+          Your referrals ({loading ? "…" : referrals.length})
+        </div>
+        {loading ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Loading…</div>
+        ) : referrals.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">No referrals yet — share your code!</div>
         ) : (
           <div className="space-y-2">
-            {mockReferrals.map((r) => (
+            {referrals.map((r) => (
               <div key={r.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
                 <div className={`w-2 h-2 rounded-full shrink-0 ${r.active ? "bg-success" : "bg-muted-foreground"}`} />
                 <span className="text-sm flex-1">{r.username}</span>

@@ -1,44 +1,87 @@
-// Mock socket client. Emits fake real-time events to drive live UI.
-// TODO: wire up real socket event handlers (socket.io-client to NEXT_PUBLIC_API_URL).
+// Real Socket.IO client connecting to the backend at NEXT_PUBLIC_API_URL.
 
-import { mockBurnFeed, usernamesList } from "./mock";
-import type { BurnEvent } from "./types";
+import { io, Socket as IOSocket } from "socket.io-client";
 
-type EventName = "burn:new" | "leaderboard:update" | "round:progress" | "round:ended" | "deposit:confirmed" | "referral:earned";
-type Handler = (payload: any) => void;
+type EventName =
+  | "burn:new"
+  | "leaderboard:update"
+  | "round:progress"
+  | "round:ended"
+  | "deposit:confirmed"
+  | "referral:earned";
 
-class MockSocket {
-  private handlers = new Map<EventName, Set<Handler>>();
-  private interval: ReturnType<typeof setInterval> | null = null;
+type Handler = (payload: unknown) => void;
 
-  on(event: EventName, h: Handler) {
-    if (!this.handlers.has(event)) this.handlers.set(event, new Set());
-    this.handlers.get(event)!.add(h);
-    this.ensureRunning();
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+class AppSocket {
+  private _socket: IOSocket | null = null;
+  private _handlers = new Map<EventName, Set<Handler>>();
+  private _connected = false;
+
+  private getSocket(): IOSocket | null {
+    if (typeof window === "undefined") return null;
+    if (this._socket) return this._socket;
+
+    const accessToken = localStorage.getItem("accessToken");
+
+    this._socket = io(BASE, {
+      auth: accessToken ? { token: accessToken } : undefined,
+      transports: ["websocket", "polling"],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+    });
+
+    this._socket.on("connect", () => {
+      this._connected = true;
+      // Join public rooms
+      this._socket!.emit("join:ticker");
+      this._socket!.emit("join:round");
+      this._socket!.emit("join:leaderboard");
+    });
+
+    this._socket.on("disconnect", () => {
+      this._connected = false;
+    });
+
+    // Forward all events to local handlers
+    const events: EventName[] = [
+      "burn:new",
+      "leaderboard:update",
+      "round:progress",
+      "round:ended",
+      "deposit:confirmed",
+      "referral:earned",
+    ];
+    for (const evt of events) {
+      this._socket.on(evt, (payload: unknown) => {
+        this._handlers.get(evt)?.forEach((h) => h(payload));
+      });
+    }
+
+    return this._socket;
+  }
+
+  on(event: EventName, h: Handler): () => void {
+    if (!this._handlers.has(event)) this._handlers.set(event, new Set());
+    this._handlers.get(event)!.add(h);
+    this.getSocket(); // ensure connected
     return () => this.off(event, h);
   }
-  off(event: EventName, h: Handler) { this.handlers.get(event)?.delete(h); }
-  emit(event: EventName, payload: any) { this.handlers.get(event)?.forEach((h) => h(payload)); }
 
-  private ensureRunning() {
-    if (this.interval || typeof window === "undefined") return;
-    // TODO: wire up real socket event
-    this.interval = setInterval(() => {
-      const amount = [5,10,25,50][Math.floor(Math.random()*4)];
-      const ev: BurnEvent = {
-        id: `b_${Date.now()}`,
-        username: usernamesList[Math.floor(Math.random() * usernamesList.length)],
-        amount,
-        weight: +(amount / 4.99).toFixed(2),
-        ash: amount,
-        at: Date.now(),
-      };
-      this.emit("burn:new", ev);
-      this.emit("round:progress", { delta: amount * 0.4 });
-      this.emit("leaderboard:update", {});
-    }, 3500);
+  off(event: EventName, h: Handler) {
+    this._handlers.get(event)?.delete(h);
+  }
+
+  emit(event: EventName, payload: unknown) {
+    this._handlers.get(event)?.forEach((h) => h(payload));
+  }
+
+  disconnect() {
+    this._socket?.disconnect();
+    this._socket = null;
+    this._connected = false;
   }
 }
 
-export const socket = new MockSocket();
-export { mockBurnFeed };
+export const socket = new AppSocket();

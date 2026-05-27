@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash",
-      "PowerShell"
+      "PowerShell",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

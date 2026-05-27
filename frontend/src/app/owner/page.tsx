@@ -1,26 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AlertTriangle, Play, StopCircle, Download } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile, FireProgress } from "@/components/ashnance/primitives";
-import { mockOwnerSolvency, mockProfitPool, mockPendingWithdrawal, mockRound, mockBurnConfig } from "@/lib/mock";
 import { fmtUsd, fmtNum } from "@/lib/format";
 import { api } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
+import type { Round, BurnConfig } from "@/lib/types";
 
 type Tab = "solvency" | "round" | "config";
 
+type SolvencyData = {
+  onChainUsdc: number;
+  liabilities: Record<string, number>;
+  total: number;
+  ratio: number;
+  solvent: boolean;
+};
+
+type ProfitPoolData = {
+  balance: number;
+  totalDeposited: number;
+  totalWithdrawn: number;
+};
+
+type PendingWithdrawal = {
+  id: string;
+  amount: number;
+  initiatedBy: string;
+  initiatedAt: string;
+  status: "PENDING" | "PARTIAL";
+} | null;
+
 export default function OwnerPage() {
   const [tab, setTab] = useState<Tab>("solvency");
+  const [solvency, setSolvency] = useState<SolvencyData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.ownerSolvency()
+      .then((res) => { if (res.success && res.data) setSolvency(res.data as SolvencyData); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <AppShell>
       <SectionHeader eyebrow="Control" title="Owner" sub="Solvency, withdrawals, round management, and burn config." />
 
       {/* Solvency alert */}
-      {!mockOwnerSolvency.solvent && (
+      {!loading && solvency && !solvency.solvent && (
         <div className="glass rounded-lg px-4 py-3 mb-5 flex items-center gap-3 border border-danger/40 text-danger">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           <span className="text-sm font-medium">Platform is under-collateralised. Immediate action required.</span>
@@ -37,56 +68,92 @@ export default function OwnerPage() {
         ))}
       </div>
 
-      {tab === "solvency" && <SolvencyTab />}
-      {tab === "round" && <RoundTab />}
-      {tab === "config" && <EmissionTab />}
+      {tab === "solvency" && <SolvencyTab solvency={solvency} loading={loading} />}
+      {tab === "round"    && <RoundTab />}
+      {tab === "config"   && <EmissionTab />}
     </AppShell>
   );
 }
 
-function SolvencyTab() {
-  const s = mockOwnerSolvency;
+function SolvencyTab({ solvency, loading }: { solvency: SolvencyData | null; loading: boolean }) {
+  const [profitPool, setProfitPool] = useState<ProfitPoolData | null>(null);
+  const [pending, setPending] = useState<PendingWithdrawal>(null);
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    api.ownerProfitPool()
+      .then((res) => { if (res.success && res.data) setProfitPool(res.data as ProfitPoolData); })
+      .catch(() => {});
+    api.ownerPendingWithdrawal()
+      .then((res) => { if (res.success) setPending(res.data as PendingWithdrawal); })
+      .catch(() => {});
+  }, []);
 
   async function initiateWithdrawal(e: React.FormEvent) {
     e.preventDefault();
     const a = parseFloat(amount);
     if (!a || !address) return;
-    setLoading(true);
+    setSubmitting(true);
     try {
       await api.ownerInitiateWithdrawal(a);
       toast.success("Withdrawal initiated — awaiting second signature");
       setAmount(""); setAddress("");
-    } catch { toast.error("Failed"); }
-    setLoading(false);
+      const res = await api.ownerPendingWithdrawal();
+      if (res.success) setPending(res.data as PendingWithdrawal);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+    setSubmitting(false);
+  }
+
+  if (loading) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">Loading solvency data…</div>
+      </GlassCard>
+    );
+  }
+
+  if (!solvency) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">No solvency data available.</div>
+      </GlassCard>
+    );
   }
 
   return (
     <div className="space-y-5">
       {/* Solvency tiles */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatTile label="On-chain USDC" value={fmtUsd(s.onChainUsdc)} sub="Master wallet" accent="usdc" />
-        <StatTile label="Total Liabilities" value={fmtUsd(s.total)} sub="User bal + pools" accent="fire" />
-        <StatTile label="Solvency Ratio"
-          value={s.ratio.toFixed(3) + "×"}
-          sub={s.solvent ? "Solvent" : "INSOLVENT"}
-          accent={s.solvent ? "ash" : "fire"}
-          className={!s.solvent ? "border border-danger/40" : ""}
+        <StatTile label="On-chain USDC" value={fmtUsd(solvency.onChainUsdc)} sub="Master wallet" accent="usdc" />
+        <StatTile label="Total Liabilities" value={fmtUsd(solvency.total)} sub="User bal + pools" accent="fire" />
+        <StatTile
+          label="Solvency Ratio"
+          value={solvency.ratio.toFixed(3) + "×"}
+          sub={solvency.solvent ? "Solvent" : "INSOLVENT"}
+          accent={solvency.solvent ? "ash" : "fire"}
+          className={!solvency.solvent ? "border border-danger/40" : ""}
         />
-        <StatTile label="Profit Pool" value={fmtUsd(mockProfitPool.balance)} sub={`${fmtUsd(mockProfitPool.totalDeposited)} deposited`} accent="gold" />
+        <StatTile
+          label="Profit Pool"
+          value={profitPool ? fmtUsd(profitPool.balance) : "—"}
+          sub={profitPool ? `${fmtUsd(profitPool.totalDeposited)} deposited` : undefined}
+          accent="gold"
+        />
       </div>
 
       {/* Liabilities breakdown */}
       <GlassCard>
         <div className="text-sm font-semibold mb-4">Liabilities breakdown</div>
         <div className="space-y-3">
-          {Object.entries(s.liabilities).map(([k, v]) => {
+          {Object.entries(solvency.liabilities).map(([k, v]) => {
             const label: Record<string, string> = {
               userBalances: "User USDC balances",
-              rewardPool: "Reward pool",
-              profitPool: "Profit pool",
+              rewardPool:   "Reward pool",
+              profitPool:   "Profit pool",
               referralPool: "Referral pool",
             };
             return (
@@ -95,7 +162,7 @@ function SolvencyTab() {
                   <span className="text-muted-foreground">{label[k] ?? k}</span>
                   <span className="font-mono">{fmtUsd(v)}</span>
                 </div>
-                <FireProgress value={v} max={s.onChainUsdc} />
+                <FireProgress value={v} max={solvency.onChainUsdc} />
               </div>
             );
           })}
@@ -108,13 +175,25 @@ function SolvencyTab() {
         <p className="text-sm text-muted-foreground mb-4">
           Withdrawals from the profit pool require two owner signatures. Initiate below — the second owner will receive a notification.
         </p>
-        {mockPendingWithdrawal ? (
+        {pending ? (
           <div className="glass rounded-lg px-4 py-3 border border-warning/30">
-            <div className="text-sm font-medium text-warning">Pending withdrawal: {fmtUsd(mockPendingWithdrawal.amount)}</div>
-            <div className="text-xs text-muted-foreground mt-1">Initiated by {mockPendingWithdrawal.initiatedBy}</div>
+            <div className="text-sm font-medium text-warning">Pending withdrawal: {fmtUsd(pending.amount)}</div>
+            <div className="text-xs text-muted-foreground mt-1">Initiated by {pending.initiatedBy}</div>
             <div className="mt-3 flex gap-2">
-              <FireButton size="sm" onClick={() => toast.success("Withdrawal approved and executed")}>Approve & Execute</FireButton>
-              <GhostButton size="sm" onClick={() => toast.success("Withdrawal cancelled")}>Cancel</GhostButton>
+              <FireButton size="sm" onClick={async () => {
+                try {
+                  await api.ownerApproveWithdrawal(pending.id);
+                  toast.success("Withdrawal approved and executed");
+                  setPending(null);
+                } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+              }}>Approve & Execute</FireButton>
+              <GhostButton size="sm" onClick={async () => {
+                try {
+                  await api.ownerCancelWithdrawal(pending.id);
+                  toast.success("Withdrawal cancelled");
+                  setPending(null);
+                } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+              }}>Cancel</GhostButton>
             </div>
           </div>
         ) : (
@@ -125,8 +204,8 @@ function SolvencyTab() {
             <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
               placeholder="Destination address"
               className="h-10 px-3 rounded-md bg-muted border border-border text-sm font-mono" />
-            <FireButton type="submit" disabled={loading || !amount || !address}>
-              <Download className="h-4 w-4" />{loading ? "Initiating…" : "Initiate"}
+            <FireButton type="submit" disabled={submitting || !amount || !address}>
+              <Download className="h-4 w-4" />{submitting ? "Initiating…" : "Initiate"}
             </FireButton>
           </form>
         )}
@@ -136,40 +215,72 @@ function SolvencyTab() {
 }
 
 function RoundTab() {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [round, setRound] = useState<Round | null>(null);
+  const [loadingRound, setLoadingRound] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.currentRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {})
+      .finally(() => setLoadingRound(false));
+  }, []);
 
   async function action(name: string, fn: () => Promise<unknown>) {
-    setLoading(name);
-    try { await fn(); toast.success(`${name} successful`); }
-    catch { toast.error(`${name} failed`); }
-    setLoading(null);
+    setActionLoading(name);
+    try {
+      await fn();
+      toast.success(`${name} successful`);
+      // Refresh round
+      const res = await api.currentRound();
+      if (res.success && res.data) setRound(res.data as Round);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `${name} failed`);
+    }
+    setActionLoading(null);
   }
 
   return (
     <div className="space-y-5">
       <div className="grid sm:grid-cols-3 gap-4">
-        <StatTile label="Current Round" value={`#${mockRound.number}`} sub={mockRound.status} accent="fire" />
-        <StatTile label="Prize Pool" value={fmtUsd(mockRound.prizePool)} sub={`target ${fmtUsd(mockRound.prizePoolTarget)}`} accent="usdc" />
-        <StatTile label="Burns / 60s" value={fmtNum(mockRound.burnsLast60s)} sub="live activity" accent="ash" />
+        <StatTile
+          label="Current Round"
+          value={loadingRound ? "—" : round ? `#${round.number}` : "None"}
+          sub={round?.status ?? "No active round"}
+          accent="fire"
+        />
+        <StatTile
+          label="Prize Pool"
+          value={round ? fmtUsd(round.prizePool) : "—"}
+          sub={round ? `target ${fmtUsd(round.prizePoolTarget)}` : undefined}
+          accent="usdc"
+        />
+        <StatTile
+          label="Burns / 60s"
+          value={round ? fmtNum(round.burnsLast60s) : "—"}
+          sub="live activity"
+          accent="ash"
+        />
       </div>
 
       <GlassCard>
         <div className="text-sm font-semibold mb-4">Round controls</div>
         <div className="flex flex-wrap gap-3">
           <FireButton
-            onClick={() => action("Start round", () => api.adminStats())}
-            disabled={!!loading || mockRound.status === "ACTIVE"}>
-            <Play className="h-4 w-4" />{loading === "Start round" ? "Starting…" : "Start Round"}
+            onClick={() => action("Start round", () => api.ownerCreateRound())}
+            disabled={!!actionLoading || round?.status === "ACTIVE"}>
+            <Play className="h-4 w-4" />
+            {actionLoading === "Start round" ? "Starting…" : "Start Round"}
           </FireButton>
           <GhostButton
-            onClick={() => action("End round", () => api.adminStats())}
-            disabled={!!loading || mockRound.status !== "ACTIVE"}>
-            <StopCircle className="h-4 w-4 inline mr-1" />{loading === "End round" ? "Ending…" : "End Round"}
+            onClick={() => action("End round", () => api.ownerEndRound(round!.id))}
+            disabled={!!actionLoading || round?.status !== "ACTIVE"}>
+            <StopCircle className="h-4 w-4 inline mr-1" />
+            {actionLoading === "End round" ? "Ending…" : "End Round"}
           </GhostButton>
         </div>
         <p className="text-xs text-muted-foreground mt-3">
-          Auto round creation is <span className="font-mono text-foreground">{mockBurnConfig.auto_round_creation ? "enabled" : "disabled"}</span>.
-          Rounds auto-start {mockBurnConfig.round_time_limit_hours}h after the previous one ends.
+          Use the Owner panel burn config to adjust auto round creation and time limits.
         </p>
       </GlassCard>
     </div>
@@ -177,7 +288,23 @@ function RoundTab() {
 }
 
 function EmissionTab() {
-  const halvingThreshold = mockBurnConfig.emission_halving_threshold;
+  const [cfg, setCfg] = useState<BurnConfig | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.ownerBurnConfig()
+      .then((res) => { if (res.success && res.data) setCfg(res.data as BurnConfig); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading || !cfg) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">{loading ? "Loading config…" : "No config."}</div>
+      </GlassCard>
+    );
+  }
 
   return (
     <GlassCard>
@@ -185,9 +312,9 @@ function EmissionTab() {
       <div className="space-y-4">
         <div className="glass rounded-lg p-4">
           <div className="text-xs text-muted-foreground mb-1">Halving threshold</div>
-          <div className="font-mono text-2xl font-bold">{fmtNum(halvingThreshold)} ASH</div>
+          <div className="font-mono text-2xl font-bold">{fmtNum(cfg.emission_halving_threshold)} ASH</div>
           <p className="text-xs text-muted-foreground mt-2">
-            ASH rewards halve every {fmtNum(halvingThreshold)} ASH emitted.
+            ASH rewards halve every {fmtNum(cfg.emission_halving_threshold)} ASH emitted.
             Each halving halves the multiplier (1 → 0.5 → 0.25 → …).
           </p>
         </div>
@@ -200,9 +327,9 @@ function EmissionTab() {
         </div>
         <div className="glass rounded-lg p-4">
           <div className="text-xs text-muted-foreground mb-1">Auto round creation</div>
-          <div className="font-mono text-xl font-bold">{mockBurnConfig.auto_round_creation ? "Enabled" : "Disabled"}</div>
+          <div className="font-mono text-xl font-bold">{cfg.auto_round_creation ? "Enabled" : "Disabled"}</div>
           <p className="text-xs text-muted-foreground mt-2">
-            Configure in admin config tab. When enabled, a new round starts automatically after each round ends.
+            When enabled, a new round starts automatically after each round ends.
           </p>
         </div>
       </div>

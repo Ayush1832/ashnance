@@ -6,25 +6,29 @@ import { GlassCard, SectionHeader } from "@/components/ashnance/primitives";
 import { api } from "@/lib/apiClient";
 import { fmtNum } from "@/lib/format";
 
-type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAWAL" | "REFERRAL_REWARD" | "VIP_PURCHASE";
+type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAW" | "REFERRAL" | "VIP" | "BOOST" | "ASH_CLAIM";
 
 const FILTER_TABS: { key: TxType; label: string }[] = [
-  { key: "ALL",             label: "All"         },
-  { key: "BURN",            label: "🔥 Burns"    },
-  { key: "WIN",             label: "💥 Wins"     },
-  { key: "DEPOSIT",         label: "💵 Deposits" },
-  { key: "WITHDRAWAL",      label: "↗ Withdrawals" },
-  { key: "REFERRAL_REWARD", label: "👥 Referral" },
-  { key: "VIP_PURCHASE",    label: "👑 VIP"      },
+  { key: "ALL",       label: "All"          },
+  { key: "BURN",      label: "🔥 Burns"     },
+  { key: "WIN",       label: "💥 Wins"      },
+  { key: "DEPOSIT",   label: "💵 Deposits"  },
+  { key: "WITHDRAW",  label: "↗ Withdrawals" },
+  { key: "REFERRAL",  label: "👥 Referral"  },
+  { key: "VIP",       label: "👑 VIP"       },
+  { key: "BOOST",     label: "⚡ Boost"     },
+  { key: "ASH_CLAIM", label: "🪙 ASH Claim" },
 ];
 
 const TX_ICONS: Record<string, string> = {
-  BURN:            "🔥",
-  WIN:             "💥",
-  DEPOSIT:         "💵",
-  WITHDRAWAL:      "↗",
-  REFERRAL_REWARD: "👥",
-  VIP_PURCHASE:    "👑",
+  BURN:      "🔥",
+  WIN:       "💥",
+  DEPOSIT:   "💵",
+  WITHDRAW:  "↗",
+  REFERRAL:  "👥",
+  VIP:       "👑",
+  BOOST:     "⚡",
+  ASH_CLAIM: "🪙",
 };
 
 interface Tx {
@@ -39,8 +43,8 @@ interface Tx {
 
 function amountColor(tx: Tx) {
   if (tx.currency === "ASH") return "text-ash";
-  if (tx.type === "WIN" || tx.type === "DEPOSIT" || tx.type === "REFERRAL_REWARD") return "text-success";
-  if (tx.type === "BURN" || tx.type === "WITHDRAWAL") return "text-fire";
+  if (tx.type === "WIN" || tx.type === "DEPOSIT" || tx.type === "REFERRAL") return "text-success";
+  if (tx.type === "BURN" || tx.type === "WITHDRAW") return "text-fire";
   return "text-foreground";
 }
 
@@ -62,7 +66,8 @@ export default function TransactionsPage() {
     api.transactions({ type: filter !== "ALL" ? filter : undefined })
       .then((res) => {
         if (res.success) {
-          setTxList(res.data.items.map((t: any) => ({
+          const items = (res.data as any)?.items ?? [];
+          setTxList(items.map((t: any) => ({
             id:       t.id,
             type:     t.type,
             amount:   Number(t.amount),
