@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Flame, Zap, Star, Users, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
@@ -9,11 +9,23 @@ import { GlassCard, SectionHeader, FireButton, RankBadge } from "@/components/as
 import { RoundProgressRing } from "@/components/ashnance/RoundProgressRing";
 import { BurnResultModal, type BurnResult } from "@/components/ashnance/BurnResultModal";
 import { useAuth } from "@/hooks/useAuth";
-import { mockRound, mockBurnConfig, calcWeight, calcAsh } from "@/lib/mock";
-import { fmtUsd, fmtNum, fmtAsh, countdown } from "@/lib/format";
+import { calcWeight, calcAsh } from "@/lib/mock";
+import { fmtUsd, fmtNum, countdown } from "@/lib/format";
 import { api } from "@/lib/apiClient";
+import { socket } from "@/lib/socketClient";
+import type { Round } from "@/lib/types";
 
 const PRESETS = [5, 10, 25, 50, 100, 250];
+
+// Default config values (used until real config loads)
+const DEFAULT_CONFIG = {
+  min_burn_amount: 5,
+  max_burn_amount: 10000,
+  reward_pool_split: 0.5,
+  profit_pool_split: 0.5,
+  referral_pool_split: 0,
+  anti_snipe_seconds: 10,
+};
 
 function playFireSound() {
   try {
@@ -61,24 +73,80 @@ export default function BurnPage() {
   const [burning, setBurning] = useState(false);
   const [boostLoading, setBoostLoading] = useState(false);
   const [burnResult, setBurnResult] = useState<BurnResult | null>(null);
+  const [round, setRound] = useState<Round | null>(null);
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [activeReferrals, setActiveReferrals] = useState(0);
+
+  useEffect(() => {
+    api.currentRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {/* no active round */});
+    api.ownerBurnConfig()
+      .then((res) => {
+        if (res.success && res.data) {
+          const d = res.data as Record<string, number>;
+          setConfig({
+            min_burn_amount:     d.min_burn_amount     ?? DEFAULT_CONFIG.min_burn_amount,
+            max_burn_amount:     d.max_burn_amount     ?? DEFAULT_CONFIG.max_burn_amount,
+            reward_pool_split:   d.reward_pool_split   ?? DEFAULT_CONFIG.reward_pool_split,
+            profit_pool_split:   d.profit_pool_split   ?? DEFAULT_CONFIG.profit_pool_split,
+            referral_pool_split: d.referral_pool_split ?? DEFAULT_CONFIG.referral_pool_split,
+            anti_snipe_seconds:  d.anti_snipe_seconds  ?? DEFAULT_CONFIG.anti_snipe_seconds,
+          });
+        }
+      })
+      .catch(() => {/* use defaults */});
+    api.referrals()
+      .then((res) => {
+        if (res.success && res.data) {
+          const list = res.data as { active?: boolean }[];
+          setActiveReferrals(Array.isArray(list) ? list.filter((r) => r.active).length : 0);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Keep round data live via socket
+  useEffect(() => {
+    const unProgress = socket.on("round:progress", (payload) => {
+      const p = payload as { currentPool: number; targetPool: number; progressPercent: number; timestamp: string };
+      setRound((prev) => prev ? {
+        ...prev,
+        prizePool: Number(p.currentPool),
+        prizePoolTarget: Number(p.targetPool),
+      } : prev);
+    });
+    const unBurn = socket.on("burn:new", () => {
+      // burn:new carries no pool update — pool comes via round:progress
+    });
+    const unLeaderboard = socket.on("leaderboard:update", () => {
+      // Backend sends no payload — re-fetch round to get updated leaderboard
+      api.currentRound()
+        .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+        .catch(() => {});
+    });
+    const unEnded = socket.on("round:ended", () => {
+      setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);
+    });
+    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); };
+  }, []);
 
   const effective = useCustom ? (parseFloat(custom) || 0) : amount;
   const isVip = user.vip === "HOLY_FIRE";
   const hasBoost = !!user.ashBoostExpiresAt && new Date(user.ashBoostExpiresAt) > new Date();
-  const activeReferrals = 3;
 
   const w = calcWeight(effective, { vip: isVip, boost: hasBoost, activeReferrals });
   const ash = calcAsh(effective, isVip);
 
-  const poolReward = effective * mockBurnConfig.reward_pool_split;
-  const poolProfit = effective * mockBurnConfig.profit_pool_split;
-  const poolReferral = effective * mockBurnConfig.referral_pool_split;
+  const poolReward   = effective * config.reward_pool_split;
+  const poolProfit   = effective * config.profit_pool_split;
+  const poolReferral = effective * config.referral_pool_split;
 
   const canBurn =
-    effective >= mockBurnConfig.min_burn_amount &&
-    effective <= mockBurnConfig.max_burn_amount &&
+    effective >= config.min_burn_amount &&
+    effective <= config.max_burn_amount &&
     effective <= user.usdcBalance &&
-    mockRound.status === "ACTIVE";
+    round?.status === "ACTIVE";
 
   async function handleBurn() {
     if (!canBurn) return;
@@ -86,16 +154,24 @@ export default function BurnPage() {
     setBurning(true);
     try {
       const res = await api.burn(effective);
+      // Immediately update prize pool from the response so the UI doesn't lag
+      if (res.data.newPool != null) {
+        setRound((prev) => prev ? { ...prev, prizePool: res.data.newPool } : prev);
+      }
       setBurnResult({
         amount: effective,
         weight: res.data.weight,
         ash: res.data.ash,
         newRank: res.data.rank,
         prizePool: res.data.newPool,
-        prizePoolTarget: mockRound.prizePoolTarget,
+        prizePoolTarget: round?.prizePoolTarget ?? 500,
       });
-    } catch {
-      toast.error("Burn failed. Try again.");
+      // Also refresh full round state from API to get updated leaderboard
+      api.currentRound()
+        .then((r) => { if (r.success && r.data) setRound(r.data as Round); })
+        .catch(() => {});
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Burn failed. Try again.");
     }
     setBurning(false);
   }
@@ -145,13 +221,13 @@ export default function BurnPage() {
                 onChange={(e) => { setCustom(e.target.value); setUseCustom(true); }}
                 onFocus={() => setUseCustom(true)}
                 className="flex-1 h-10 px-3 rounded-md bg-muted border border-border text-sm"
-                min={mockBurnConfig.min_burn_amount}
-                max={mockBurnConfig.max_burn_amount}
+                min={config.min_burn_amount}
+                max={config.max_burn_amount}
               />
               <span className="h-10 flex items-center px-3 text-sm text-muted-foreground">USDC</span>
             </div>
             <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-              <span>Min: {fmtUsd(mockBurnConfig.min_burn_amount)} · Max: {fmtUsd(mockBurnConfig.max_burn_amount)}</span>
+              <span>Min: {fmtUsd(config.min_burn_amount)} · Max: {fmtUsd(config.max_burn_amount)}</span>
               <span>Balance: <span className="font-mono text-foreground">{fmtUsd(user.usdcBalance)}</span></span>
             </div>
           </GlassCard>
@@ -181,17 +257,17 @@ export default function BurnPage() {
               <div className="glass rounded-lg p-3 text-center">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Reward Pool</div>
                 <div className="font-mono text-lg font-bold text-fire mt-1">{fmtUsd(poolReward)}</div>
-                <div className="text-xs text-muted-foreground">40%</div>
+                <div className="text-xs text-muted-foreground">{Math.round(config.reward_pool_split * 100)}%</div>
               </div>
               <div className="glass rounded-lg p-3 text-center">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit Pool</div>
                 <div className="font-mono text-lg font-bold text-[oklch(0.7_0.13_245)] mt-1">{fmtUsd(poolProfit)}</div>
-                <div className="text-xs text-muted-foreground">40%</div>
+                <div className="text-xs text-muted-foreground">{Math.round(config.profit_pool_split * 100)}%</div>
               </div>
               <div className="glass rounded-lg p-3 text-center">
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Referral Pool</div>
                 <div className="font-mono text-lg font-bold text-ash mt-1">{fmtUsd(poolReferral)}</div>
-                <div className="text-xs text-muted-foreground">20%</div>
+                <div className="text-xs text-muted-foreground">{Math.round(config.referral_pool_split * 100)}%</div>
               </div>
             </div>
           </GlassCard>
@@ -226,7 +302,7 @@ export default function BurnPage() {
 
           {/* Burn button */}
           <div className="space-y-2">
-            {mockRound.status !== "ACTIVE" && (
+            {round?.status !== "ACTIVE" && (
               <div className="glass rounded-lg px-4 py-3 text-sm text-warning border border-warning/30">
                 No active round — burns are currently paused.
               </div>
@@ -241,7 +317,7 @@ export default function BurnPage() {
               {burning ? "Burning…" : `BURN ${effective > 0 ? fmtUsd(effective) : "—"}`}
             </FireButton>
             <div className="text-center text-xs text-muted-foreground">
-              Anti-snipe: {mockBurnConfig.anti_snipe_seconds}s cooldown applies in the last 60s of a round
+              Anti-snipe: {config.anti_snipe_seconds}s cooldown applies in the last 60s of a round
             </div>
           </div>
         </div>
@@ -249,28 +325,36 @@ export default function BurnPage() {
         {/* Right column */}
         <div className="space-y-5">
           <GlassCard className="text-center">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Round #{mockRound.number}</div>
-            <RoundProgressRing size={160} />
-            <div className="mt-3 font-mono text-2xl font-bold text-fire">{fmtUsd(mockRound.prizePool)}</div>
-            <div className="text-xs text-muted-foreground">of {fmtUsd(mockRound.prizePoolTarget)} prize pool</div>
-            {mockRound.endsAt && (
-              <div className="mt-2 text-xs text-muted-foreground">Ends in <span className="font-mono text-foreground">{countdown(mockRound.endsAt)}</span></div>
+            <div className="text-xs uppercase tracking-wider text-muted-foreground mb-3">
+              {round ? `Round #${round.number}` : "No active round"}
+            </div>
+            <RoundProgressRing size={160} round={round} />
+            {round && (
+              <>
+                <div className="mt-3 font-mono text-2xl font-bold text-fire">{fmtUsd(round.prizePool)}</div>
+                <div className="text-xs text-muted-foreground">of {fmtUsd(round.prizePoolTarget)} prize pool</div>
+                {round.endsAt && (
+                  <div className="mt-2 text-xs text-muted-foreground">Ends in <span className="font-mono text-foreground">{countdown(round.endsAt)}</span></div>
+                )}
+              </>
             )}
           </GlassCard>
 
-          <GlassCard>
-            <div className="text-sm font-semibold mb-3">Current Standings</div>
-            <div className="space-y-1.5">
-              {mockRound.leaderboard.slice(0, 8).map((r) => (
-                <div key={r.userId}
-                  className={`flex items-center gap-2 px-2.5 py-2 rounded-md text-sm ${r.isYou ? "bg-[rgba(255,69,0,0.12)] border border-primary/40" : "glass"}`}>
-                  <RankBadge rank={r.rank} />
-                  <span className="flex-1 truncate">{r.isAnonymous ? "Anonymous" : r.username}{r.isYou && " (you)"}</span>
-                  <span className="font-mono text-xs">{r.weight.toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          </GlassCard>
+          {round && (
+            <GlassCard>
+              <div className="text-sm font-semibold mb-3">Current Standings</div>
+              <div className="space-y-1.5">
+                {round.leaderboard.slice(0, 8).map((r) => (
+                  <div key={r.userId}
+                    className={`flex items-center gap-2 px-2.5 py-2 rounded-md text-sm ${r.isYou ? "bg-[rgba(255,69,0,0.12)] border border-primary/40" : "glass"}`}>
+                    <RankBadge rank={r.rank} />
+                    <span className="flex-1 truncate">{r.isAnonymous ? "Anonymous" : r.username}{r.isYou && " (you)"}</span>
+                    <span className="font-mono text-xs">{r.weight.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          )}
 
           {!isVip && (
             <GlassCard className="border border-gold/30">

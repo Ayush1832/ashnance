@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Copy, ExternalLink, Clock, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatusBadge, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
-import { mockTransactions, mockWhitelist } from "@/lib/mock";
 import { fmtUsd, fmtNum, timeAgo, countdown } from "@/lib/format";
 import { api } from "@/lib/apiClient";
+import { userStore } from "@/lib/userStore";
+import { mapProfile } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
+import type { Transaction, WhitelistAddress } from "@/lib/types";
 
 type Tab = "deposit" | "withdraw" | "history" | "whitelist";
 
@@ -55,11 +57,17 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   return (
     <GlassCard>
       <div className="text-sm font-medium mb-4">Your USDC deposit address (Solana)</div>
-      <div className="glass rounded-lg p-4 flex items-center gap-3 mb-4">
-        <span className="font-mono text-xs break-all flex-1">{user.depositAddress}</span>
-        <button onClick={copy} className="shrink-0 p-1.5 rounded hover:bg-white/10 transition"><Copy className="h-4 w-4" /></button>
-      </div>
-      <GhostButton onClick={copy} className="w-full mb-4"><Copy className="h-4 w-4 inline mr-2" />Copy Address</GhostButton>
+      {user.depositAddress ? (
+        <>
+          <div className="glass rounded-lg p-4 flex items-center gap-3 mb-4">
+            <span className="font-mono text-xs break-all flex-1">{user.depositAddress}</span>
+            <button onClick={copy} className="shrink-0 p-1.5 rounded hover:bg-white/10 transition"><Copy className="h-4 w-4" /></button>
+          </div>
+          <GhostButton onClick={copy} className="w-full mb-4"><Copy className="h-4 w-4 inline mr-2" />Copy Address</GhostButton>
+        </>
+      ) : (
+        <div className="glass rounded-lg p-4 mb-4 text-sm text-muted-foreground">Loading deposit address…</div>
+      )}
       <div className="space-y-2 text-xs text-muted-foreground">
         <p>Send <span className="text-foreground font-medium">USDC</span> on the <span className="text-foreground font-medium">Solana</span> network to this address.</p>
         <p>Deposits are credited automatically after 1 confirmation (usually under 30 seconds).</p>
@@ -72,6 +80,7 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
 function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [amount, setAmount] = useState("");
   const [address, setAddress] = useState(user.walletAddress ?? "");
+  const [twoFaCode, setTwoFaCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -80,10 +89,17 @@ function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
     if (!a || a < 1 || a > user.usdcBalance) return;
     setLoading(true);
     try {
-      await api.withdraw({ amount: a, address, twoFaCode: "" });
+      await api.withdraw({ amount: a, address, twoFaCode });
       toast.success(`Withdrawal of ${fmtUsd(a)} initiated`);
       setAmount("");
-    } catch { toast.error("Withdrawal failed"); }
+      setTwoFaCode("");
+      // Refresh balance in header
+      api.profile()
+        .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
+        .catch(() => {});
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Withdrawal failed");
+    }
     setLoading(false);
   }
 
@@ -119,6 +135,17 @@ function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
           />
           <p className="text-xs text-muted-foreground mt-1">Must be a whitelisted address with 24h cooldown.</p>
         </div>
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">2FA Code</label>
+          <input
+            type="text"
+            value={twoFaCode}
+            onChange={(e) => setTwoFaCode(e.target.value)}
+            placeholder="6-digit code"
+            maxLength={6}
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm font-mono tracking-widest"
+          />
+        </div>
         <FireButton type="submit" className="w-full" disabled={loading || !amount || !address}>
           <Minus className="h-4 w-4" />{loading ? "Processing…" : "Withdraw"}
         </FireButton>
@@ -128,44 +155,84 @@ function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
 }
 
 function HistoryTab() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.transactions()
+      .then((res) => {
+        if (res.success && res.data) {
+          const d = res.data as { items?: Transaction[] } | Transaction[];
+          const items = Array.isArray(d) ? d : (d.items ?? []);
+          setTransactions(items);
+        }
+      })
+      .catch(() => toast.error("Failed to load transactions"))
+      .finally(() => setLoading(false));
+  }, []);
+
   const typeIcon: Record<string, string> = {
-    BURN: "🔥", DEPOSIT: "⬇️", WITHDRAW: "⬆️", WIN: "🏆",
-    REFERRAL: "👥", VIP: "⭐", BOOST: "⚡", ASH_CLAIM: "🪙",
+    BURN: "🔥", DEPOSIT: "⬇️", WITHDRAW: "⬆️", WITHDRAWAL: "⬆️", WIN: "🏆",
+    REFERRAL: "👥", REFERRAL_REWARD: "👥", VIP: "⭐", VIP_PURCHASE: "⭐",
+    BOOST: "⚡", ASH_BOOST: "⚡", ASH_CLAIM: "🪙",
   };
+
+  if (loading) {
+    return (
+      <GlassCard>
+        <div className="text-sm text-muted-foreground text-center py-8">Loading transactions…</div>
+      </GlassCard>
+    );
+  }
 
   return (
     <GlassCard className="p-0 overflow-hidden">
-      <div className="divide-y divide-border">
-        {mockTransactions.map((tx) => (
-          <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/2">
-            <span className="text-xl w-7 text-center shrink-0">{typeIcon[tx.type] ?? "•"}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm truncate">{tx.description}</div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-muted-foreground">{timeAgo(tx.at)}</span>
-                <StatusBadge status={tx.status} />
-                {tx.txHash && (
-                  <a href={`https://solscan.io/tx/${tx.txHash}`} target="_blank" rel="noreferrer"
-                    className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
-                    {tx.txHash} <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
+      {transactions.length === 0 ? (
+        <div className="text-sm text-muted-foreground text-center py-8">No transactions yet.</div>
+      ) : (
+        <div className="divide-y divide-border">
+          {transactions.map((tx) => (
+            <div key={tx.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/2">
+              <span className="text-xl w-7 text-center shrink-0">{typeIcon[tx.type] ?? "•"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm truncate">{tx.description}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-muted-foreground">{timeAgo(tx.at)}</span>
+                  <StatusBadge status={tx.status} />
+                  {tx.txHash && (
+                    <a href={`https://solscan.io/tx/${tx.txHash}`} target="_blank" rel="noreferrer"
+                      className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5">
+                      {tx.txHash.slice(0, 8)}… <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
+                </div>
               </div>
+              <span className={`font-mono text-sm font-medium shrink-0 ${tx.amount > 0 ? "text-success" : "text-foreground"}`}>
+                {tx.amount > 0 ? "+" : ""}{tx.asset === "USDC" ? fmtUsd(Math.abs(tx.amount)) : fmtNum(Math.abs(tx.amount)) + " ASH"}
+              </span>
             </div>
-            <span className={`font-mono text-sm font-medium shrink-0 ${tx.amount > 0 ? "text-success" : "text-foreground"}`}>
-              {tx.amount > 0 ? "+" : ""}{tx.asset === "USDC" ? fmtUsd(Math.abs(tx.amount)) : fmtNum(Math.abs(tx.amount)) + " ASH"}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </GlassCard>
   );
 }
 
 function WhitelistTab() {
+  const [whitelist, setWhitelist] = useState<WhitelistAddress[]>([]);
+  const [loading, setLoading] = useState(true);
   const [address, setAddress] = useState("");
   const [label, setLabel] = useState("");
   const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    api.whitelist()
+      .then((res) => {
+        if (res.success && res.data) setWhitelist(res.data as WhitelistAddress[]);
+      })
+      .catch(() => toast.error("Failed to load whitelist"))
+      .finally(() => setLoading(false));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -175,34 +242,61 @@ function WhitelistTab() {
       await api.addWhitelist({ address, label });
       toast.success("Address added — 24h cooldown before active");
       setAddress(""); setLabel("");
-    } catch { toast.error("Failed to add address"); }
+      // Refresh whitelist
+      const res = await api.whitelist();
+      if (res.success && res.data) setWhitelist(res.data as WhitelistAddress[]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add address");
+    }
     setAdding(false);
+  }
+
+  async function removeAddress(id: string) {
+    try {
+      await api.deleteWhitelist(id);
+      setWhitelist((prev) => prev.filter((w) => w.id !== id));
+      toast.success("Address removed");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove address");
+    }
   }
 
   return (
     <div className="space-y-4">
       <GlassCard>
         <div className="text-sm font-medium mb-3">Whitelisted addresses</div>
-        <div className="space-y-2">
-          {mockWhitelist.map((w) => (
-            <div key={w.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium">{w.label ?? "Unlabeled"}</div>
-                <div className="font-mono text-xs text-muted-foreground truncate">{w.address}</div>
+        {loading ? (
+          <div className="text-sm text-muted-foreground py-4 text-center">Loading…</div>
+        ) : whitelist.length === 0 ? (
+          <div className="text-sm text-muted-foreground py-4 text-center">No addresses whitelisted yet.</div>
+        ) : (
+          <div className="space-y-2">
+            {whitelist.map((w) => (
+              <div key={w.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{w.label ?? "Unlabeled"}</div>
+                  <div className="font-mono text-xs text-muted-foreground truncate">{w.address}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  {w.status === "ACTIVE" ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-success">Active</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs text-warning">
+                      <Clock className="h-3 w-3" />
+                      {w.activatesAt ? countdown(w.activatesAt) : "Pending"}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => removeAddress(w.id)}
+                  className="ml-2 text-xs text-danger hover:underline shrink-0"
+                >
+                  Remove
+                </button>
               </div>
-              <div className="text-right shrink-0">
-                {w.status === "ACTIVE" ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-success">Active</span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-xs text-warning">
-                    <Clock className="h-3 w-3" />
-                    {w.activatesAt ? countdown(w.activatesAt) : "Pending"}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </GlassCard>
 
       <GlassCard>

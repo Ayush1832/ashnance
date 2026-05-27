@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Flame, ArrowDown, ArrowUp, Zap, Sprout } from "lucide-react";
 import { toast } from "sonner";
@@ -8,15 +8,49 @@ import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, FireButton, GhostButton, RankBadge, FireProgress } from "@/components/ashnance/primitives";
 import { LiveBurnFeed } from "@/components/ashnance/LiveBurnFeed";
 import { useAuth } from "@/hooks/useAuth";
-import { mockRound } from "@/lib/mock";
 import { fmtUsd, fmtNum, countdown } from "@/lib/format";
 import { api } from "@/lib/apiClient";
+import { socket } from "@/lib/socketClient";
+import type { Round } from "@/lib/types";
 
 export default function Dashboard() {
   const { user } = useAuth();
   const [boostLoading, setBoostLoading] = useState(false);
-  const me = mockRound.leaderboard.find((r) => r.isYou);
-  const top = mockRound.leaderboard[0];
+  const [round, setRound] = useState<Round | null>(null);
+
+  useEffect(() => {
+    api.currentRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {/* no active round */});
+  }, []);
+
+  // Keep round data live via socket
+  useEffect(() => {
+    const unProgress = socket.on("round:progress", (payload) => {
+      const p = payload as { currentPool: number; targetPool: number; progressPercent: number; timestamp: string };
+      setRound((prev) => prev ? {
+        ...prev,
+        prizePool: Number(p.currentPool),
+        prizePoolTarget: Number(p.targetPool),
+      } : prev);
+    });
+    const unBurn = socket.on("burn:new", () => {
+      // burn:new carries no pool update — pool comes via round:progress
+    });
+    const unLeaderboard = socket.on("leaderboard:update", () => {
+      // Backend sends no payload — re-fetch round to get updated leaderboard
+      api.currentRound()
+        .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+        .catch(() => {});
+    });
+    const unEnded = socket.on("round:ended", () => {
+      setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);
+    });
+    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); };
+  }, []);
+
+  const me = round?.leaderboard.find((r) => r.isYou);
+  const top = round?.leaderboard[0];
   const hasBoost = !!user.ashBoostExpiresAt && new Date(user.ashBoostExpiresAt) > new Date();
 
   async function handleBoost() {
@@ -30,11 +64,14 @@ export default function Dashboard() {
     }
     setBoostLoading(false);
   }
+
   return (
     <AppShell>
       <div className="mb-6">
-        <h1 className="font-display text-3xl font-bold tracking-tight">Welcome back, {user.username}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Round #{mockRound.number} is live. Burn to climb.</p>
+        <h1 className="font-display text-3xl font-bold tracking-tight">Welcome back, {user.username || "—"}</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          {round ? `Round #${round.number} is live. Burn to climb.` : "No active round right now."}
+        </p>
       </div>
 
       <div className="grid md:grid-cols-3 gap-4 mb-6">
@@ -67,7 +104,7 @@ export default function Dashboard() {
           <div className="text-xs text-muted-foreground mt-1">
             Weight: <span className="font-mono text-foreground">{me?.weight.toFixed(2) ?? "0.00"}</span>
           </div>
-          {me && me.rank > 1 && (
+          {me && top && me.rank > 1 && (
             <div className="text-xs text-muted-foreground">
               Distance to #1: <span className="font-mono text-foreground">{(top.weight - me.weight).toFixed(2)}</span>
             </div>
@@ -76,53 +113,61 @@ export default function Dashboard() {
         </GlassCard>
       </div>
 
-      <GlassCard ring className="mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="font-display text-xl font-semibold">Round #{mockRound.number}</span>
-          <span className="inline-flex items-center px-2 h-5 rounded text-[10px] font-semibold uppercase tracking-wider border bg-success/15 text-success border-success/30">Active</span>
-          <span className="ml-auto text-xs text-muted-foreground">Ends in {countdown(mockRound.endsAt!)}</span>
-        </div>
-        <FireProgress value={mockRound.prizePool} max={mockRound.prizePoolTarget} />
-        <div className="mt-4 flex items-end justify-between flex-wrap gap-3">
-          <div>
-            <div className="text-xs text-muted-foreground">Current Prize</div>
-            <div className="font-mono text-3xl font-bold text-fire">{fmtUsd(mockRound.prizePool)}</div>
-            <div className="text-xs text-muted-foreground">target {fmtUsd(mockRound.prizePoolTarget)}</div>
+      {round && (
+        <GlassCard ring className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="font-display text-xl font-semibold">Round #{round.number}</span>
+            <span className="inline-flex items-center px-2 h-5 rounded text-[10px] font-semibold uppercase tracking-wider border bg-success/15 text-success border-success/30">Active</span>
+            {round.endsAt && <span className="ml-auto text-xs text-muted-foreground">Ends in {countdown(round.endsAt)}</span>}
           </div>
-          <Link href="/burn"><FireButton size="lg"><Flame className="h-4 w-4"/> BURN NOW</FireButton></Link>
-        </div>
-      </GlassCard>
+          <FireProgress value={round.prizePool} max={round.prizePoolTarget} />
+          <div className="mt-4 flex items-end justify-between flex-wrap gap-3">
+            <div>
+              <div className="text-xs text-muted-foreground">Current Prize</div>
+              <div className="font-mono text-3xl font-bold text-fire">{fmtUsd(round.prizePool)}</div>
+              <div className="text-xs text-muted-foreground">target {fmtUsd(round.prizePoolTarget)}</div>
+            </div>
+            <Link href="/burn"><FireButton size="lg"><Flame className="h-4 w-4"/> BURN NOW</FireButton></Link>
+          </div>
+        </GlassCard>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
         <GlassCard>
           <div className="flex items-center justify-between mb-3">
             <span className="font-display text-lg font-semibold">Live Burns</span>
-            <span className="text-xs text-muted-foreground">{mockRound.burnsLast60s} in last 60s</span>
+            {round && <span className="text-xs text-muted-foreground">{round.burnsLast60s} in last 60s</span>}
           </div>
           <LiveBurnFeed max={10} />
         </GlassCard>
 
         <GlassCard>
           <div className="flex items-center justify-between mb-3">
-            <span className="font-display text-lg font-semibold">Round #{mockRound.number} Standings</span>
+            <span className="font-display text-lg font-semibold">
+              {round ? `Round #${round.number} Standings` : "Standings"}
+            </span>
             <Link href="/leaderboard" className="text-xs text-muted-foreground hover:text-foreground">See all →</Link>
           </div>
-          <div className="space-y-1.5">
-            {mockRound.leaderboard.slice(0, 5).map((r) => (
-              <div key={r.userId} className={`flex items-center gap-3 px-3 py-2.5 rounded-md ${r.isYou ? "bg-[rgba(255,69,0,0.12)] border border-primary/40" : "glass"}`}>
-                <RankBadge rank={r.rank} />
-                <span className="text-sm">{r.isAnonymous ? "Anonymous" : r.username}{r.isYou && " (you)"}</span>
-                <span className="ml-auto font-mono text-sm">{r.weight.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
+          {round ? (
+            <div className="space-y-1.5">
+              {round.leaderboard.slice(0, 5).map((r) => (
+                <div key={r.userId} className={`flex items-center gap-3 px-3 py-2.5 rounded-md ${r.isYou ? "bg-[rgba(255,69,0,0.12)] border border-primary/40" : "glass"}`}>
+                  <RankBadge rank={r.rank} />
+                  <span className="text-sm">{r.isAnonymous ? "Anonymous" : r.username}{r.isYou && " (you)"}</span>
+                  <span className="ml-auto font-mono text-sm">{r.weight.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">No active round</p>
+          )}
         </GlassCard>
       </div>
 
       <GlassCard>
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <span className="font-display text-lg font-semibold">Quick Burn</span>
-          <span className="text-xs text-muted-foreground">Burn ~5 USDC → +1.00 weight, +500 ASH</span>
+          <span className="text-xs text-muted-foreground">Select an amount and go to the burn page</span>
         </div>
         <div className="flex gap-2 flex-wrap">
           {[5,10,25,50,100].map((a) => (

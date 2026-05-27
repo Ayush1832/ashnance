@@ -8,8 +8,11 @@ import { toast } from "sonner";
 import { AuthShell } from "@/components/ashnance/AuthShell";
 import { FireButton } from "@/components/ashnance/primitives";
 import { api } from "@/lib/apiClient";
+import { userStore } from "@/lib/userStore";
 import { walletOptions, connectWallet, signMessage, truncate } from "@/lib/solana";
 import { cn } from "@/lib/utils";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function LoginPage() {
   const nav = useRouter();
@@ -17,17 +20,73 @@ export default function LoginPage() {
   const [show, setShow] = useState(false);
   const [otpMode, setOtpMode] = useState(false);
   const [need2fa, setNeed2fa] = useState(false);
+  const [twoFaCode, setTwoFaCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [walletAddr, setWalletAddr] = useState<string|null>(null);
+
+  // Form field state
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp]           = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [savedCreds, setSavedCreds] = useState<{ email: string; password: string } | null>(null);
 
   async function emailLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    const res = await api.login({ email: "you@ashnance.com", password: "demo" });
+    try {
+      const res = await api.login({ email, password });
+      if (res.data.requires2fa) {
+        setSavedCreds({ email, password });
+        setNeed2fa(true);
+        setLoading(false);
+        return;
+      }
+      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      toast.success("Welcome back!");
+      nav.push("/dashboard");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Sign in failed");
+    }
     setLoading(false);
-    if (res.data.requires2fa) { setNeed2fa(true); return; }
-    toast.success("Welcome back!");
-    nav.push("/dashboard");
+  }
+
+  async function otpLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await api.login({ email: otpEmail, otp });
+      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      toast.success("Welcome back!");
+      nav.push("/dashboard");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "OTP sign in failed");
+    }
+    setLoading(false);
+  }
+
+  async function sendOtp() {
+    if (!otpEmail) { toast.error("Enter your email first"); return; }
+    try {
+      await api.sendOtp(otpEmail);
+      toast.success("Code sent to your email");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send code");
+    }
+  }
+
+  async function verify2fa() {
+    if (!savedCreds) return;
+    setLoading(true);
+    try {
+      const res = await api.loginWith2fa({ ...savedCreds, twoFaCode });
+      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      toast.success("Welcome back!");
+      nav.push("/dashboard");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Invalid code");
+    }
+    setLoading(false);
   }
 
   return (
@@ -43,18 +102,48 @@ export default function LoginPage() {
 
       {tab === "email" && (
         otpMode ? (
-          <div className="space-y-4">
+          <form onSubmit={otpLogin} className="space-y-4">
             <h2 className="font-display text-xl">Sign in with code</h2>
-            <input className="w-full h-11 px-3 rounded-md bg-muted border border-border" placeholder="you@example.com" />
-            <FireButton className="w-full" onClick={() => { api.sendOtp("test"); toast.success("Code sent to your email"); }}>Send Code</FireButton>
-            <div className="text-center text-xs text-muted-foreground"><button onClick={() => setOtpMode(false)} className="hover:text-foreground">Use password instead</button></div>
-          </div>
+            <input
+              className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
+              placeholder="you@example.com"
+              type="email"
+              value={otpEmail}
+              onChange={(e) => setOtpEmail(e.target.value)}
+            />
+            <FireButton type="button" className="w-full" onClick={sendOtp}>Send Code</FireButton>
+            <input
+              className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm font-mono tracking-widest"
+              placeholder="6-digit code"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value)}
+              maxLength={6}
+            />
+            <FireButton type="submit" className="w-full" disabled={loading || !otp || !otpEmail}>
+              {loading ? "Signing in…" : "Sign In with Code"}
+            </FireButton>
+            <div className="text-center text-xs text-muted-foreground">
+              <button type="button" onClick={() => setOtpMode(false)} className="hover:text-foreground">Use password instead</button>
+            </div>
+          </form>
         ) : (
           <form onSubmit={emailLogin} className="space-y-4">
             <h2 className="font-display text-2xl mb-2">Welcome back</h2>
-            <input className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm" placeholder="Email" />
+            <input
+              className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
+              placeholder="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
             <div className="relative">
-              <input type={show?"text":"password"} className="w-full h-11 px-3 pr-10 rounded-md bg-muted border border-border text-sm" placeholder="Password" />
+              <input
+                type={show ? "text" : "password"}
+                className="w-full h-11 px-3 pr-10 rounded-md bg-muted border border-border text-sm"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
               <button type="button" onClick={() => setShow(!show)} className="absolute right-3 top-3 text-muted-foreground">
                 {show ? <EyeOff className="h-4 w-4"/> : <Eye className="h-4 w-4"/>}
               </button>
@@ -83,9 +172,16 @@ export default function LoginPage() {
                 <div className="font-mono mt-1">{truncate(walletAddr, 6)}</div>
               </div>
               <FireButton className="w-full" onClick={async () => {
-                const sig = await signMessage(walletAddr, `Sign in to Ashnance\ntimestamp:${Date.now()}`);
-                await api.walletLogin({ address: walletAddr, signature: sig.signature, timestamp: sig.timestamp });
-                toast.success("Signed in"); nav.push("/dashboard");
+                try {
+                  const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
+                  const sig = await signMessage(walletAddr, message);
+                  const res = await api.walletLogin({ publicKey: walletAddr, signature: sig.signature, message: sig.message });
+                  if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+                  toast.success("Signed in");
+                  nav.push("/dashboard");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Wallet sign-in failed");
+                }
               }}>Sign & Login</FireButton>
             </>
           )}
@@ -98,15 +194,11 @@ export default function LoginPage() {
           <p className="text-sm text-muted-foreground">Sign in instantly with your Google account.</p>
           <FireButton
             className="w-full"
-            disabled={loading}
-            onClick={async () => {
-              setLoading(true);
-              await api.login({ email: "google-user@gmail.com" });
-              toast.success("Signed in with Google");
-              nav.push("/dashboard");
+            onClick={() => {
+              window.location.href = `${API_URL}/api/auth/google`;
             }}
           >
-            {loading ? "Signing in…" : "Continue with Google"}
+            Continue with Google
           </FireButton>
         </div>
       )}
@@ -118,10 +210,22 @@ export default function LoginPage() {
             <p className="text-sm text-muted-foreground mt-2">Enter the 6-digit code from your authenticator app.</p>
             <div className="flex gap-2 my-6 justify-center">
               {Array.from({length:6}).map((_,i) => (
-                <input key={i} maxLength={1} className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted border border-border" />
+                <input key={i} maxLength={1}
+                  className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted border border-border"
+                  onChange={(e) => {
+                    const digits = twoFaCode.split("");
+                    digits[i] = e.target.value.slice(-1);
+                    setTwoFaCode(digits.join(""));
+                    if (e.target.value && e.target.nextElementSibling instanceof HTMLInputElement) {
+                      e.target.nextElementSibling.focus();
+                    }
+                  }}
+                />
               ))}
             </div>
-            <FireButton className="w-full" onClick={() => { toast.success("Logged in"); nav.push("/dashboard"); }}>Verify</FireButton>
+            <FireButton className="w-full" disabled={loading} onClick={verify2fa}>
+              {loading ? "Verifying…" : "Verify"}
+            </FireButton>
             <div className="text-center text-xs text-muted-foreground mt-4">
               <button className="hover:text-foreground">Use a backup recovery code instead</button>
             </div>

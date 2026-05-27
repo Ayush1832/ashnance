@@ -18,10 +18,13 @@ export async function connectWallet(_provider: WalletProvider): Promise<{ addres
   return { address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" };
 }
 
-export async function signMessage(_address: string, message: string): Promise<{ signature: string; timestamp: number }> {
-  // TODO: implement SPL transfer signature request
+export async function signMessage(_address: string, message: string): Promise<{ signature: number[]; message: string }> {
+  // TODO: implement real Phantom/wallet-adapter signature request.
+  // The real implementation should call window.phantom.solana.signMessage(encoded, "utf8")
+  // and return the signature bytes as a number[].
   await new Promise((r) => setTimeout(r, 500));
-  return { signature: "mock_sig_" + btoa(message).slice(0,16), timestamp: Math.floor(Date.now()/1000) };
+  const encoded = new TextEncoder().encode(message);
+  return { signature: Array.from(encoded).slice(0, 64), message };
 }
 
 export async function sendUsdc(_from: string, _to: string, _amount: number): Promise<{ txHash: string }> {

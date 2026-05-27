@@ -310,15 +310,18 @@ export class AuthService {
    * Get user profile
    */
   static async getProfile(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        wallet: true,
-        _count: {
-          select: { burns: true, referralsMade: true },
+    const [user, recoveryCodesRemaining] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          wallet: true,
+          _count: {
+            select: { burns: true, referralsMade: true },
+          },
         },
-      },
-    });
+      }),
+      prisma.recoveryCode.count({ where: { userId, usedAt: null } }),
+    ]);
 
     if (!user) throw new NotFoundError("User not found");
 
@@ -327,6 +330,7 @@ export class AuthService {
       email: user.email,
       username: user.username,
       avatarUrl: user.avatarUrl,
+      role: user.role,
       solanaAddress: user.solanaAddress,
       isVip: user.isVip,
       vipTier: user.vipTier,
@@ -334,10 +338,15 @@ export class AuthService {
       referralCode: user.referralCode,
       twoFaEnabled: user.twoFaEnabled,
       privacyMode: user.privacyMode,
+      banned: user.isBanned,
+      isOwner: config.ownerEmails.includes(user.email),
+      recoveryCodesRemaining,
       wallet: user.wallet
         ? {
             usdcBalance: user.wallet.usdcBalance,
             ashBalance: user.wallet.ashBalance,
+            depositAddress: user.wallet.depositAddress,
+            ashBoostExpiresAt: user.wallet.boostExpiresAt,
           }
         : null,
       stats: {

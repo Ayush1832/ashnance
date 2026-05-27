@@ -82,17 +82,41 @@ router.get("/transactions", authenticate, async (req: AuthRequest, res: Response
       limit,
     });
 
-    res.json({ success: true, data: result });
+    // Map to frontend-expected shape
+    const items = result.transactions.map((tx) => ({
+      id:          tx.id,
+      type:        tx.type,
+      description: tx.description ?? tx.type,
+      amount:      Number(tx.amount),
+      asset:       tx.currency,
+      status:      tx.status,
+      at:          tx.createdAt,
+      txHash:      tx.txHash ?? undefined,
+    }));
+
+    res.json({ success: true, data: { items, pagination: result.pagination } });
   } catch (error) {
     next(error);
   }
 });
 
+function formatWhitelistAddress(w: { id: string; address: string; label: string | null; activatesAt: Date | null }) {
+  const now = new Date();
+  const isActive = !w.activatesAt || w.activatesAt <= now;
+  return {
+    id:          w.id,
+    address:     w.address,
+    label:       w.label ?? undefined,
+    status:      isActive ? "ACTIVE" : "PENDING",
+    activatesAt: w.activatesAt?.toISOString() ?? undefined,
+  };
+}
+
 // GET /api/wallet/whitelist — Get whitelisted addresses
 router.get("/whitelist", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const result = await WalletService.getWhitelistedAddresses(req.user!.userId);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: result.map(formatWhitelistAddress) });
   } catch (error) {
     next(error);
   }
@@ -104,7 +128,7 @@ router.post("/whitelist", authenticate, async (req: AuthRequest, res: Response, 
     const { address, label } = req.body;
     if (!address) return next(new BadRequestError("Address is required"));
     const result = await WalletService.addWhitelistedAddress(req.user!.userId, address, label);
-    res.json({ success: true, data: result });
+    res.json({ success: true, data: formatWhitelistAddress(result) });
   } catch (error) {
     next(error);
   }

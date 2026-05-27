@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -7,9 +7,11 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useGlobalToasts } from "@/hooks/useToasts";
-import { mockRound } from "@/lib/mock";
+import { api } from "@/lib/apiClient";
+import { socket } from "@/lib/socketClient";
 import { fmtUsd, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { Round } from "@/lib/types";
 
 const navItems = [
   { to: "/dashboard",   label: "Dashboard",   icon: LayoutDashboard },
@@ -27,9 +29,81 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, isAdmin, isOwner, logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [bellOpen, setBellOpen] = useState(false);
+  const [round, setRound] = useState<Round | null>(null);
+  const [notifications, setNotifications] = useState<{ id: string; text: string; at: number }[]>([]);
+  const bellRef = useRef<HTMLDivElement>(null);
   const path = usePathname();
   const isActive = (to: string) => path === to || path.startsWith(to + "/");
-  const poolPct = Math.min(100, (mockRound.prizePool / mockRound.prizePoolTarget) * 100);
+
+  useEffect(() => {
+    api.publicRound()
+      .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+      .catch(() => {/* no round */});
+  }, []);
+
+  // Accumulate socket events as notifications + keep round data live
+  useEffect(() => {
+    const unBurn = socket.on("burn:new", (payload) => {
+      const e = payload as { user: string; amount: number; ashReward: number; weight: number; timestamp: string };
+      const now = Date.now();
+      setNotifications((prev) => [
+        { id: String(now), text: `🔥 ${e.user} burned $${e.amount.toFixed(0)} USDC`, at: now },
+        ...prev.slice(0, 19),
+      ]);
+    });
+    const unProgress = socket.on("round:progress", (payload) => {
+      const p = payload as { currentPool: number; targetPool: number; progressPercent: number; timestamp: string };
+      setRound((prev) => prev ? {
+        ...prev,
+        prizePool: Number(p.currentPool),
+        prizePoolTarget: Number(p.targetPool),
+      } : prev);
+    });
+    const unLeaderboard = socket.on("leaderboard:update", () => {
+      // Backend sends no payload — re-fetch round to get updated leaderboard
+      api.publicRound()
+        .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+        .catch(() => {});
+    });
+    const unDeposit = socket.on("deposit:confirmed", (payload) => {
+      const p = payload as { amount: number };
+      setNotifications((prev) => [
+        { id: String(Date.now()), text: `💵 Deposit of $${p.amount?.toFixed(2)} confirmed`, at: Date.now() },
+        ...prev.slice(0, 19),
+      ]);
+    });
+    const unRoundEnded = socket.on("round:ended", (payload) => {
+      const p = payload as { winner?: string; prize?: number };
+      setNotifications((prev) => [
+        { id: String(Date.now()), text: `🏆 Round ended — winner: ${p.winner ?? "unknown"} ($${p.prize?.toFixed(0) ?? 0})`, at: Date.now() },
+        ...prev.slice(0, 19),
+      ]);
+      setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);
+    });
+    const unReferral = socket.on("referral:earned", (payload) => {
+      const p = payload as { amount: number };
+      setNotifications((prev) => [
+        { id: String(Date.now()), text: `👥 Referral reward: +$${p.amount?.toFixed(2)}`, at: Date.now() },
+        ...prev.slice(0, 19),
+      ]);
+    });
+    return () => { unBurn(); unProgress(); unLeaderboard(); unDeposit(); unRoundEnded(); unReferral(); };
+  }, []);
+
+  // Close bell dropdown on outside click
+  useEffect(() => {
+    if (!bellOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [bellOpen]);
+
+  const poolPct = round
+    ? Math.min(100, (round.prizePool / round.prizePoolTarget) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen flex bg-background text-foreground">
@@ -82,14 +156,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <button className="md:hidden p-2" onClick={() => setSidebarOpen(true)}>
             <Menu className="h-5 w-5" />
           </button>
-          <Link href="/burn" className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md glass hover:glow-fire transition-shadow">
-            <Flame className="h-3.5 w-3.5 text-primary" />
-            <span className="text-xs text-muted-foreground">Round #{mockRound.number}</span>
-            <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="h-full progress-fire" style={{ width: `${poolPct}%` }} />
-            </div>
-            <span className="font-mono text-xs">{fmtUsd(mockRound.prizePool)}</span>
-          </Link>
+          {round && (
+            <Link href="/burn" className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md glass hover:glow-fire transition-shadow">
+              <Flame className="h-3.5 w-3.5 text-primary" />
+              <span className="text-xs text-muted-foreground">Round #{round.number}</span>
+              <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+                <div className="h-full progress-fire" style={{ width: `${poolPct}%` }} />
+              </div>
+              <span className="font-mono text-xs">{fmtUsd(round.prizePool)}</span>
+            </Link>
+          )}
           <div className="flex-1" />
           <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-md glass text-xs text-[oklch(0.7_0.13_245)]">
             <span className="font-mono">${fmtNum(user.usdcBalance, 2)}</span>
@@ -99,14 +175,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="font-mono">{fmtNum(user.ashBalance)}</span>
             <span className="text-muted-foreground">ASH</span>
           </div>
-          <button className="p-2 rounded-md hover:bg-muted relative">
-            <Bell className="h-4 w-4 text-muted-foreground" />
-            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
-          </button>
+          <div className="relative" ref={bellRef}>
+            <button
+              className="p-2 rounded-md hover:bg-muted relative"
+              onClick={() => setBellOpen((v) => !v)}
+            >
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              {notifications.length > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
+              )}
+            </button>
+            {bellOpen && (
+              <div className="absolute right-0 top-11 w-80 glass-elevated rounded-md py-1 text-sm z-40 max-h-80 overflow-y-auto">
+                <div className="px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
+                  Notifications
+                </div>
+                {notifications.length === 0 ? (
+                  <div className="px-3 py-4 text-xs text-muted-foreground text-center">No notifications yet</div>
+                ) : (
+                  notifications.map((n) => (
+                    <div key={n.id} className="px-3 py-2.5 border-b border-border/50 last:border-0">
+                      <div className="text-xs">{n.text}</div>
+                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                        {new Date(n.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <div className="relative">
             <button onClick={() => setMenuOpen(!menuOpen)}
               className="w-9 h-9 rounded-full bg-fire flex items-center justify-center text-xs font-bold text-background">
-              {user.username.slice(0,2).toUpperCase()}
+              {user.username ? user.username.slice(0,2).toUpperCase() : "?"}
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-11 w-48 glass-elevated rounded-md py-1 text-sm z-40">

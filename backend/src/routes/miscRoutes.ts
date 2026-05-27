@@ -12,7 +12,13 @@ const router = Router();
 router.get("/leaderboard/winners", async (_req, res: Response, next: NextFunction) => {
   try {
     const data = await LeaderboardService.getTopWinners();
-    res.json({ success: true, data });
+    res.json({ success: true, data: data.map((r) => ({
+      rank:      r.rank,
+      username:  r.username,
+      primary:   Number(r.totalWon ?? 0),
+      secondary: r.winCount,
+      anonymous: false,
+    })) });
   } catch (error) { next(error); }
 });
 
@@ -20,7 +26,13 @@ router.get("/leaderboard/winners", async (_req, res: Response, next: NextFunctio
 router.get("/leaderboard/burners", async (_req, res: Response, next: NextFunction) => {
   try {
     const data = await LeaderboardService.getTopBurners();
-    res.json({ success: true, data });
+    res.json({ success: true, data: data.map((r) => ({
+      rank:      r.rank,
+      username:  r.username,
+      primary:   Number(r.totalBurned ?? 0),
+      secondary: r.burnCount,
+      anonymous: false,
+    })) });
   } catch (error) { next(error); }
 });
 
@@ -28,7 +40,13 @@ router.get("/leaderboard/burners", async (_req, res: Response, next: NextFunctio
 router.get("/leaderboard/referrers", async (_req, res: Response, next: NextFunction) => {
   try {
     const data = await LeaderboardService.getTopReferrers();
-    res.json({ success: true, data });
+    res.json({ success: true, data: data.map((r) => ({
+      rank:      r.rank,
+      username:  r.username,
+      primary:   Number(r.totalEarned ?? 0),
+      secondary: r.referralCount,
+      anonymous: false,
+    })) });
   } catch (error) { next(error); }
 });
 
@@ -36,7 +54,12 @@ router.get("/leaderboard/referrers", async (_req, res: Response, next: NextFunct
 router.get("/leaderboard/ash", async (_req, res: Response, next: NextFunction) => {
   try {
     const data = await LeaderboardService.getTopAshHolders();
-    res.json({ success: true, data });
+    res.json({ success: true, data: data.map((r) => ({
+      rank:      r.rank,
+      username:  r.username,
+      primary:   Number(r.ashBalance ?? 0),
+      anonymous: false,
+    })) });
   } catch (error) { next(error); }
 });
 

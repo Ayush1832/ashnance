@@ -1,16 +1,29 @@
 import { useEffect, useState } from "react";
 import { Flame } from "lucide-react";
-import { socket, mockBurnFeed } from "@/lib/socketClient";
+import { socket } from "@/lib/socketClient";
 import { timeAgo } from "@/lib/format";
 import type { BurnEvent } from "@/lib/types";
 
+// Backend burn:new payload shape
+type BurnPayload = { user: string; amount: number; ashReward: number; weight: number; timestamp: string };
+
 export function LiveBurnFeed({ max = 12 }: { max?: number }) {
-  const [feed, setFeed] = useState<BurnEvent[]>(mockBurnFeed.slice(0, max));
+  const [feed, setFeed] = useState<BurnEvent[]>([]);
   const [, force] = useState(0);
 
   useEffect(() => {
-    const off = socket.on("burn:new", (b: BurnEvent) => {
-      setFeed((prev) => [b, ...prev].slice(0, max));
+    const off = socket.on("burn:new", (raw: unknown) => {
+      const b = raw as BurnPayload;
+      const now = Date.now();
+      const mapped: BurnEvent = {
+        id: String(now),
+        username: b.user,
+        amount: b.amount,
+        weight: b.weight,
+        ash: b.ashReward,
+        at: now,
+      };
+      setFeed((prev) => [mapped, ...prev].slice(0, max));
     });
     const t = setInterval(() => force((n) => n + 1), 5000);
     return () => { off(); clearInterval(t); };
@@ -27,7 +40,7 @@ export function LiveBurnFeed({ max = 12 }: { max?: number }) {
             <span className="font-mono text-[oklch(0.7_0.13_245)]">${b.amount}</span>
           </span>
           <span className="ml-auto text-[11px] text-muted-foreground font-mono whitespace-nowrap">
-            +{b.weight} w · +{b.ash} ASH · {timeAgo(b.at)}
+            +{b.weight.toFixed(2)} w · +{b.ash} ASH · {timeAgo(b.at)}
           </span>
         </div>
       ))}

@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sprout, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
-import { stakingPools, mockStakingPositions } from "@/lib/mock";
+import { api, mapProfile } from "@/lib/apiClient";
+import { userStore } from "@/lib/userStore";
 import { fmtNum, countdown } from "@/lib/format";
-import { api } from "@/lib/apiClient";
-import type { StakingPool } from "@/lib/types";
+import type { StakingPool, StakingPosition } from "@/lib/types";
+
+async function refreshUserProfile() {
+  try {
+    const res = await api.profile();
+    if (res.success && res.data) userStore.update(mapProfile(res.data as Record<string, unknown>));
+  } catch { /* non-fatal */ }
+}
 
 const POOL_COLORS: Record<string, string> = {
   EMBER:   "text-orange-400 border-orange-400/30",
@@ -20,9 +27,49 @@ const POOL_COLORS: Record<string, string> = {
 export default function StakingPage() {
   const { user } = useAuth();
   const [modal, setModal] = useState<StakingPool | null>(null);
+  const [pools, setPools] = useState<StakingPool[]>([]);
+  const [positions, setPositions] = useState<StakingPosition[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const totalStaked = mockStakingPositions.reduce((s, p) => s + p.staked, 0);
-  const totalPending = mockStakingPositions.reduce((s, p) => s + p.pending, 0);
+  useEffect(() => {
+    Promise.all([
+      api.stakingPools().then((res) => { if (res.success && res.data) setPools(res.data as StakingPool[]); }),
+      api.stakingPositions().then((res) => { if (res.success && res.data) setPositions((res.data as StakingPosition[]).filter((p) => p.status !== "WITHDRAWN")); }),
+    ])
+      .catch(() => toast.error("Failed to load staking data"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function refreshPositions() {
+    const res = await api.stakingPositions();
+    if (res.success && res.data) setPositions((res.data as StakingPosition[]).filter((p) => p.status !== "WITHDRAWN"));
+  }
+
+  async function handleUnstake(id: string) {
+    try {
+      await api.unstake(id);
+      toast.success("Unstaked successfully");
+      await refreshPositions();
+      await refreshUserProfile();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Unstake failed");
+    }
+  }
+
+  async function handleClaim(id: string) {
+    try {
+      await api.claimStakingRewards(id);
+      toast.success("Yield claimed!");
+      await refreshPositions();
+      await refreshUserProfile();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Claim failed");
+    }
+  }
+
+  const activePositions = positions.filter((p) => p.status !== "WITHDRAWN");
+  const totalStaked  = activePositions.reduce((s, p) => s + p.staked,   0);
+  const totalPending = activePositions.reduce((s, p) => s + p.pending,  0);
 
   return (
     <AppShell>
@@ -35,61 +82,70 @@ export default function StakingPage() {
       </div>
 
       {/* Pool cards */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
-        {stakingPools.map((pool) => {
-          const myPos = mockStakingPositions.find((p) => p.poolId === pool.id);
-          const color = POOL_COLORS[pool.id];
-          return (
-            <GlassCard key={pool.id} className={`border ${color.split(" ")[1]}`}>
-              <div className={`text-xs uppercase tracking-wider font-bold mb-3 ${color.split(" ")[0]}`}>{pool.name}</div>
-              <div className="space-y-2 text-sm mb-4">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">APY</span>
-                  <span className="font-mono font-bold text-foreground">{pool.apy}%</span>
+      {loading ? (
+        <GlassCard className="mb-6">
+          <div className="text-sm text-muted-foreground text-center py-8">Loading pools…</div>
+        </GlassCard>
+      ) : (
+        <div className="grid sm:grid-cols-3 gap-4 mb-6">
+          {pools.map((pool) => {
+            const myPos = positions.find((p) => p.poolId === pool.id);
+            const color = POOL_COLORS[pool.id] ?? "text-foreground border-border";
+            return (
+              <GlassCard key={pool.id} className={`border ${color.split(" ")[1]}`}>
+                <div className={`text-xs uppercase tracking-wider font-bold mb-3 ${color.split(" ")[0]}`}>{pool.name}</div>
+                <div className="space-y-2 text-sm mb-4">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">APY</span>
+                    <span className="font-mono font-bold text-foreground">{pool.apy}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Lock period</span>
+                    <span className="font-mono">{pool.lockDays}d</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Minimum</span>
+                    <span className="font-mono">{fmtNum(pool.minAsh)} ASH</span>
+                  </div>
+                  {myPos && (
+                    <>
+                      <div className="border-t border-border pt-2" />
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Your stake</span>
+                        <span className="font-mono text-foreground">{fmtNum(myPos.staked)} ASH</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Pending</span>
+                        <span className="font-mono text-ash">+{fmtNum(myPos.pending, 2)} ASH</span>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Lock period</span>
-                  <span className="font-mono">{pool.lockDays}d</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Minimum</span>
-                  <span className="font-mono">{fmtNum(pool.minAsh)} ASH</span>
-                </div>
-                {myPos && (
-                  <>
-                    <div className="border-t border-border pt-2" />
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Your stake</span>
-                      <span className="font-mono text-foreground">{fmtNum(myPos.staked)} ASH</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Pending</span>
-                      <span className="font-mono text-ash">+{fmtNum(myPos.pending, 2)} ASH</span>
-                    </div>
-                  </>
-                )}
-              </div>
-              <FireButton size="sm" className="w-full" onClick={() => setModal(pool)}
-                disabled={user.ashBalance < pool.minAsh}>
-                <Sprout className="h-3.5 w-3.5" />
-                {myPos ? "Stake More" : "Stake Now"}
-              </FireButton>
-            </GlassCard>
-          );
-        })}
-      </div>
+                <FireButton size="sm" className="w-full" onClick={() => setModal(pool)}
+                  disabled={user.ashBalance < pool.minAsh}>
+                  <Sprout className="h-3.5 w-3.5" />
+                  {myPos ? "Stake More" : "Stake Now"}
+                </FireButton>
+              </GlassCard>
+            );
+          })}
+        </div>
+      )}
 
       {/* Positions */}
-      {mockStakingPositions.length > 0 && (
+      {activePositions.length > 0 && (
         <GlassCard>
           <div className="text-sm font-semibold mb-4">Your Positions</div>
           <div className="space-y-3">
-            {mockStakingPositions.map((pos) => {
-              const pool = stakingPools.find((p) => p.id === pos.poolId)!;
+            {activePositions.map((pos) => {
+              const pool = pools.find((p) => p.id === pos.poolId);
               const unlocked = new Date(pos.unlocksAt) <= new Date();
+              const color = POOL_COLORS[pos.poolId] ?? "text-foreground border-border";
               return (
                 <div key={pos.id} className="flex items-center gap-4 glass rounded-lg px-4 py-3">
-                  <div className={`text-xs font-bold uppercase ${POOL_COLORS[pos.poolId].split(" ")[0]}`}>{pool.name}</div>
+                  <div className={`text-xs font-bold uppercase ${color.split(" ")[0]}`}>
+                    {pool?.name ?? pos.poolId}
+                  </div>
                   <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
                     <div>
                       <div className="text-xs text-muted-foreground">Staked</div>
@@ -105,11 +161,11 @@ export default function StakingPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {unlocked ? (
-                        <FireButton size="sm" onClick={() => toast.success("Unstake request submitted")}>Unstake</FireButton>
+                        <FireButton size="sm" onClick={() => handleUnstake(pos.id)}>Unstake</FireButton>
                       ) : (
                         <div className="flex items-center gap-1 text-xs text-muted-foreground"><Lock className="h-3 w-3" />Locked</div>
                       )}
-                      <GhostButton size="sm" onClick={() => toast.success("Yield claimed!")}>Claim</GhostButton>
+                      <GhostButton size="sm" onClick={() => handleClaim(pos.id)}>Claim</GhostButton>
                     </div>
                   </div>
                 </div>
@@ -119,12 +175,24 @@ export default function StakingPage() {
         </GlassCard>
       )}
 
-      {modal && <StakeModal pool={modal} maxAsh={user.ashBalance} onClose={() => setModal(null)} />}
+      {modal && (
+        <StakeModal
+          pool={modal}
+          maxAsh={user.ashBalance}
+          onClose={() => setModal(null)}
+          onStaked={refreshPositions}
+        />
+      )}
     </AppShell>
   );
 }
 
-function StakeModal({ pool, maxAsh, onClose }: { pool: StakingPool; maxAsh: number; onClose: () => void }) {
+function StakeModal({ pool, maxAsh, onClose, onStaked }: {
+  pool: StakingPool;
+  maxAsh: number;
+  onClose: () => void;
+  onStaked: () => Promise<void>;
+}) {
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -136,8 +204,12 @@ function StakeModal({ pool, maxAsh, onClose }: { pool: StakingPool; maxAsh: numb
     try {
       await api.stake({ poolId: pool.id, amount: a });
       toast.success(`Staked ${fmtNum(a)} ASH in ${pool.name}`);
+      await onStaked();
+      await refreshUserProfile();
       onClose();
-    } catch { toast.error("Staking failed"); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Staking failed");
+    }
     setLoading(false);
   }
 

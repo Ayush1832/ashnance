@@ -35,7 +35,7 @@ export default function VipPage() {
   async function subscribe() {
     setLoading(true);
     try {
-      await api.subscribeVip("");
+      await api.subscribeVip("HOLY_FIRE");
       toast.success("Holy Fire VIP activated for 30 days!");
     } catch { toast.error("Subscription failed"); }
     setLoading(false);

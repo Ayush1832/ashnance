@@ -55,7 +55,7 @@ function ProfileTab() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.updateProfile({ username, privacy });
+      await api.updateProfile({ username, privacyMode: privacy });
       toast.success("Profile updated");
     } catch { toast.error("Failed to save"); }
     setLoading(false);
@@ -141,35 +141,48 @@ function SecurityTab() {
   );
 }
 
-const MOCK_RECOVERY_CODES = [
-  "A3F2B-9E4C1", "D8K7M-2P1Q5", "X4N9R-6T3W8", "B5J2H-0L8Y4",
-  "C7V3K-4M9P2", "E1Q8N-7S5X6", "F6T2W-3A1C9", "G9P4B-8K6M0",
-];
-
 function TwoFaTab() {
   const { user } = useAuth();
   const [step, setStep] = useState<"status" | "setup" | "codes">("status");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
-  const [revealed, setRevealed] = useState(false);
+  const [qrUrl, setQrUrl] = useState("");
+  const [secret, setSecret] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+
+  async function startSetup() {
+    try {
+      const res = await api.generate2fa();
+      if (res.success && res.data) {
+        setSecret(res.data.secret ?? "");
+        // Generate QR image URL via Google Charts API
+        setQrUrl(`https://chart.googleapis.com/chart?chs=200x200&chld=M|0&cht=qr&chl=${encodeURIComponent(res.data.otpauthUrl ?? "")}`);
+      }
+    } catch { toast.error("Failed to generate 2FA secret"); return; }
+    setStep("setup");
+  }
 
   async function enable2fa() {
     if (code.length !== 6) return;
     setLoading(true);
     try {
-      await api.enable2fa(code);
+      const res = await api.enable2fa(code);
+      const codes = (res.data as { recoveryCodes?: string[] })?.recoveryCodes;
+      if (codes) setRecoveryCodes(codes);
       toast.success("2FA enabled!");
       setStep("codes");
-    } catch { toast.error("Invalid code"); }
+    } catch { toast.error("Invalid code — check your authenticator app"); }
     setLoading(false);
   }
 
   async function disable2fa() {
+    const token = prompt("Enter your 6-digit authenticator code to disable 2FA:");
+    if (!token) return;
     setLoading(true);
     try {
-      await api.disable2fa("");
+      await api.disable2fa(token);
       toast.success("2FA disabled");
-    } catch { toast.error("Failed"); }
+    } catch { toast.error("Invalid code"); }
     setLoading(false);
   }
 
@@ -178,16 +191,15 @@ function TwoFaTab() {
       <GlassCard>
         <div className="text-sm font-semibold mb-2">Recovery Codes</div>
         <p className="text-sm text-muted-foreground mb-4">
-          Save these 8 recovery codes in a safe place. Each code can only be used once.
-          If you lose access to your authenticator, use a recovery code to log in.
+          Save these recovery codes in a safe place. Each code can only be used once.
         </p>
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {MOCK_RECOVERY_CODES.map((c) => (
+          {recoveryCodes.map((c) => (
             <div key={c} className="glass rounded-md px-3 py-2 font-mono text-sm tracking-wider text-center">{c}</div>
           ))}
         </div>
         <div className="flex gap-2">
-          <GhostButton onClick={() => { navigator.clipboard.writeText(MOCK_RECOVERY_CODES.join("\n")); toast.success("Codes copied"); }}>
+          <GhostButton onClick={() => { navigator.clipboard.writeText(recoveryCodes.join("\n")); toast.success("Codes copied"); }}>
             <Copy className="h-4 w-4 inline mr-1" />Copy all
           </GhostButton>
           <FireButton onClick={() => setStep("status")}><Check className="h-4 w-4" />I&apos;ve saved them</FireButton>
@@ -201,12 +213,19 @@ function TwoFaTab() {
       <GlassCard className="max-w-md">
         <div className="text-sm font-semibold mb-4">Set up authenticator app</div>
         <p className="text-sm text-muted-foreground mb-4">
-          Scan the QR code with your authenticator app (Google Authenticator, Authy, etc.), then enter the 6-digit code.
+          Scan the QR code with Google Authenticator, Authy, or any TOTP app, then enter the 6-digit code below.
         </p>
-        {/* QR placeholder */}
-        <div className="w-40 h-40 glass rounded-xl flex items-center justify-center mx-auto mb-4 text-muted-foreground text-xs">
-          QR code here
-        </div>
+        {qrUrl ? (
+          <img src={qrUrl} alt="2FA QR code" className="w-40 h-40 rounded-xl mx-auto mb-2" />
+        ) : (
+          <div className="w-40 h-40 glass rounded-xl flex items-center justify-center mx-auto mb-2 text-muted-foreground text-xs">Loading…</div>
+        )}
+        {secret && (
+          <div className="text-center mb-4">
+            <div className="text-xs text-muted-foreground mb-1">Or enter manually:</div>
+            <div className="font-mono text-xs glass rounded px-3 py-1.5 inline-block tracking-widest">{secret}</div>
+          </div>
+        )}
         <div className="flex gap-2 mb-4 justify-center">
           {Array.from({ length: 6 }).map((_, i) => (
             <input key={i} maxLength={1} value={code[i] ?? ""} onChange={(e) => {
@@ -246,38 +265,11 @@ function TwoFaTab() {
           <div className="ml-auto">
             {user.twoFaEnabled
               ? <GhostButton onClick={disable2fa} disabled={loading}>Disable</GhostButton>
-              : <FireButton onClick={() => setStep("setup")}><Key className="h-4 w-4" />Enable 2FA</FireButton>
+              : <FireButton onClick={startSetup}><Key className="h-4 w-4" />Enable 2FA</FireButton>
             }
           </div>
         </div>
       </GlassCard>
-
-      {user.twoFaEnabled && (
-        <GlassCard>
-          <div className="text-sm font-semibold mb-2">Recovery codes</div>
-          <p className="text-sm text-muted-foreground mb-3">
-            You have <span className="font-mono text-foreground">{user.recoveryCodesRemaining}</span> recovery codes remaining.
-            Recovery codes can be used to log in if you lose access to your authenticator.
-          </p>
-          <div className="flex gap-2">
-            <GhostButton onClick={() => { setRevealed(!revealed); }}>
-              {revealed ? <EyeOff className="h-4 w-4 inline mr-1" /> : <Eye className="h-4 w-4 inline mr-1" />}
-              {revealed ? "Hide" : "Reveal"} codes
-            </GhostButton>
-            <GhostButton onClick={() => setStep("codes")}>Regenerate</GhostButton>
-          </div>
-          {revealed && (
-            <div className="grid grid-cols-2 gap-2 mt-3">
-              {MOCK_RECOVERY_CODES.map((c, i) => (
-                <div key={c} className={cn("glass rounded-md px-3 py-2 font-mono text-sm tracking-wider text-center",
-                  i >= user.recoveryCodesRemaining && "opacity-40 line-through")}>
-                  {c}
-                </div>
-              ))}
-            </div>
-          )}
-        </GlassCard>
-      )}
     </div>
   );
 }

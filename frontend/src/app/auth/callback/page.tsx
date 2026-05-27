@@ -2,6 +2,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { userStore } from "@/lib/userStore";
+import { api, mapProfile } from "@/lib/apiClient";
 
 function AuthCallback() {
   const router      = useRouter();
@@ -15,8 +17,8 @@ function AuthCallback() {
       const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
       const hashParams = new URLSearchParams(hash);
 
-      const accessToken  = hashParams.get("accessToken");
-      const refreshToken = hashParams.get("refreshToken");
+      const accessToken  = hashParams.get("accessToken")  ?? params.get("token");
+      const refreshToken = hashParams.get("refreshToken") ?? params.get("refreshToken");
       const error        = hashParams.get("error");
 
       // Clear the fragment so tokens don't sit in the address bar
@@ -30,8 +32,8 @@ function AuthCallback() {
         return;
       }
 
-      localStorage.setItem("accessToken",  accessToken);
-      localStorage.setItem("refreshToken", refreshToken || "");
+      localStorage.setItem("accessToken", accessToken);
+      if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
 
       // If this was an owner login attempt, verify and redirect to owner panel
       const ownerAttempt = localStorage.getItem("ownerLoginAttempt");
@@ -45,6 +47,13 @@ function AuthCallback() {
           );
           if (res.ok) {
             setMsg("OWNER ACCESS GRANTED");
+            // Fetch and store profile
+            try {
+              const profileRes = await api.profile();
+              if (profileRes.success && profileRes.data) {
+                userStore.update(mapProfile(profileRes.data as Record<string, unknown>));
+              }
+            } catch { /* non-fatal */ }
             router.replace("/owner");
             return;
           }
@@ -54,8 +63,18 @@ function AuthCallback() {
         return;
       }
 
+      // Fetch user profile and store it
+      try {
+        const profileRes = await api.profile();
+        if (profileRes.success && profileRes.data) {
+          userStore.update(mapProfile(profileRes.data as Record<string, unknown>));
+        }
+      } catch {
+        // Non-fatal — user store will be populated on next page load
+      }
+
       setMsg("WELCOME! REDIRECTING...");
-      router.replace("/connect-wallet");
+      router.replace("/dashboard");
     }
     handleCallback();
   }, [params, router]);

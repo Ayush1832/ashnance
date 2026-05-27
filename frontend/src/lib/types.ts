@@ -1,7 +1,7 @@
 // Shared domain types for Ashnance.
 
 export type Role = "USER" | "ADMIN" | "OWNER";
-export type VipTier = "HOLY_FIRE" | null;
+export type VipTier = "SPARK" | "ACTIVE_ASH" | "HOLY_FIRE" | null;
 
 export interface User {
   id: string;

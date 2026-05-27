@@ -43,7 +43,17 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response, next: Nex
       // WebSocket errors must never fail the HTTP response
     }
 
-    res.json({ success: true, data: result });
+    // Map internal result to the frontend-expected shape
+    res.json({ success: true, data: {
+      burnId:          result.burnId,
+      weight:          result.finalWeight,
+      ash:             result.ashReward,
+      rank:            result.userRoundRank,
+      newPool:         result.roundCurrentPool,
+      newPoolTarget:   result.roundTargetPool,
+      progressPercent: result.roundProgressPercent,
+      roundEnded:      result.roundEnded,
+    } });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return next(new BadRequestError(error.errors[0].message));

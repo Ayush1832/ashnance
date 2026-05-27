@@ -1,250 +1,462 @@
-// Centralized API client. All methods currently return mock data.
-// TODO: replace with real API call (each method individually noted).
+// Real API client. All methods make fetch calls to the backend.
 
-import {
-  mockUser, mockRound, mockTransactions, mockWhitelist,
-  stakingPools, mockStakingPositions, mockReferrals, mockLeaderboards,
-  mockAdminUsers, mockBurnConfig, mockOwnerSolvency, mockProfitPool,
-  mockPendingWithdrawal, calcWeight, calcAsh,
-} from "./mock";
 import { userStore } from "./userStore";
+import type { User } from "./types";
 
-const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms));
+// Maps the raw backend profile response to the frontend User shape.
+export function mapProfile(raw: Record<string, unknown>): Partial<User> {
+  const wallet = raw.wallet as {
+    usdcBalance?: number | string;
+    ashBalance?: number | string;
+    depositAddress?: string;
+    ashBoostExpiresAt?: string;
+  } | null;
+  return {
+    id: raw.id as string,
+    email: raw.email as string,
+    username: raw.username as string,
+    role: (raw.isOwner ? "OWNER" : (raw.role as string) ?? "USER") as User["role"],
+    vip: (raw.isVip ? (raw.vipTier as string) : null) as User["vip"],
+    vipExpiresAt: raw.vipExpiresAt as string | undefined,
+    banned: (raw.banned as boolean) ?? false,
+    privacy: (raw.privacyMode as boolean) ?? false,
+    twoFaEnabled: (raw.twoFaEnabled as boolean) ?? false,
+    recoveryCodesRemaining: (raw.recoveryCodesRemaining as number) ?? 0,
+    walletAddress: raw.solanaAddress as string | undefined,
+    referralCode: (raw.referralCode as string) ?? "",
+    createdAt: raw.createdAt as string,
+    usdcBalance: Number(wallet?.usdcBalance ?? 0),
+    ashBalance: Number(wallet?.ashBalance ?? 0),
+    depositAddress: (wallet?.depositAddress as string) ?? "",
+    ashBoostExpiresAt: wallet?.ashBoostExpiresAt as string | undefined,
+  };
+}
 
-function authHeader(): Record<string,string> {
-  if (typeof window === "undefined") return {};
-  const t = localStorage.getItem("accessToken");
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+// ─── Token helpers ───────────────────────────────────────────────────────────
+
+function getAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("accessToken");
+}
+
+function getRefreshToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("refreshToken");
+}
+
+function setTokens(accessToken: string, refreshToken: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("accessToken", accessToken);
+  localStorage.setItem("refreshToken", refreshToken);
+}
+
+function clearTokens() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("refreshToken");
+}
+
+function isTokenExpiringSoon(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    const expiresAt = payload.exp * 1000;
+    return Date.now() > expiresAt - 30_000; // refresh if expiring within 30s
+  } catch {
+    return true; // if we can't parse, treat as expired
+  }
+}
+
+// Prevents concurrent refreshes
+let refreshPromise: Promise<void> | null = null;
+
+async function maybeRefresh(): Promise<void> {
+  const access = getAccessToken();
+  if (access && !isTokenExpiringSoon(access)) return;
+
+  const refresh = getRefreshToken();
+  if (!refresh) return;
+
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE}/api/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refreshToken: refresh }),
+      });
+      const json = await res.json();
+      if (json.success && json.data?.accessToken) {
+        setTokens(json.data.accessToken, json.data.refreshToken);
+      } else {
+        clearTokens();
+        userStore.clear();
+      }
+    } catch {
+      clearTokens();
+      userStore.clear();
+    }
+  })().finally(() => { refreshPromise = null; });
+
+  return refreshPromise;
+}
+
+function authHeader(): Record<string, string> {
+  const t = getAccessToken();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-// TODO: replace with real API call (POST /api/auth/refresh)
-async function maybeRefresh() { void authHeader(); return; }
+// ─── Core fetch wrapper ───────────────────────────────────────────────────────
+
+async function request<T = unknown>(
+  method: string,
+  path: string,
+  body?: unknown,
+  requiresAuth = true,
+): Promise<T> {
+  if (requiresAuth) await maybeRefresh();
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (requiresAuth) Object.assign(headers, authHeader());
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  const json = await res.json();
+
+  if (!json.success) {
+    throw new Error(json.error ?? "Request failed");
+  }
+
+  return json.data as T;
+}
+
+const get  = <T>(path: string, auth = true) => request<T>("GET",    path, undefined, auth);
+const post = <T>(path: string, body?: unknown, auth = true) => request<T>("POST",   path, body, auth);
+const put  = <T>(path: string, body?: unknown, auth = true) => request<T>("PUT",    path, body, auth);
+const del  = <T>(path: string, auth = true) => request<T>("DELETE", path, undefined, auth);
+
+// ─── API methods ─────────────────────────────────────────────────────────────
 
 export const api = {
-  async login(_b: { email: string; password?: string; otp?: string }) {
-    // TODO: replace with real API call (POST /api/auth/login)
-    await wait();
-    if (typeof window !== "undefined") {
-      localStorage.setItem("accessToken", "mock.access.token");
-      localStorage.setItem("refreshToken", "mock.refresh.token");
-    }
-    return { success: true, data: { user: mockUser, requires2fa: false } };
+
+  // ── Auth ──────────────────────────────────────────────────────────────────
+
+  async login(b: { email: string; password?: string; otp?: string }) {
+    const data = await post<{ accessToken: string; refreshToken: string; user: unknown; requires2fa?: boolean }>(
+      "/api/auth/login", b, false,
+    );
+    if (data.accessToken) setTokens(data.accessToken, data.refreshToken);
+    return { success: true, data };
   },
-  async loginWith2fa(_b: { email: string; password: string; twoFaCode: string }) {
-    // TODO: replace with real API call
-    await wait(); return { success: true, data: { user: mockUser } };
+
+  async loginWith2fa(b: { email: string; password: string; twoFaCode: string }) {
+    const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
+      "/api/auth/login", b, false,
+    );
+    if (data.accessToken) setTokens(data.accessToken, data.refreshToken);
+    return { success: true, data };
   },
-  async sendOtp(_email: string) {
-    // TODO: replace with real API call (POST /api/auth/send-otp)
-    await wait(); return { success: true };
+
+  async sendOtp(email: string) {
+    await post("/api/auth/send-otp", { email }, false);
+    return { success: true };
   },
-  async register(_b: any) {
-    // TODO: replace with real API call (POST /api/auth/register)
-    await wait();
-    if (typeof window !== "undefined") localStorage.setItem("accessToken", "mock.access.token");
-    return { success: true, data: { user: mockUser } };
+
+  async register(b: { email: string; username?: string; password?: string; otp?: string; referralCode?: string }) {
+    const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
+      "/api/auth/register", b, false,
+    );
+    if (data.accessToken) setTokens(data.accessToken, data.refreshToken);
+    return { success: true, data };
   },
-  async walletLogin(_b: { address: string; signature: string; timestamp: number }) {
-    // TODO: replace with real API call (POST /api/auth/wallet)
-    await wait();
-    if (typeof window !== "undefined") localStorage.setItem("accessToken", "mock.access.token");
-    return { success: true, data: { user: mockUser } };
+
+  async walletLogin(b: { publicKey: string; signature: number[]; message: string }) {
+    const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
+      "/api/auth/wallet", b, false,
+    );
+    if (data.accessToken) setTokens(data.accessToken, data.refreshToken);
+    return { success: true, data };
   },
+
   async profile() {
-    // TODO: replace with real API call (GET /api/auth/profile)
-    await maybeRefresh(); return { success: true, data: mockUser };
+    const data = await get<Record<string, unknown>>("/api/auth/profile");
+    return { success: true, data };
   },
-  async updateProfile(patch: Partial<typeof mockUser>) {
-    // TODO: replace with real API call (PUT /api/auth/profile)
-    await wait();
-    userStore.update(patch);
+
+  async updateProfile(patch: { username?: string; privacyMode?: boolean; avatarUrl?: string }) {
+    const data = await put("/api/auth/profile", patch);
+    // Re-fetch full profile so all computed fields stay in sync
+    get<Record<string, unknown>>("/api/auth/profile")
+      .then((profileData) => userStore.update(mapProfile(profileData)))
+      .catch(() => {});
+    return { success: true, data };
+  },
+
+  async updatePassword(b: { currentPassword: string; newPassword: string }) {
+    await put("/api/auth/password", b);
     return { success: true };
   },
-  async updatePassword(_b: { currentPassword: string; newPassword: string }) {
-    // TODO: replace with real API call (PUT /api/auth/password)
-    await wait(); return { success: true };
+
+  async logout() {
+    const refreshToken = getRefreshToken();
+    try {
+      if (refreshToken) {
+        await post("/api/auth/logout", { refreshToken });
+      }
+    } catch {
+      // fire-and-forget; don't block logout on network failure
+    }
+    clearTokens();
+    userStore.clear();
   },
+
+  // ── 2FA ───────────────────────────────────────────────────────────────────
+
   async generate2fa() {
-    // TODO: replace with real API call (POST /api/2fa/generate)
-    await wait();
-    return { success: true, data: {
-      secret: "JBSWY3DPEHPK3PXP",
-      otpauthUrl: "otpauth://totp/Ashnance:you@ashnance.com?secret=JBSWY3DPEHPK3PXP&issuer=Ashnance",
-    }};
+    const data = await post<{ secret: string; otpauthUrl: string }>("/api/2fa/generate");
+    return { success: true, data };
   },
-  async enable2fa(_t: string) {
-    // TODO: replace with real API call (POST /api/2fa/enable)
-    await wait();
-    return { success: true, data: { recoveryCodes: Array.from({length:8}, () =>
-      Math.random().toString(36).slice(2,7).toUpperCase() + "-" +
-      Math.random().toString(36).slice(2,7).toUpperCase()) }};
+
+  async enable2fa(token: string) {
+    const data = await post("/api/2fa/enable", { token });
+    return { success: true, data };
   },
-  async disable2fa(_t: string) {
-    // TODO: replace with real API call (POST /api/2fa/disable)
-    await wait(); return { success: true };
-  },
-  async currentRound() {
-    // TODO: replace with real API call (GET /api/round/current)
-    await wait(150); return { success: true, data: mockRound };
-  },
-  async publicRound() {
-    // TODO: replace with real API call (GET /api/round/current/public)
-    await wait(150); return { success: true, data: mockRound };
-  },
-  async roundHistory() {
-    // TODO: replace with real API call (GET /api/round/history)
-    await wait();
-    return { success: true, data: Array.from({ length: 8 }, (_, i) => ({
-      number: 411 - i,
-      winner: ["blazewolf","emberqueen","torchbearer","Anonymous","pyromancer","ashking","infernox","molten"][i],
-      prize: 500, status: "ENDED" as const,
-      endedAt: new Date(Date.now() - (i+1) * 9 * 3600000).toISOString(),
-    }))};
-  },
-  async burn(amount: number) {
-    // TODO: replace with real API call (POST /api/burn)
-    await wait(800);
-    const u = userStore.get();
-    const w = calcWeight(amount, { vip: !!u.vip, boost: !!u.ashBoostExpiresAt && new Date(u.ashBoostExpiresAt) > new Date(), activeReferrals: 3 });
-    const ash = calcAsh(amount, !!u.vip);
-    userStore.update({ usdcBalance: u.usdcBalance - amount, ashBalance: u.ashBalance + ash });
-    mockRound.prizePool = Math.min(mockRound.prizePoolTarget, mockRound.prizePool + amount * 0.4);
-    const newRank = Math.max(1, 5 - Math.floor(amount / 25));
-    return { success: true, data: { weight: w.final, ash, newPool: mockRound.prizePool, rank: newRank } };
-  },
-  async activateBoost() {
-    // TODO: replace with real API call (POST /api/burn/boost)
-    await wait();
-    const u = userStore.get();
-    if (u.ashBalance < 1000) throw new Error("Insufficient ASH balance");
-    userStore.update({
-      ashBalance: u.ashBalance - 1000,
-      ashBoostExpiresAt: new Date(Date.now() + 3600000).toISOString(),
-    });
+
+  async disable2fa(token: string) {
+    await post("/api/2fa/disable", { token });
     return { success: true };
   },
-  async deposit(_b: { txHash: string }) {
-    // TODO: replace with real API call (POST /api/wallet/deposit)
-    await wait(800); return { success: true };
+
+  // ── Rounds ────────────────────────────────────────────────────────────────
+
+  async currentRound() {
+    const data = await get("/api/round/current");
+    return { success: true, data };
   },
-  async withdraw(_b: { amount: number; address: string; twoFaCode: string }) {
-    // TODO: replace with real API call (POST /api/wallet/withdraw)
-    await wait(1200); return { success: true, data: { txHash: "5JxhP9Y3kN2A...c8" }};
+
+  async publicRound() {
+    const data = await get("/api/round/current/public", false);
+    return { success: true, data };
   },
-  async transactions(_q?: { type?: string; page?: number }) {
-    // TODO: replace with real API call (GET /api/wallet/transactions)
-    await wait();
-    return { success: true, data: { items: mockTransactions, total: mockTransactions.length, page: 1, pages: 1 }};
+
+  async roundHistory() {
+    const data = await get("/api/round/history", false);
+    return { success: true, data };
   },
+
+  // ── Burn ──────────────────────────────────────────────────────────────────
+
+  async burn(amount: number) {
+    const data = await post<{ weight: number; ash: number; rank: number; newPool: number }>(
+      "/api/burn", { amount },
+    );
+    // Refresh full user profile so header balances update immediately
+    get<Record<string, unknown>>("/api/auth/profile")
+      .then((profileData) => userStore.update(mapProfile(profileData)))
+      .catch(() => {});
+    return { success: true, data };
+  },
+
+  async activateBoost() {
+    const data = await post("/api/burn/boost");
+    // Refresh full user profile so ASH balance and boost expiry update
+    get<Record<string, unknown>>("/api/auth/profile")
+      .then((profileData) => userStore.update(mapProfile(profileData)))
+      .catch(() => {});
+    return { success: true, data };
+  },
+
+  // ── Wallet ────────────────────────────────────────────────────────────────
+
+  async deposit(b: { txHash: string }) {
+    const data = await post("/api/wallet/deposit", b);
+    return { success: true, data };
+  },
+
+  async withdraw(b: { amount: number; address: string; twoFaCode: string }) {
+    const data = await post<{ txHash: string }>("/api/wallet/withdraw", b);
+    return { success: true, data };
+  },
+
+  async transactions(q?: { type?: string; page?: number }) {
+    const params = new URLSearchParams();
+    if (q?.type) params.set("type", q.type);
+    if (q?.page) params.set("page", String(q.page));
+    const qs = params.toString();
+    const data = await get(`/api/wallet/transactions${qs ? "?" + qs : ""}`);
+    return { success: true, data };
+  },
+
   async whitelist() {
-    // TODO: replace with real API call (GET /api/wallet/whitelist)
-    await wait(); return { success: true, data: mockWhitelist };
+    const data = await get("/api/wallet/whitelist");
+    return { success: true, data };
   },
-  async addWhitelist(_b: { address: string; label?: string }) {
-    // TODO: replace with real API call (POST /api/wallet/whitelist)
-    await wait(); return { success: true };
+
+  async addWhitelist(b: { address: string; label?: string }) {
+    const data = await post("/api/wallet/whitelist", b);
+    return { success: true, data };
   },
-  async deleteWhitelist(_id: string) {
-    // TODO: replace with real API call (DELETE /api/wallet/whitelist/:id)
-    await wait(); return { success: true };
+
+  async deleteWhitelist(id: string) {
+    await del(`/api/wallet/whitelist/${id}`);
+    return { success: true };
   },
-  async claimAsh(_b: { toAddress: string; amount: number }) {
-    // TODO: replace with real API call (POST /api/wallet/claim-ash)
-    await wait(1000); return { success: true, data: { txHash: "9KkLm4Z8r..." }};
+
+  async claimAsh(b: { toAddress: string; amount?: number }) {
+    const data = await post<{ txHash: string }>("/api/wallet/claim-ash", b);
+    return { success: true, data };
   },
-  async leaderboard(kind: "winners"|"burners"|"referrers"|"ash") {
-    // TODO: replace with real API call (GET /api/leaderboard/:kind)
-    await wait(); return { success: true, data: mockLeaderboards[kind] };
+
+  // ── Leaderboard ───────────────────────────────────────────────────────────
+
+  async leaderboard(kind: "winners" | "burners" | "referrers" | "ash") {
+    const data = await get(`/api/leaderboard/${kind}`, false);
+    return { success: true, data };
   },
-  async subscribeVip(_t: string) {
-    // TODO: replace with real API call (POST /api/vip/subscribe)
-    await wait(800); return { success: true };
+
+  // ── VIP ───────────────────────────────────────────────────────────────────
+
+  async subscribeVip(tier: string) {
+    const data = await post("/api/vip/subscribe", { tier });
+    return { success: true, data };
   },
+
   async cancelVip() {
-    // TODO: replace with real API call (POST /api/vip/cancel)
-    await wait(); return { success: true };
+    const data = await post("/api/vip/cancel");
+    return { success: true, data };
   },
+
+  // ── Staking ───────────────────────────────────────────────────────────────
+
   async stakingSummary() {
-    // TODO: replace with real API call (GET /api/staking/summary)
-    await wait();
-    const totalStaked = mockStakingPositions.reduce((s,p)=>s+p.staked,0);
-    const pending = mockStakingPositions.reduce((s,p)=>s+p.pending,0);
-    return { success: true, data: { totalStaked, pending, activePositions: mockStakingPositions.filter(p=>p.status==="ACTIVE").length }};
+    const data = await get("/api/staking/summary");
+    return { success: true, data };
   },
+
   async stakingPools() {
-    // TODO: replace with real API call (GET /api/staking/pools)
-    return { success: true, data: stakingPools };
+    const data = await get("/api/staking/pools", false);
+    return { success: true, data };
   },
+
   async stakingPositions() {
-    // TODO: replace with real API call (GET /api/staking/positions)
-    await wait(); return { success: true, data: mockStakingPositions };
+    const data = await get("/api/staking/positions");
+    return { success: true, data };
   },
-  async stake(_b: { poolId: string; amount: number }) {
-    // TODO: replace with real API call (POST /api/staking/stake)
-    await wait(800); return { success: true };
+
+  async stake(b: { poolId: string; amount: number }) {
+    const data = await post("/api/staking/stake", b);
+    return { success: true, data };
   },
-  async unstake(_id: string) {
-    // TODO: replace with real API call (POST /api/staking/unstake/:id)
-    await wait(800); return { success: true };
+
+  async unstake(id: string) {
+    const data = await post(`/api/staking/unstake/${id}`);
+    return { success: true, data };
   },
-  async claimStakingRewards(_id: string) {
-    // TODO: replace with real API call (POST /api/staking/claim/:id)
-    await wait(); return { success: true };
+
+  async claimStakingRewards(id: string) {
+    const data = await post(`/api/staking/claim/${id}`);
+    return { success: true, data };
   },
+
+  // ── Referrals ─────────────────────────────────────────────────────────────
+
   async referrals() {
-    // TODO: replace with real API call (GET /api/referrals)
-    await wait(); return { success: true, data: mockReferrals };
+    const data = await get("/api/referrals");
+    return { success: true, data };
   },
+
+  // ── Admin ─────────────────────────────────────────────────────────────────
+
   async adminStats() {
-    // TODO: replace with real API call (GET /api/admin/stats)
-    await wait(); return { success: true, data: { totalUsers: 1284, totalBurns: 58213, activeVips: 134, rewardPool: 3127.84 }};
+    const data = await get("/api/admin/stats");
+    return { success: true, data };
   },
+
   async adminUsers() {
-    // TODO: replace with real API call (GET /api/admin/users)
-    await wait(); return { success: true, data: mockAdminUsers };
+    const data = await get("/api/admin/users");
+    return { success: true, data };
   },
+
   async adminConfig() {
-    // TODO: replace with real API call (GET /api/admin/config)
-    await wait(); return { success: true, data: mockBurnConfig };
+    const data = await get("/api/admin/config");
+    return { success: true, data };
   },
-  async adminSetUserRole(_id: string, _role: string) {
-    // TODO: replace with real API call (PUT /api/admin/users/:id/role)
-    await wait(); return { success: true };
+
+  async adminSetUserRole(id: string, role: string) {
+    await put(`/api/admin/users/${id}/role`, { role });
+    return { success: true };
   },
-  async adminBanUser(_id: string, _ban: boolean) {
-    // TODO: replace with real API call (PUT /api/admin/users/:id/ban)
-    await wait(); return { success: true };
+
+  async adminBanUser(id: string, ban: boolean) {
+    await put(`/api/admin/users/${id}/ban`, { ban });
+    return { success: true };
   },
-  async adminSetConfig(_k: string, _v: any) {
-    // TODO: replace with real API call (PUT /api/admin/config/:key)
-    await wait(); return { success: true };
+
+  async adminSetConfig(key: string, value: unknown) {
+    await put(`/api/admin/config/${key}`, { value });
+    return { success: true };
   },
+
+  // ── Owner ─────────────────────────────────────────────────────────────────
+
   async ownerSolvency() {
-    // TODO: replace with real API call (GET /api/owner/solvency)
-    await wait(); return { success: true, data: mockOwnerSolvency };
+    const data = await get("/api/owner/solvency");
+    return { success: true, data };
   },
+
   async ownerProfitPool() {
-    // TODO: replace with real API call (GET /api/owner/profit-pool)
-    await wait(); return { success: true, data: mockProfitPool };
+    const data = await get("/api/owner/profit-pool");
+    return { success: true, data };
   },
+
   async ownerPendingWithdrawal() {
-    // TODO: replace with real API call (GET /api/owner/withdrawal/pending)
-    await wait(); return { success: true, data: mockPendingWithdrawal };
+    const data = await get("/api/owner/withdrawal/pending");
+    return { success: true, data };
   },
-  async ownerInitiateWithdrawal(_a: number) {
-    // TODO: replace with real API call (POST /api/owner/withdrawal/initiate)
-    await wait(); return { success: true };
+
+  async ownerInitiateWithdrawal(amount: number) {
+    const data = await post("/api/owner/withdrawal/initiate", { amount });
+    return { success: true, data };
   },
+
+  async ownerCreateRound() {
+    const data = await post("/api/owner/round");
+    return { success: true, data };
+  },
+
+  async ownerEndRound(id: string) {
+    const data = await post(`/api/owner/round/${id}/end`);
+    return { success: true, data };
+  },
+
+  async ownerApproveWithdrawal(id: string) {
+    const data = await post(`/api/owner/withdrawal/${id}/approve`);
+    return { success: true, data };
+  },
+
+  async ownerCancelWithdrawal(id: string) {
+    const data = await post(`/api/owner/withdrawal/${id}/cancel`);
+    return { success: true, data };
+  },
+
   async ownerBurnConfig() {
-    // TODO: replace with real API call (GET /api/owner/burn-config)
-    await wait(); return { success: true, data: mockBurnConfig };
+    const data = await get("/api/owner/burn-config");
+    return { success: true, data };
   },
-  async ownerSetBurnConfig(_c: typeof mockBurnConfig) {
-    // TODO: replace with real API call (PUT /api/owner/burn-config)
-    await wait(); return { success: true };
+
+  async ownerSetBurnConfig(cfg: Record<string, unknown>) {
+    await put("/api/owner/burn-config", cfg);
+    return { success: true };
   },
+
   async ownerDevnetAirdrop() {
-    // TODO: replace with real API call (POST /api/owner/devnet-airdrop)
-    await wait(1500); return { success: true };
+    const data = await post("/api/owner/devnet-airdrop");
+    return { success: true, data };
   },
 };
