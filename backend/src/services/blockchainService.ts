@@ -448,12 +448,20 @@ export class BlockchainService {
             }
           }
         }
-      } catch (err) {
+      } catch (err: any) {
+        // Silently skip benign / repeated errors to avoid flooding logs:
+        //  - "Token mint could not be unpacked" → USDC_MINT not deployed on this RPC network
+        //  - 429 Too Many Requests → public RPC rate limit
+        const msg = err?.message ?? String(err);
+        if (msg.includes("Token mint could not be unpacked")) return;
+        if (msg.includes("429") || msg.includes("Too Many Requests")) return;
         console.error("[BlockchainService] monitorDeposit poll error:", err);
       }
     };
 
-    const handle = setInterval(poll, 15_000);
+    // Poll every 60s (was 15s) to reduce RPC pressure on the free devnet endpoint.
+    // 30 deposit addresses × 4 polls/min = 120 calls/min — well under typical limits.
+    const handle = setInterval(poll, 60_000);
     _monitorHandles.set(address, handle);
     poll();
 
