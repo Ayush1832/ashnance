@@ -2,9 +2,10 @@ import { Request, Response, NextFunction, Router } from "express";
 import { AuthService } from "../services/authService";
 import { registerSchema, loginSchema, updateProfileSchema } from "../utils/validators";
 import { authenticate, AuthRequest } from "../middleware/auth";
-import { BadRequestError, UnauthorizedError } from "../utils/errors";
+import { BadRequestError, UnauthorizedError, NotFoundError } from "../utils/errors";
 import { EmailService } from "../services/emailService";
 import { config } from "../config";
+import { prisma } from "../utils/prisma";
 
 const router = Router();
 
