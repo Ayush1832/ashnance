@@ -1,41 +1,55 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { userStore } from "@/lib/userStore";
 import { api, mapProfile } from "@/lib/apiClient";
 
 function AuthCallback() {
-  const router      = useRouter();
-  const params      = useSearchParams();
-  const [msg, setMsg] = useState("SIGNING YOU IN...");
+  const router         = useRouter();
+  const [msg, setMsg]  = useState("SIGNING YOU IN...");
+  const processedRef   = useRef(false);
 
   useEffect(() => {
+    // Run exactly once even if React re-invokes the effect (Strict Mode, dep changes)
+    if (processedRef.current) return;
+    processedRef.current = true;
+
+    let cancelled = false;
+    const timeouts: ReturnType<typeof setTimeout>[] = [];
+    const scheduleRedirect = (path: string, delay = 1500) => {
+      const id = setTimeout(() => { if (!cancelled) router.replace(path); }, delay);
+      timeouts.push(id);
+    };
+
     async function handleCallback() {
-      // Tokens are in the URL fragment (hash) to avoid server logs and browser history.
-      // Fall back to query params for backwards compatibility.
-      const hash = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+      // Snapshot hash + query BEFORE clearing anything so a re-render can't lose it.
+      const hash       = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+      const query      = typeof window !== "undefined" ? window.location.search.slice(1) : "";
       const hashParams = new URLSearchParams(hash);
+      const queryParams = new URLSearchParams(query);
 
-      const accessToken  = hashParams.get("accessToken")  ?? params.get("token");
-      const refreshToken = hashParams.get("refreshToken") ?? params.get("refreshToken");
-      const error        = hashParams.get("error");
+      const accessToken  = hashParams.get("accessToken")  ?? queryParams.get("token");
+      const refreshToken = hashParams.get("refreshToken") ?? queryParams.get("refreshToken");
+      const error        = hashParams.get("error") ?? queryParams.get("error");
 
-      // Clear the fragment so tokens don't sit in the address bar
+      // Clear the fragment so tokens don't sit in the address bar — AFTER reading.
       if (typeof window !== "undefined" && hash) {
         window.history.replaceState(null, "", window.location.pathname + window.location.search);
       }
 
+      if (cancelled) return;
+
       if (error || !accessToken) {
         setMsg("SIGN-IN CANCELLED");
-        setTimeout(() => router.replace("/login"), 1500);
+        scheduleRedirect("/login");
         return;
       }
 
       localStorage.setItem("accessToken", accessToken);
       if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
 
-      // If this was an owner login attempt, verify and redirect to owner panel
+      // Owner login attempt → verify and redirect to owner panel
       const ownerAttempt = localStorage.getItem("ownerLoginAttempt");
       if (ownerAttempt) {
         localStorage.removeItem("ownerLoginAttempt");
@@ -43,23 +57,25 @@ function AuthCallback() {
         try {
           const res = await fetch(
             (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000") + "/api/owner/me",
-            { headers: { Authorization: `Bearer ${accessToken}` } }
+            { headers: { Authorization: `Bearer ${accessToken}` } },
           );
+          if (cancelled) return;
           if (res.ok) {
             setMsg("OWNER ACCESS GRANTED");
-            // Fetch and store profile
             try {
               const profileRes = await api.profile();
-              if (profileRes.success && profileRes.data) {
+              if (!cancelled && profileRes.success && profileRes.data) {
                 userStore.update(mapProfile(profileRes.data as Record<string, unknown>));
               }
             } catch { /* non-fatal */ }
-            router.replace("/owner");
+            if (!cancelled) router.replace("/owner");
             return;
           }
-        } catch { /* fall through to normal redirect */ }
-        setMsg("ACCESS DENIED — NOT AN OWNER");
-        setTimeout(() => router.replace("/login"), 1500);
+        } catch { /* fall through */ }
+        if (!cancelled) {
+          setMsg("ACCESS DENIED — NOT AN OWNER");
+          scheduleRedirect("/login");
+        }
         return;
       }
 
@@ -68,23 +84,32 @@ function AuthCallback() {
       if (pendingReferral) {
         localStorage.removeItem("pendingReferral");
         try { await api.applyReferral(pendingReferral); } catch { /* non-fatal */ }
+        if (cancelled) return;
       }
 
       // Fetch user profile and store it
       try {
         const profileRes = await api.profile();
-        if (profileRes.success && profileRes.data) {
+        if (!cancelled && profileRes.success && profileRes.data) {
           userStore.update(mapProfile(profileRes.data as Record<string, unknown>));
         }
       } catch {
-        // Non-fatal — user store will be populated on next page load
+        // Non-fatal — useAuth will retry on next page load
       }
 
-      setMsg("WELCOME! REDIRECTING...");
-      router.replace("/dashboard");
+      if (!cancelled) {
+        setMsg("WELCOME! REDIRECTING...");
+        router.replace("/dashboard");
+      }
     }
+
     handleCallback();
-  }, [params, router]);
+
+    return () => {
+      cancelled = true;
+      for (const id of timeouts) clearTimeout(id);
+    };
+  }, [router]);
 
   return (
     <div style={{
