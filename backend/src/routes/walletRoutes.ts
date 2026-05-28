@@ -82,10 +82,18 @@ router.get("/transactions", authenticate, async (req: AuthRequest, res: Response
       limit,
     });
 
+    // Normalize legacy DB enum values to canonical frontend names
+    const TX_TYPE_MAP: Record<string, string> = {
+      WITHDRAWAL:      "WITHDRAW",
+      REFERRAL_REWARD: "REFERRAL",
+      VIP_PURCHASE:    "VIP",
+      ASH_BOOST:       "BOOST",
+    };
+
     // Map to frontend-expected shape
     const items = result.transactions.map((tx) => ({
       id:          tx.id,
-      type:        tx.type,
+      type:        TX_TYPE_MAP[tx.type] ?? tx.type,
       description: tx.description ?? tx.type,
       amount:      Number(tx.amount),
       asset:       tx.currency,
