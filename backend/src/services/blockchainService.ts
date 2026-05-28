@@ -213,8 +213,17 @@ export class BlockchainService {
           ?.uiAmount ?? 0;
 
       return typeof uiAmount === "number" ? uiAmount : 0;
-    } catch (err) {
-      console.error("[BlockchainService] getUsdcBalance error:", err);
+    } catch (err: any) {
+      // Silence misconfig errors that would otherwise spam logs.
+      // Real fix: correct USDC_MINT or SOLANA_RPC_URL in .env.
+      const msg = err?.message ?? String(err);
+      const benign =
+        msg.includes("Token mint could not be unpacked") ||
+        msg.includes("429") || msg.includes("Too Many Requests") ||
+        msg.includes("401") || msg.includes("Unauthorized");
+      if (!benign) {
+        console.error("[BlockchainService] getUsdcBalance error:", err);
+      }
       return 0;
     }
   }
@@ -452,9 +461,11 @@ export class BlockchainService {
         // Silently skip benign / repeated errors to avoid flooding logs:
         //  - "Token mint could not be unpacked" → USDC_MINT not deployed on this RPC network
         //  - 429 Too Many Requests → public RPC rate limit
+        //  - 401 Unauthorized → wrong RPC URL (e.g. Infura without Solana access)
         const msg = err?.message ?? String(err);
         if (msg.includes("Token mint could not be unpacked")) return;
         if (msg.includes("429") || msg.includes("Too Many Requests")) return;
+        if (msg.includes("401") || msg.includes("Unauthorized")) return;
         console.error("[BlockchainService] monitorDeposit poll error:", err);
       }
     };
