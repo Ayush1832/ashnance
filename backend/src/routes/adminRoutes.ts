@@ -80,11 +80,13 @@ router.put("/prizes/:tier", async (req: AuthRequest, res: Response, next: NextFu
 // ============== PLATFORM CONFIG ==============
 
 // GET /api/admin/config
+// Returns the merged burn config with default values for missing keys,
+// and all values converted to numbers (PlatformConfig stores them as strings).
 router.get("/config", async (_req, res: Response, next: NextFunction) => {
   try {
-    const configs = await prisma.platformConfig.findMany();
-    const configMap = Object.fromEntries(configs.map((c) => [c.key, c.value]));
-    res.json({ success: true, data: configMap });
+    const { OwnerService } = await import("../services/ownerService");
+    const config = await OwnerService.getBurnConfig();
+    res.json({ success: true, data: config });
   } catch (error) { next(error); }
 });
 
@@ -113,7 +115,7 @@ router.get("/users", async (req: AuthRequest, res: Response, next: NextFunction)
     const page = Math.max(1, Number(req.query.page as string) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit as string) || 20));
 
-    const [users, total] = await Promise.all([
+    const [rawUsers, total] = await Promise.all([
       prisma.user.findMany({
         take: limit,
         skip: (page - 1) * limit,
@@ -125,12 +127,25 @@ router.get("/users", async (req: AuthRequest, res: Response, next: NextFunction)
           isVip: true,
           vipTier: true,
           role: true,
+          isBanned: true,
           createdAt: true,
           _count: { select: { burns: true } },
         },
       }),
       prisma.user.count(),
     ]);
+
+    // Map to frontend-expected shape: rename isBanned → banned, isVip+vipTier → vip
+    const users = rawUsers.map((u) => ({
+      id:        u.id,
+      email:     u.email,
+      username:  u.username,
+      role:      u.role,
+      vip:       u.isVip ? u.vipTier : null,
+      banned:    u.isBanned,
+      createdAt: u.createdAt,
+      burns:     u._count.burns,
+    }));
 
     res.json({ success: true, data: { users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
   } catch (error) { next(error); }

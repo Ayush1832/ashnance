@@ -5,11 +5,54 @@ import { BadRequestError } from "../utils/errors";
 
 const router = Router();
 
+// Derive a stable "kind" key from pool name for frontend color/identity lookup.
+// "EMBER POOL" → "EMBER", "FLAME POOL" → "FLAME", etc.
+function poolKind(name: string): string {
+  return name.split(/\s+/)[0]?.toUpperCase() ?? name;
+}
+
+function formatPool(pool: {
+  id: string;
+  name: string;
+  apy: unknown;
+  lockDays: number;
+  minStake: unknown;
+  description: string | null;
+}) {
+  return {
+    id:          pool.id,                   // DB UUID (used to match positions)
+    kind:        poolKind(pool.name),       // "EMBER" | "FLAME" | "INFERNO"
+    name:        pool.name,
+    apy:         Number(pool.apy),
+    lockDays:    pool.lockDays,
+    minAsh:      Number(pool.minStake),
+    description: pool.description ?? undefined,
+  };
+}
+
+function formatPosition(pos: {
+  id: string;
+  poolId: string;
+  amount: unknown;
+  lockedUntil: Date;
+  status: string;
+  pendingRewards?: number;
+}) {
+  return {
+    id:        pos.id,
+    poolId:    pos.poolId,
+    staked:    Number(pos.amount),
+    pending:   Number(pos.pendingRewards ?? 0),
+    unlocksAt: pos.lockedUntil.toISOString(),
+    status:    pos.status,
+  };
+}
+
 // GET /api/staking/pools — List available staking pools
 router.get("/pools", async (_req, res: Response, next: NextFunction) => {
   try {
     const pools = await StakingService.getPools();
-    res.json({ success: true, data: pools });
+    res.json({ success: true, data: pools.map(formatPool) });
   } catch (error) {
     next(error);
   }
@@ -19,7 +62,7 @@ router.get("/pools", async (_req, res: Response, next: NextFunction) => {
 router.get("/positions", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const positions = await StakingService.getPositions(req.user!.userId);
-    res.json({ success: true, data: positions });
+    res.json({ success: true, data: positions.map(formatPosition) });
   } catch (error) {
     next(error);
   }

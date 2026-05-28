@@ -298,7 +298,6 @@ function AshClaimTab() {
       <div className="text-sm font-semibold mb-2">Claim ASH on-chain</div>
       <p className="text-sm text-muted-foreground mb-5">
         Transfer your ASH balance to any Solana wallet. You can claim a partial amount or your full balance.
-        The address must be whitelisted.
       </p>
       <div className="glass rounded-lg p-4 mb-5 flex justify-between items-center">
         <span className="text-sm text-muted-foreground">Available ASH</span>

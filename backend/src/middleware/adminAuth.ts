@@ -1,11 +1,14 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma } from "../utils/prisma";
 import { UnauthorizedError } from "../utils/errors";
+import { config } from "../config";
 import { AuthRequest } from "./auth";
 
 /**
- * Admin role middleware — checks if authenticated user has ADMIN role
- * Must be used AFTER the `authenticate` middleware
+ * Admin gate — accepts users whose DB role is ADMIN OR whose email is in
+ * config.ownerEmails (owners implicitly have admin powers).
+ *
+ * Must be used AFTER the `authenticate` middleware.
  */
 export const requireAdmin = async (
   req: Request,
@@ -16,6 +19,11 @@ export const requireAdmin = async (
     const authReq = req as AuthRequest;
     if (!authReq.user) {
       throw new UnauthorizedError("Authentication required");
+    }
+
+    // Owner emails always pass the admin gate
+    if (config.ownerEmails.includes(authReq.user.email)) {
+      return next();
     }
 
     const user = await prisma.user.findUnique({

@@ -3,7 +3,13 @@ dotenv.config();
 
 // Fail fast in production if critical secrets are missing
 if (process.env.NODE_ENV === "production") {
-  const required = ["JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL"];
+  const required = [
+    "JWT_SECRET",
+    "JWT_REFRESH_SECRET",
+    "DATABASE_URL",
+    "FRONTEND_URL",
+    "BACKEND_URL",
+  ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length > 0) {
     throw new Error(
@@ -12,6 +18,17 @@ if (process.env.NODE_ENV === "production") {
   }
   if (process.env.JWT_SECRET === "dev-jwt-secret" || process.env.JWT_REFRESH_SECRET === "dev-refresh-secret") {
     throw new Error("[Config] Dev JWT secrets must not be used in production.");
+  }
+  if ((process.env.JWT_SECRET ?? "").length < 32 || (process.env.JWT_REFRESH_SECRET ?? "").length < 32) {
+    throw new Error("[Config] JWT secrets must be at least 32 characters in production.");
+  }
+  // Warn (don't crash) on missing-but-non-fatal config
+  const warnings: string[] = [];
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) warnings.push("SMTP_USER/SMTP_PASS (no emails will be sent — OTP login, alerts, withdrawal notifications)");
+  if (!process.env.OWNER_EMAILS) warnings.push("OWNER_EMAILS (no one can access owner panel or receive critical alerts)");
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) warnings.push("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET (Google sign-in disabled)");
+  if (warnings.length > 0) {
+    console.warn(`[Config] Production warnings:\n  - ${warnings.join("\n  - ")}`);
   }
 }
 

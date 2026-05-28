@@ -90,7 +90,7 @@ export default function StakingPage() {
         <div className="grid sm:grid-cols-3 gap-4 mb-6">
           {pools.map((pool) => {
             const myPos = positions.find((p) => p.poolId === pool.id);
-            const color = POOL_COLORS[pool.id] ?? "text-foreground border-border";
+            const color = POOL_COLORS[pool.kind] ?? "text-foreground border-border";
             return (
               <GlassCard key={pool.id} className={`border ${color.split(" ")[1]}`}>
                 <div className={`text-xs uppercase tracking-wider font-bold mb-3 ${color.split(" ")[0]}`}>{pool.name}</div>
@@ -140,7 +140,7 @@ export default function StakingPage() {
             {activePositions.map((pos) => {
               const pool = pools.find((p) => p.id === pos.poolId);
               const unlocked = new Date(pos.unlocksAt) <= new Date();
-              const color = POOL_COLORS[pos.poolId] ?? "text-foreground border-border";
+              const color = POOL_COLORS[pool?.kind ?? ""] ?? "text-foreground border-border";
               return (
                 <div key={pos.id} className="flex items-center gap-4 glass rounded-lg px-4 py-3">
                   <div className={`text-xs font-bold uppercase ${color.split(" ")[0]}`}>

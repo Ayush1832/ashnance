@@ -223,10 +223,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-background/95 backdrop-blur-md border-t border-border flex">
           {[
-            { to: "/burn", label: "Burn", icon: Flame },
-            { to: "/wallet", label: "Wallet", icon: Wallet },
+            { to: "/dashboard",   label: "Home",  icon: LayoutDashboard },
+            { to: "/burn",        label: "Burn",  icon: Flame },
+            { to: "/wallet",      label: "Wallet", icon: Wallet },
             { to: "/leaderboard", label: "Board", icon: Trophy },
-            { to: "/dashboard", label: "More", icon: Menu },
           ].map((it) => (
             <Link key={it.to} href={it.to} className={cn(
               "flex-1 flex flex-col items-center justify-center gap-1 text-[11px]",
@@ -235,6 +235,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <it.icon className="h-5 w-5" /> {it.label}
             </Link>
           ))}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground"
+          >
+            <Menu className="h-5 w-5" /> More
+          </button>
         </nav>
       </div>
 

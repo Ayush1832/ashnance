@@ -74,20 +74,22 @@ export interface WhitelistAddress {
 }
 
 export interface StakingPool {
-  id: "EMBER" | "FLAME" | "INFERNO";
+  id: string;                              // DB UUID — use for position matching
+  kind: "EMBER" | "FLAME" | "INFERNO" | string; // pool category — use for color/icon lookup
   name: string;
   apy: number;
   lockDays: number;
   minAsh: number;
+  description?: string;
 }
 
 export interface StakingPosition {
   id: string;
-  poolId: StakingPool["id"];
+  poolId: string;
   staked: number;
   pending: number;
   unlocksAt: string;
-  status: "ACTIVE" | "WITHDRAWN";
+  status: "ACTIVE" | "UNLOCKED" | "WITHDRAWN";
 }
 
 export interface Referral {
