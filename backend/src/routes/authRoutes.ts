@@ -230,13 +230,16 @@ const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 // GET /api/auth/google — redirect to Google consent screen
 router.get("/google", (req: Request, res: Response) => {
+  if (!config.google.clientId || !config.google.clientSecret) {
+    return res.redirect(`${config.frontendUrl}/login?error=google_not_configured`);
+  }
+
   const state = require("crypto").randomBytes(16).toString("hex");
-  // Store state in a short-lived cookie for CSRF validation on callback
   res.cookie("oauth_state", state, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    maxAge: 10 * 60 * 1000, // 10 min
+    maxAge: 10 * 60 * 1000,
   });
   const params = new URLSearchParams({
     client_id:     config.google.clientId,
@@ -316,8 +319,9 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
       refreshToken: result.refreshToken,
     });
     res.redirect(`${config.frontendUrl}/auth/callback#${fragment.toString()}`);
-  } catch (error) {
-    next(error);
+  } catch (error: any) {
+    console.error("[Google OAuth callback error]", error?.message ?? error);
+    res.redirect(`${config.frontendUrl}/login?error=google_auth_failed`);
   }
 });
 
