@@ -37,7 +37,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-3">
           <Link href="/login" className="text-sm text-muted-foreground hover:text-foreground hidden sm:block">Log in</Link>
           <Link href="/register">
-            <FireButton size="sm">Start Competing →</FireButton>
+            <FireButton size="sm">Start Burning →</FireButton>
           </Link>
         </div>
       </header>
@@ -60,7 +60,7 @@ export default function LandingPage() {
             Every round, one winner takes everything. Burn more, climb higher, hold rank #1 when the pool fills — and the prize is yours.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href="/register"><FireButton size="lg">Start Competing <ArrowRight className="h-4 w-4" /></FireButton></Link>
+            <Link href="/register"><FireButton size="lg">Start Burning <ArrowRight className="h-4 w-4" /></FireButton></Link>
             <a href="#how"><GhostButton size="lg">How It Works</GhostButton></a>
           </div>
           {round && (
