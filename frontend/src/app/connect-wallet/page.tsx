@@ -2,34 +2,36 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, mapProfile } from "@/lib/apiClient";
+import { userStore } from "@/lib/userStore";
 import { detectWallets, connectWallet, signMessage, type WalletProvider } from "@/lib/wallets";
 
 export default function ConnectWalletPage() {
   const router = useRouter();
-  const [ready,    setReady]    = useState(false);
-  const [wallets,  setWallets]  = useState<WalletProvider[]>([]);
-  const [status,   setStatus]   = useState<"idle" | "connecting" | "signing" | "success" | "error">("idle");
-  const [error,    setError]    = useState("");
-  const [address,  setAddress]  = useState("");
+  const [ready,   setReady]   = useState(false);
+  const [wallets, setWallets] = useState<WalletProvider[]>([]);
+  const [status,  setStatus]  = useState<"idle" | "connecting" | "signing" | "success" | "error">("idle");
+  const [error,   setError]   = useState("");
+  const [address, setAddress] = useState("");
 
-  // Detect wallets + check if already linked
   useEffect(() => {
     setWallets(detectWallets());
 
     const token = localStorage.getItem("accessToken");
     if (!token) { router.replace("/login"); return; }
-    api.setToken(token);
 
-    api.auth.profile().then((res: any) => {
-      const profile = res.data ?? res;
-      if (profile.solanaAddress) {
-        localStorage.setItem("walletAddress", profile.solanaAddress);
-        router.replace("/dashboard");
-      } else {
+    api.profile()
+      .then((res) => {
+        if (res.success && res.data) {
+          const profile = res.data as Record<string, unknown>;
+          if (profile.solanaAddress) {
+            router.replace("/dashboard");
+            return;
+          }
+        }
         setReady(true);
-      }
-    }).catch(() => setReady(true));
+      })
+      .catch(() => setReady(true));
   }, [router]);
 
   async function handleConnect(wallet: WalletProvider) {
@@ -50,27 +52,30 @@ export default function ConnectWalletPage() {
       const sig = await signMessage(wallet.provider, message);
       const sigArray = Array.from(sig);
 
-      const token = localStorage.getItem("accessToken");
-      if (!token) throw new Error("Not authenticated");
-      api.setToken(token);
+      await api.linkWallet({ publicKey, signature: sigArray, message });
 
-      await api.auth.linkWallet(publicKey, sigArray, message);
+      // Refresh profile so header shows the new wallet address
+      try {
+        const profileRes = await api.profile();
+        if (profileRes.success && profileRes.data) {
+          userStore.update(mapProfile(profileRes.data as Record<string, unknown>));
+        }
+      } catch { /* non-fatal */ }
 
-      localStorage.setItem("walletAddress", publicKey);
       setStatus("success");
       setTimeout(() => router.replace("/dashboard"), 1200);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Connection failed";
       setError(
-        msg.includes("User rejected") || msg.includes("rejected")
+        msg.toLowerCase().includes("reject") || msg.toLowerCase().includes("cancel")
           ? "Signature rejected. Please approve in your wallet."
-          : msg
+          : msg,
       );
       setStatus("error");
     }
   }
 
-  async function handleSkip() {
+  function handleSkip() {
     sessionStorage.setItem("walletSkipped", "1");
     router.replace("/dashboard");
   }
@@ -78,6 +83,7 @@ export default function ConnectWalletPage() {
   if (!ready) return (
     <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ width: "24px", height: "24px", border: "2px solid rgba(255,77,0,0.3)", borderTopColor: "#FF4D00", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 
@@ -86,34 +92,12 @@ export default function ConnectWalletPage() {
   const busy = status === "connecting" || status === "signing";
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#080808",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "24px",
-    }}>
-      <div style={{
-        width: "100%",
-        maxWidth: "460px",
-        background: "#0f0f0f",
-        border: "1px solid rgba(255,77,0,0.25)",
-        borderRadius: "8px",
-        padding: "40px 32px",
-        textAlign: "center",
-      }}>
-        {/* Logo */}
-        <div style={{ marginBottom: "8px" }}>
-          <img src="/logo.png" alt="Ashnance" style={{ width: "160px", height: "auto" }} />
-        </div>
-
-        {/* Icon */}
-        <div style={{ fontSize: "52px", margin: "20px 0 12px" }}>
+    <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
+      <div style={{ width: "100%", maxWidth: "460px", background: "#0f0f0f", border: "1px solid rgba(255,77,0,0.25)", borderRadius: "8px", padding: "40px 32px", textAlign: "center" }}>
+        <div style={{ fontSize: "52px", margin: "0 0 12px" }}>
           {status === "success" ? "✅" : "🔗"}
         </div>
 
-        {/* Title */}
         <div style={{ fontFamily: "var(--font-display, monospace)", fontSize: "18px", letterSpacing: "4px", color: "#fff", marginBottom: "8px" }}>
           {status === "success" ? "WALLET LINKED!" : "CONNECT WALLET"}
         </div>
@@ -133,79 +117,43 @@ export default function ConnectWalletPage() {
           </div>
         )}
 
-        {/* Connecting/signing state */}
         {(status === "connecting" || status === "signing") && (
-          <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "2px", marginBottom: "16px", animation: "pulse 1s infinite" }}>
+          <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "2px", marginBottom: "16px" }}>
             {status === "connecting" ? "CONNECTING..." : "SIGN IN YOUR WALLET ✍"}
           </div>
         )}
 
-        {/* Error */}
         {error && (
-          <div style={{
-            background: "rgba(255,0,0,0.08)", border: "1px solid rgba(255,0,0,0.3)",
-            borderRadius: "4px", padding: "10px 14px", marginBottom: "16px",
-            fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "left",
-          }}>
+          <div style={{ background: "rgba(255,0,0,0.08)", border: "1px solid rgba(255,0,0,0.3)", borderRadius: "4px", padding: "10px 14px", marginBottom: "16px", fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "left" }}>
             ⚠ {error}
           </div>
         )}
 
         {status !== "success" && (
           <>
-            {/* Installed wallets */}
-            {installedWallets.length > 0 && (
+            {installedWallets.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
                 {installedWallets.map((w) => (
-                  <button
-                    key={w.name}
-                    onClick={() => handleConnect(w)}
-                    disabled={busy}
-                    style={{
-                      width: "100%", padding: "14px 16px",
-                      background: busy ? "rgba(255,77,0,0.3)" : "linear-gradient(135deg, #FF4D00, #ff6b00)",
-                      border: "none", borderRadius: "4px", color: "#fff",
-                      fontFamily: "var(--font-display, monospace)", fontSize: "12px",
-                      letterSpacing: "3px", cursor: busy ? "wait" : "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
-                    }}
-                  >
+                  <button key={w.name} onClick={() => handleConnect(w)} disabled={busy} style={{ width: "100%", padding: "14px 16px", background: busy ? "rgba(255,77,0,0.3)" : "linear-gradient(135deg, #FF4D00, #ff6b00)", border: "none", borderRadius: "4px", color: "#fff", fontFamily: "var(--font-display, monospace)", fontSize: "12px", letterSpacing: "3px", cursor: busy ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
                     <span style={{ fontSize: "20px" }}>{w.icon}</span>
                     CONNECT {w.name.toUpperCase()}
                   </button>
                 ))}
               </div>
-            )}
-
-            {/* No wallet detected */}
-            {installedWallets.length === 0 && (
+            ) : (
               <div style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", marginBottom: "16px" }}>
                 NO WALLET DETECTED. INSTALL ONE BELOW:
               </div>
             )}
 
-            {/* Other wallets (not installed) */}
             {otherWallets.length > 0 && (
               <>
                 {installedWallets.length > 0 && (
-                  <div style={{ fontSize: "8px", color: "#333", letterSpacing: "2px", margin: "12px 0 10px" }}>
-                    MORE WALLETS
-                  </div>
+                  <div style={{ fontSize: "8px", color: "#333", letterSpacing: "2px", margin: "12px 0 10px" }}>MORE WALLETS</div>
                 )}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center", marginBottom: "20px" }}>
                   {otherWallets.map((w) => (
-                    <a
-                      key={w.name}
-                      href={w.downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        fontSize: "10px", color: "#555", letterSpacing: "1px",
-                        border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px",
-                        padding: "8px 14px", textDecoration: "none",
-                        display: "flex", alignItems: "center", gap: "6px",
-                      }}
-                    >
+                    <a key={w.name} href={w.downloadUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", padding: "8px 14px", textDecoration: "none", display: "flex", alignItems: "center", gap: "6px" }}>
                       {w.icon} {w.name} ↗
                     </a>
                   ))}
@@ -213,21 +161,9 @@ export default function ConnectWalletPage() {
               </>
             )}
 
-            <button
-              onClick={handleSkip}
-              style={{
-                width: "100%", padding: "10px", background: "transparent",
-                border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px",
-                color: "#444", fontFamily: "var(--font-display, monospace)",
-                fontSize: "10px", letterSpacing: "2px", cursor: "pointer",
-              }}
-            >
+            <button onClick={handleSkip} style={{ width: "100%", padding: "10px", background: "transparent", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", color: "#444", fontFamily: "var(--font-display, monospace)", fontSize: "10px", letterSpacing: "2px", cursor: "pointer" }}>
               SKIP FOR NOW (LIMITED ACCESS)
             </button>
-
-            <div style={{ fontSize: "9px", color: "#2a2a2a", letterSpacing: "1px", marginTop: "16px" }}>
-              SIGNING IS FREE — NO SOL SPENT
-            </div>
           </>
         )}
       </div>

@@ -63,6 +63,13 @@ function AuthCallback() {
         return;
       }
 
+      // Apply pending referral code (set before Google OAuth redirect)
+      const pendingReferral = localStorage.getItem("pendingReferral");
+      if (pendingReferral) {
+        localStorage.removeItem("pendingReferral");
+        try { await api.applyReferral(pendingReferral); } catch { /* non-fatal */ }
+      }
+
       // Fetch user profile and store it
       try {
         const profileRes = await api.profile();

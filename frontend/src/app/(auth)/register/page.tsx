@@ -95,29 +95,27 @@ export default function RegisterPage() {
             Sign up instantly with your Google account. No password needed.
           </p>
 
-          {/* Referral code still applies for Google sign-up */}
+          {/* Referral code — stored in localStorage and applied automatically after OAuth */}
           <input
-            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
+            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
             placeholder="Referral code (optional)"
             value={referral}
             onChange={(e) => setReferral(e.target.value)}
           />
-          {referral && (
-            <div className="text-xs text-muted-foreground px-1">
-              Referral code will be applied after sign-up — ask support to link it.
-            </div>
-          )}
 
           <FireButton
             className="w-full gap-2"
-            onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
+            onClick={() => {
+              if (referral) localStorage.setItem("pendingReferral", referral.trim());
+              window.location.href = `${API_URL}/api/auth/google`;
+            }}
           >
             <GoogleIcon />
             Continue with Google
           </FireButton>
 
           <p className="text-xs text-muted-foreground text-center">
-            If you already have an account, this will log you in instead.
+            Already have an account? Google sign-in will log you in instead.
           </p>
         </div>
       )}

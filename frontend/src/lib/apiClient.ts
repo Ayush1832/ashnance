@@ -189,6 +189,11 @@ export const api = {
     return { success: true, data };
   },
 
+  async applyReferral(referralCode: string) {
+    await post("/api/auth/apply-referral", { referralCode });
+    return { success: true };
+  },
+
   async profile() {
     const data = await get<Record<string, unknown>>("/api/auth/profile");
     return { success: true, data };

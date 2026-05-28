@@ -206,6 +206,51 @@ router.post("/wallet", async (req: Request, res: Response, next: NextFunction) =
   }
 });
 
+// POST /api/auth/apply-referral — apply a referral code after Google OAuth signup
+// Must be called before any burns; silently skips if referral is already applied
+router.post("/apply-referral", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { referralCode } = req.body;
+    if (!referralCode || typeof referralCode !== "string") {
+      throw new BadRequestError("referralCode is required");
+    }
+    const userId = req.user!.userId;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { referredById: true },
+    });
+    if (!user) throw new NotFoundError("User not found");
+
+    // Already has a referrer — idempotent, just succeed
+    if (user.referredById) {
+      return res.json({ success: true, data: { message: "Referral already applied" } });
+    }
+
+    const referrer = await prisma.user.findUnique({
+      where: { referralCode },
+      select: { id: true },
+    });
+    if (!referrer) throw new NotFoundError("Referral code not found");
+    if (referrer.id === userId) throw new BadRequestError("Cannot refer yourself");
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.user.update({ where: { id: userId }, data: { referredById: referrer.id } });
+      // Create referral record only if it doesn't already exist
+      const existing = await tx.referral.findFirst({
+        where: { referrerId: referrer.id, refereeId: userId },
+      });
+      if (!existing) {
+        await tx.referral.create({ data: { referrerId: referrer.id, refereeId: userId } });
+      }
+    });
+
+    res.json({ success: true, data: { message: "Referral applied" } });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // POST /api/auth/link-wallet — link wallet to existing logged-in account
 router.post("/link-wallet", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
