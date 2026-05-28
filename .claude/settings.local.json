@@ -5,7 +5,9 @@
       "PowerShell",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:api.github.com)"
+      "WebFetch(domain:api.github.com)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
     ]
   }
 }
