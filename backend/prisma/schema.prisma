@@ -172,12 +172,14 @@ model Transaction {
 
 enum TransactionType {
   DEPOSIT
-  WITHDRAWAL
+  WITHDRAW
   BURN
   WIN
-  REFERRAL_REWARD
-  VIP_PURCHASE
-  ASH_BOOST
+  REFERRAL
+  VIP
+  BOOST
+  ASH_CLAIM
+  STAKE
 }
 
 enum Currency {

@@ -6,7 +6,7 @@ import { GlassCard, SectionHeader } from "@/components/ashnance/primitives";
 import { api } from "@/lib/apiClient";
 import { fmtNum } from "@/lib/format";
 
-type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAW" | "REFERRAL" | "VIP" | "BOOST" | "ASH_CLAIM";
+type TxType = "ALL" | "BURN" | "WIN" | "DEPOSIT" | "WITHDRAW" | "REFERRAL" | "VIP" | "BOOST" | "ASH_CLAIM" | "STAKE";
 
 const FILTER_TABS: { key: TxType; label: string }[] = [
   { key: "ALL",       label: "All"          },
@@ -18,6 +18,7 @@ const FILTER_TABS: { key: TxType; label: string }[] = [
   { key: "VIP",       label: "👑 VIP"       },
   { key: "BOOST",     label: "⚡ Boost"     },
   { key: "ASH_CLAIM", label: "🪙 ASH Claim" },
+  { key: "STAKE",     label: "🌱 Staking"   },
 ];
 
 const TX_ICONS: Record<string, string> = {
@@ -29,6 +30,7 @@ const TX_ICONS: Record<string, string> = {
   VIP:       "👑",
   BOOST:     "⚡",
   ASH_CLAIM: "🪙",
+  STAKE:     "🌱",
 };
 
 interface Tx {

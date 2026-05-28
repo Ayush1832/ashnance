@@ -65,7 +65,7 @@ export class VipService {
         await tx.transaction.create({
           data: {
             userId,
-            type: "VIP_PURCHASE",
+            type: "VIP",
             amount: tierConfig.price,
             currency: "USDC",
             status: "COMPLETED",

@@ -67,7 +67,7 @@ export class BurnService {
     await prisma.transaction.create({
       data: {
         userId,
-        type: "ASH_BOOST",
+        type: "BOOST",
         amount: burnCfg.boost_cost_ash,
         currency: "ASH",
         status: "COMPLETED",
@@ -311,7 +311,7 @@ export class BurnService {
           await tx.transaction.create({
             data: {
               userId:      user.referredById,
-              type:        "REFERRAL_REWARD",
+              type:        "REFERRAL",
               amount:      actualReward,
               currency:    "USDC",
               status:      "COMPLETED",

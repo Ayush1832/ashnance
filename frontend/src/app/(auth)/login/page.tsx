@@ -7,7 +7,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { AuthShell } from "@/components/ashnance/AuthShell";
 import { FireButton } from "@/components/ashnance/primitives";
-import { api } from "@/lib/apiClient";
+import { api, mapProfile } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
 import { walletOptions, connectWallet, signMessage, truncate } from "@/lib/solana";
 import { cn } from "@/lib/utils";
@@ -42,7 +42,7 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));
       toast.success("Welcome back!");
       nav.push("/dashboard");
     } catch (err) {
@@ -56,7 +56,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.login({ email: otpEmail, otp });
-      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));
       toast.success("Welcome back!");
       nav.push("/dashboard");
     } catch (err) {
@@ -80,7 +80,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.loginWith2fa({ ...savedCreds, twoFaCode });
-      if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+      if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));
       toast.success("Welcome back!");
       nav.push("/dashboard");
     } catch (err) {
@@ -176,7 +176,7 @@ export default function LoginPage() {
                   const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
                   const sig = await signMessage(walletAddr, message);
                   const res = await api.walletLogin({ publicKey: walletAddr, signature: sig.signature, message: sig.message });
-                  if (res.data.user) userStore.update(res.data.user as Parameters<typeof userStore.update>[0]);
+                  if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));
                   toast.success("Signed in");
                   nav.push("/dashboard");
                 } catch (err) {

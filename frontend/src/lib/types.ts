@@ -56,7 +56,7 @@ export interface BurnEvent {
 
 export interface Transaction {
   id: string;
-  type: "DEPOSIT" | "WITHDRAW" | "BURN" | "WIN" | "REFERRAL" | "VIP" | "BOOST" | "ASH_CLAIM";
+  type: "DEPOSIT" | "WITHDRAW" | "BURN" | "WIN" | "REFERRAL" | "VIP" | "BOOST" | "ASH_CLAIM" | "STAKE";
   description: string;
   amount: number;
   asset: "USDC" | "ASH";

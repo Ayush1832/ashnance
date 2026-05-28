@@ -87,7 +87,7 @@ export class StakingService {
       await tx.transaction.create({
         data: {
           userId,
-          type: "ASH_BOOST",
+          type: "STAKE",
           amount,
           currency: "ASH",
           status: "COMPLETED",
@@ -144,7 +144,7 @@ export class StakingService {
       await tx.transaction.create({
         data: {
           userId,
-          type: "ASH_BOOST",
+          type: "STAKE",
           amount: pendingRewards,
           currency: "ASH",
           status: "COMPLETED",
@@ -207,7 +207,7 @@ export class StakingService {
       await tx.transaction.create({
         data: {
           userId,
-          type: "ASH_BOOST",
+          type: "STAKE",
           amount: totalReturn,
           currency: "ASH",
           status: "COMPLETED",

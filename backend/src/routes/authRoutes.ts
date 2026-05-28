@@ -73,7 +73,18 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
       throw new BadRequestError("Password is required for email login");
     }
     const twoFaCode = req.body.twoFaCode as string | undefined;
-    const result = await AuthService.login(data.email, data.password, twoFaCode);
+
+    let result;
+    try {
+      result = await AuthService.login(data.email, data.password, twoFaCode);
+    } catch (error: any) {
+      // When 2FA is enabled but no code was supplied, tell the frontend to show
+      // the 2FA input rather than treating this as a login failure.
+      if (error.message === "2FA code required") {
+        return res.json({ success: true, data: { requires2fa: true } });
+      }
+      throw error;
+    }
 
     res.json({
       success: true,

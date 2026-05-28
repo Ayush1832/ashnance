@@ -172,9 +172,8 @@ function HistoryTab() {
   }, []);
 
   const typeIcon: Record<string, string> = {
-    BURN: "🔥", DEPOSIT: "⬇️", WITHDRAW: "⬆️", WITHDRAWAL: "⬆️", WIN: "🏆",
-    REFERRAL: "👥", REFERRAL_REWARD: "👥", VIP: "⭐", VIP_PURCHASE: "⭐",
-    BOOST: "⚡", ASH_BOOST: "⚡", ASH_CLAIM: "🪙",
+    BURN: "🔥", DEPOSIT: "⬇️", WITHDRAW: "⬆️", WIN: "🏆",
+    REFERRAL: "👥", VIP: "⭐", BOOST: "⚡", ASH_CLAIM: "🪙", STAKE: "🌱",
   };
 
   if (loading) {

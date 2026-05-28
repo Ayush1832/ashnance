@@ -220,7 +220,7 @@ export class WalletService {
         const pendingTx = await tx.transaction.create({
           data: {
             userId,
-            type: "WITHDRAWAL",
+            type: "WITHDRAW",
             amount,
             currency: "USDC",
             status: "PROCESSING",
@@ -342,7 +342,7 @@ export class WalletService {
     await prisma.transaction.create({
       data: {
         userId,
-        type: "WITHDRAWAL",
+        type: "ASH_CLAIM",
         amount,
         currency: "ASH",
         status: "COMPLETED",
