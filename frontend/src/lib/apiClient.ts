@@ -430,8 +430,8 @@ export const api = {
     return { success: true, data };
   },
 
-  async ownerInitiateWithdrawal(amount: number) {
-    const data = await post("/api/owner/withdrawal/initiate", { amount });
+  async ownerInitiateWithdrawal(_amount?: number) {
+    const data = await post("/api/owner/withdrawal/initiate", {});
     return { success: true, data };
   },
 

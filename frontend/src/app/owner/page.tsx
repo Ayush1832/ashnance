@@ -78,8 +78,6 @@ export default function OwnerPage() {
 function SolvencyTab({ solvency, loading }: { solvency: SolvencyData | null; loading: boolean }) {
   const [profitPool, setProfitPool] = useState<ProfitPoolData | null>(null);
   const [pending, setPending] = useState<PendingWithdrawal>(null);
-  const [amount, setAmount] = useState("");
-  const [address, setAddress] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -91,15 +89,11 @@ function SolvencyTab({ solvency, loading }: { solvency: SolvencyData | null; loa
       .catch(() => {});
   }, []);
 
-  async function initiateWithdrawal(e: React.FormEvent) {
-    e.preventDefault();
-    const a = parseFloat(amount);
-    if (!a || !address) return;
+  async function initiateWithdrawal() {
     setSubmitting(true);
     try {
-      await api.ownerInitiateWithdrawal(a);
-      toast.success("Withdrawal initiated — awaiting second signature");
-      setAmount(""); setAddress("");
+      await api.ownerInitiateWithdrawal(0); // amount/address come from server env config
+      toast.success("Withdrawal initiated — awaiting second owner signature");
       const res = await api.ownerPendingWithdrawal();
       if (res.success) setPending(res.data as PendingWithdrawal);
     } catch (err) {
@@ -197,17 +191,17 @@ function SolvencyTab({ solvency, loading }: { solvency: SolvencyData | null; loa
             </div>
           </div>
         ) : (
-          <form onSubmit={initiateWithdrawal} className="grid sm:grid-cols-[1fr_1fr_auto] gap-3 max-w-2xl">
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-              placeholder="Amount (USDC)"
-              className="h-10 px-3 rounded-md bg-muted border border-border text-sm" />
-            <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
-              placeholder="Destination address"
-              className="h-10 px-3 rounded-md bg-muted border border-border text-sm font-mono" />
-            <FireButton type="submit" disabled={submitting || !amount || !address}>
-              <Download className="h-4 w-4" />{submitting ? "Initiating…" : "Initiate"}
+          <div className="space-y-3">
+            <div className="glass rounded-lg px-4 py-3 text-sm text-muted-foreground">
+              Withdraws the full profit pool balance and splits it 60/40 between
+              the two owner wallets configured via <code className="text-foreground font-mono text-xs">OWNER_1_WALLET</code> and{" "}
+              <code className="text-foreground font-mono text-xs">OWNER_2_WALLET</code>.
+            </div>
+            <FireButton onClick={initiateWithdrawal} disabled={submitting || !profitPool || profitPool.balance <= 0}>
+              <Download className="h-4 w-4" />
+              {submitting ? "Initiating…" : profitPool ? `Withdraw ${fmtUsd(profitPool.balance)}` : "Initiate Withdrawal"}
             </FireButton>
-          </form>
+          </div>
         )}
       </GlassCard>
     </div>
