@@ -1,39 +1,115 @@
-// Solana wallet stubs.
-// TODO: implement SPL transfer (use @solana/web3.js + @solana/spl-token)
-// TODO: wire up real wallet adapter (Phantom/Backpack/Solflare/OKX/Coinbase)
+// Real Solana multi-wallet adapter for Ashnance.
+// Supports Phantom, Backpack, Solflare, OKX, and Coinbase wallets.
 
 export type WalletProvider = "PHANTOM" | "BACKPACK" | "SOLFLARE" | "OKX" | "COINBASE";
 
 export const walletOptions: { id: WalletProvider; name: string; icon: string }[] = [
   { id: "PHANTOM",  name: "Phantom",         icon: "👻" },
-  { id: "BACKPACK", name: "Backpack",        icon: "🎒" },
-  { id: "SOLFLARE", name: "Solflare",        icon: "☀️" },
-  { id: "OKX",      name: "OKX Wallet",      icon: "⭕" },
-  { id: "COINBASE", name: "Coinbase Wallet", icon: "🔵" },
+  { id: "BACKPACK", name: "Backpack",         icon: "🎒" },
+  { id: "SOLFLARE", name: "Solflare",         icon: "☀️" },
+  { id: "OKX",      name: "OKX Wallet",       icon: "⭕" },
+  { id: "COINBASE", name: "Coinbase Wallet",  icon: "🔵" },
 ];
 
-export async function connectWallet(_provider: WalletProvider): Promise<{ address: string }> {
-  // TODO: implement SPL transfer connection logic
-  await new Promise((r) => setTimeout(r, 600));
-  return { address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU" };
+// Keep track of the last connected provider so signMessage can reuse it
+let _lastProvider: any = null;
+
+function getProvider(providerId: WalletProvider): any | null {
+  if (typeof window === "undefined") return null;
+  const w = window as any;
+  switch (providerId) {
+    case "PHANTOM":
+      return w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : null);
+    case "BACKPACK":
+      return w.backpack ?? null;
+    case "SOLFLARE":
+      return w.solflare?.isSolflare ? w.solflare : null;
+    case "OKX":
+      return w.okxwallet?.solana ?? null;
+    case "COINBASE":
+      return w.coinbaseSolana ?? w.coinbaseWalletExtension ?? null;
+    default:
+      return null;
+  }
 }
 
-export async function signMessage(_address: string, message: string): Promise<{ signature: number[]; message: string }> {
-  // TODO: implement real Phantom/wallet-adapter signature request.
-  // The real implementation should call window.phantom.solana.signMessage(encoded, "utf8")
-  // and return the signature bytes as a number[].
-  await new Promise((r) => setTimeout(r, 500));
+export async function connectWallet(
+  providerId: WalletProvider,
+): Promise<{ address: string }> {
+  const provider = getProvider(providerId);
+  if (!provider) {
+    throw new Error(
+      `${providerId} wallet not detected. Please install the browser extension first.`,
+    );
+  }
+
+  await provider.connect();
+
+  const pk = provider.publicKey;
+  if (!pk) throw new Error("Wallet connected but no public key returned.");
+
+  const address =
+    typeof pk.toBase58 === "function" ? pk.toBase58() : String(pk);
+
+  _lastProvider = provider;
+  return { address };
+}
+
+export async function signMessage(
+  address: string,
+  message: string,
+): Promise<{ signature: number[]; message: string }> {
+  // Try the cached provider first, then scan all known wallets
+  const candidates: any[] = [];
+  if (_lastProvider) candidates.push(_lastProvider);
+
+  if (typeof window !== "undefined") {
+    const w = window as any;
+    const extras = [
+      w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : null),
+      w.backpack,
+      w.solflare?.isSolflare ? w.solflare : null,
+      w.okxwallet?.solana,
+      w.coinbaseSolana,
+    ];
+    for (const p of extras) {
+      if (p && !candidates.includes(p)) candidates.push(p);
+    }
+  }
+
+  const provider = candidates.find((p) => {
+    if (!p?.publicKey) return false;
+    const addr =
+      typeof p.publicKey.toBase58 === "function"
+        ? p.publicKey.toBase58()
+        : String(p.publicKey);
+    return addr === address;
+  });
+
+  if (!provider) {
+    throw new Error(
+      "No connected wallet found for this address. Please reconnect your wallet.",
+    );
+  }
+
   const encoded = new TextEncoder().encode(message);
-  return { signature: Array.from(encoded).slice(0, 64), message };
+  const result = await provider.signMessage(encoded, "utf8");
+
+  let sigBytes: Uint8Array;
+  if (result instanceof Uint8Array) {
+    sigBytes = result;
+  } else if (result?.signature instanceof Uint8Array) {
+    sigBytes = result.signature;
+  } else if (result?.signature) {
+    sigBytes = new Uint8Array(Object.values(result.signature) as number[]);
+  } else {
+    throw new Error("Could not extract signature from wallet response.");
+  }
+
+  return { signature: Array.from(sigBytes), message };
 }
 
-export async function sendUsdc(_from: string, _to: string, _amount: number): Promise<{ txHash: string }> {
-  // TODO: implement SPL transfer (USDC SPL token transfer transaction)
-  await new Promise((r) => setTimeout(r, 1200));
-  return { txHash: "5JxhP9Y3kN2A" + Math.random().toString(36).slice(2,8) };
-}
-
-export function truncate(addr: string, n = 4) {
+export function truncate(addr: string, n = 4): string {
   if (!addr) return "";
   return addr.slice(0, n) + "..." + addr.slice(-n);
 }

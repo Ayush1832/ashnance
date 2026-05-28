@@ -184,6 +184,11 @@ export const api = {
     return { success: true, data };
   },
 
+  async linkWallet(b: { publicKey: string; signature: number[]; message: string }) {
+    const data = await post("/api/auth/link-wallet", b);
+    return { success: true, data };
+  },
+
   async profile() {
     const data = await get<Record<string, unknown>>("/api/auth/profile");
     return { success: true, data };

@@ -5,9 +5,8 @@ import { socket } from "@/lib/socketClient";
 export function useGlobalToasts() {
   useEffect(() => {
     const offBurn = socket.on("burn:new", (b: any) => {
-      // TODO: wire up real socket event
       if (Math.random() < 0.18) {
-        toast(`🔥 ${b.username} burned $${b.amount}`, { description: `+${b.weight} weight`, duration: 2500 });
+        toast(`🔥 ${b.user} burned $${b.amount}`, { description: `+${b.weight} weight`, duration: 2500 });
       }
     });
     const offRef = socket.on("referral:earned", (p: any) => {
