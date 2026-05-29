@@ -17,20 +17,8 @@ export class WalletService {
    * Get wallet details for a user
    */
   static async getWallet(userId: string) {
-    let wallet = await prisma.wallet.findUnique({ where: { userId } });
+    const wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new NotFoundError("Wallet not found");
-
-    // Lazy backfill: generate deposit address for users who registered before this was added
-    if (!wallet.depositAddress) {
-      const addr = await BlockchainService.generateDepositAddress(userId);
-      wallet = await prisma.wallet.update({
-        where: { userId },
-        data: { depositAddress: addr },
-      });
-      // Start monitoring the newly assigned deposit address
-      const { watchDepositAddress } = await import("./depositMonitorService");
-      watchDepositAddress(userId, addr);
-    }
 
     return {
       usdcBalance:      wallet.usdcBalance,

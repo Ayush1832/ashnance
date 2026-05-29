@@ -155,13 +155,9 @@ if (process.env.NODE_ENV === "production") {
   }
 }
 
-// ---- Deposit Monitor — restart all wallet pollers on server start ----
-import("./services/depositMonitorService").then(({ startAllDepositMonitors }) => {
-  startAllDepositMonitors().catch((err: any) =>
-    console.error("[DepositMonitor] Startup failed:", err.message)
-  );
-  console.log("[DepositMonitor] All deposit monitors started");
-});
+// Deposits are credited on-demand via POST /api/wallet/deposit (user connects a
+// wallet and sends USDC to the master wallet). No background deposit-address
+// polling runs anymore — it was removed to cut constant RPC/VPS load.
 
 // ---- req #6: Background checker — auto-end time-expired rounds every 60 seconds ----
 import("./services/roundService").then(({ RoundService }) => {

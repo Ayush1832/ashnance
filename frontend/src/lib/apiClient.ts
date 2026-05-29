@@ -284,6 +284,14 @@ export const api = {
 
   // ── Wallet ────────────────────────────────────────────────────────────────
 
+  async walletPlatformInfo() {
+    const data = await get<{ masterWallet: string; usdcMint: string; network: string }>(
+      "/api/wallet/platform-info",
+      false,
+    );
+    return { success: true, data };
+  },
+
   async deposit(b: { txHash: string }) {
     const data = await post("/api/wallet/deposit", b);
     return { success: true, data };

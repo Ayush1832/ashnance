@@ -109,6 +109,99 @@ export async function signMessage(
   return { signature: Array.from(sigBytes), message };
 }
 
+/** Find the already-connected provider whose publicKey matches `address`. */
+function findProviderForAddress(address: string): any | null {
+  const candidates: any[] = [];
+  if (_lastProvider) candidates.push(_lastProvider);
+  if (typeof window !== "undefined") {
+    const w = window as any;
+    for (const p of [
+      w.phantom?.solana ?? (w.solana?.isPhantom ? w.solana : null),
+      w.backpack,
+      w.solflare?.isSolflare ? w.solflare : null,
+      w.okxwallet?.solana,
+      w.coinbaseSolana,
+    ]) {
+      if (p && !candidates.includes(p)) candidates.push(p);
+    }
+  }
+  return (
+    candidates.find((p) => {
+      if (!p?.publicKey) return false;
+      const a = typeof p.publicKey.toBase58 === "function" ? p.publicKey.toBase58() : String(p.publicKey);
+      return a === address;
+    }) ?? null
+  );
+}
+
+/**
+ * Build and send a USDC SPL transfer from the connected wallet to the platform
+ * master wallet, returning the transaction signature. The backend then verifies
+ * the tx on-chain (POST /api/wallet/deposit) and credits the internal balance.
+ */
+export async function sendUsdcTransfer(params: {
+  address: string;
+  masterWallet: string;
+  usdcMint: string;
+  amount: number;
+  network: string;
+  rpcUrl?: string;
+}): Promise<string> {
+  const { address, masterWallet, usdcMint, amount, network, rpcUrl } = params;
+  const provider = findProviderForAddress(address);
+  if (!provider) throw new Error("No connected wallet found. Please connect your wallet and try again.");
+
+  const { Connection, PublicKey, Transaction, clusterApiUrl } = await import("@solana/web3.js");
+  const {
+    getAssociatedTokenAddress,
+    createTransferCheckedInstruction,
+    createAssociatedTokenAccountIdempotentInstruction,
+  } = await import("@solana/spl-token");
+
+  const endpoint =
+    rpcUrl ||
+    process.env.NEXT_PUBLIC_SOLANA_RPC ||
+    clusterApiUrl(network === "mainnet-beta" ? "mainnet-beta" : "devnet");
+  const connection = new Connection(endpoint, "confirmed");
+
+  const from = new PublicKey(address);
+  const mint = new PublicKey(usdcMint);
+  const master = new PublicKey(masterWallet);
+  const fromAta = await getAssociatedTokenAddress(mint, from);
+  const toAta = await getAssociatedTokenAddress(mint, master);
+
+  // USDC has 6 decimals
+  const baseUnits = BigInt(Math.round(amount * 1_000_000));
+  if (baseUnits <= 0n) throw new Error("Amount must be greater than zero.");
+
+  const tx = new Transaction();
+  // Create the master's USDC token account if it somehow doesn't exist yet
+  // (idempotent — a no-op when it already does). Fee/rent paid by the sender.
+  if (!(await connection.getAccountInfo(toAta))) {
+    tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, master, mint));
+  }
+  tx.add(createTransferCheckedInstruction(fromAta, mint, toAta, from, baseUnits, 6));
+
+  tx.feePayer = from;
+  tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+
+  // Prefer signAndSendTransaction; fall back to signTransaction + manual send.
+  let signature: string;
+  if (typeof provider.signAndSendTransaction === "function") {
+    const res = await provider.signAndSendTransaction(tx);
+    signature = typeof res === "string" ? res : res?.signature;
+  } else if (typeof provider.signTransaction === "function") {
+    const signed = await provider.signTransaction(tx);
+    signature = await connection.sendRawTransaction(signed.serialize());
+  } else {
+    throw new Error("This wallet does not support sending transactions.");
+  }
+  if (!signature) throw new Error("Wallet did not return a transaction signature.");
+
+  await connection.confirmTransaction(signature, "confirmed");
+  return signature;
+}
+
 export function truncate(addr: string, n = 4): string {
   if (!addr) return "";
   return addr.slice(0, n) + "..." + addr.slice(-n);

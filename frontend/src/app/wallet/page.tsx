@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Copy, ExternalLink, Clock, Plus, Minus } from "lucide-react";
+import { ExternalLink, Clock, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatusBadge, StatTile } from "@/components/ashnance/primitives";
@@ -11,6 +11,7 @@ import { api } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
 import { mapProfile } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
+import { walletOptions, connectWallet, sendUsdcTransfer, truncate, type WalletProvider } from "@/lib/solana";
 import type { Transaction, WhitelistAddress } from "@/lib/types";
 
 type Tab = "deposit" | "withdraw" | "history" | "whitelist";
@@ -50,28 +51,95 @@ export default function WalletPage() {
 }
 
 function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
-  function copy() {
-    navigator.clipboard.writeText(user.depositAddress);
-    toast.success("Address copied");
+  const [amount, setAmount] = useState("");
+  const [connectedAddr, setConnectedAddr] = useState<string | null>(user.walletAddress ?? null);
+  const [connecting, setConnecting] = useState<WalletProvider | null>(null);
+  const [depositing, setDepositing] = useState(false);
+
+  async function connect(providerId: WalletProvider) {
+    setConnecting(providerId);
+    try {
+      const { address } = await connectWallet(providerId);
+      setConnectedAddr(address);
+      toast.success("Wallet connected");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to connect wallet");
+    }
+    setConnecting(null);
   }
+
+  async function deposit() {
+    const a = parseFloat(amount);
+    if (!a || a < 1) { toast.error("Minimum deposit is $1.00"); return; }
+    if (!connectedAddr) { toast.error("Connect a wallet first"); return; }
+    setDepositing(true);
+    try {
+      const info = await api.walletPlatformInfo();
+      if (!info.success || !info.data?.masterWallet) throw new Error("Could not load deposit details");
+      const txHash = await sendUsdcTransfer({
+        address: connectedAddr,
+        masterWallet: info.data.masterWallet,
+        usdcMint: info.data.usdcMint,
+        amount: a,
+        network: info.data.network,
+      });
+      await api.deposit({ txHash });
+      toast.success(`Deposited ${fmtUsd(a)}`);
+      setAmount("");
+      // Refresh balance in header
+      api.profile()
+        .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
+        .catch(() => {});
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Deposit failed");
+    }
+    setDepositing(false);
+  }
+
   return (
     <GlassCard>
-      <div className="text-sm font-medium mb-4">Your USDC deposit address (Solana)</div>
-      {user.depositAddress ? (
+      <div className="text-sm font-medium mb-4">Deposit USDC</div>
+
+      <div className="mb-4">
+        <label className="text-xs text-muted-foreground mb-1 block">Amount (USDC)</label>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+          min={1}
+          className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Minimum deposit: <span className="font-mono text-foreground">$1.00</span></p>
+      </div>
+
+      {connectedAddr ? (
         <>
-          <div className="glass rounded-lg p-4 flex items-center gap-3 mb-4">
-            <span className="font-mono text-xs break-all flex-1">{user.depositAddress}</span>
-            <button onClick={copy} className="shrink-0 p-1.5 rounded hover:bg-white/10 transition"><Copy className="h-4 w-4" /></button>
+          <div className="glass rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Paying from</span>
+            <span className="font-mono">{truncate(connectedAddr, 6)}</span>
           </div>
-          <GhostButton onClick={copy} className="w-full mb-4"><Copy className="h-4 w-4 inline mr-2" />Copy Address</GhostButton>
+          <FireButton onClick={deposit} className="w-full" disabled={depositing || !amount}>
+            <Plus className="h-4 w-4" />
+            {depositing ? "Confirm in your wallet…" : `Deposit ${amount && parseFloat(amount) > 0 ? fmtUsd(parseFloat(amount)) : "USDC"}`}
+          </FireButton>
         </>
       ) : (
-        <div className="glass rounded-lg p-4 mb-4 text-sm text-muted-foreground">Loading deposit address…</div>
+        <div>
+          <div className="text-xs text-muted-foreground mb-2">Connect a wallet to deposit</div>
+          <div className="grid grid-cols-2 gap-2">
+            {walletOptions.map((w) => (
+              <GhostButton key={w.id} onClick={() => connect(w.id)} disabled={!!connecting} className="w-full">
+                <span className="mr-2">{w.icon}</span>{connecting === w.id ? "Connecting…" : w.name}
+              </GhostButton>
+            ))}
+          </div>
+        </div>
       )}
-      <div className="space-y-2 text-xs text-muted-foreground">
-        <p>Send <span className="text-foreground font-medium">USDC</span> on the <span className="text-foreground font-medium">Solana</span> network to this address.</p>
-        <p>Deposits are credited automatically after 1 confirmation (usually under 30 seconds).</p>
-        <p>Minimum deposit: <span className="font-mono text-foreground">$1.00</span> · No maximum.</p>
+
+      <div className="space-y-2 text-xs text-muted-foreground mt-4">
+        <p>You&apos;ll approve a <span className="text-foreground font-medium">USDC</span> transfer on the <span className="text-foreground font-medium">Solana</span> network in your wallet.</p>
+        <p>Funds are credited to your balance once the transaction is confirmed (usually under 30 seconds).</p>
       </div>
     </GlassCard>
   );
