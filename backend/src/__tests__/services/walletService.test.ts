@@ -51,12 +51,26 @@ describe("WalletService.verifyAndProcessDeposit", () => {
   });
 
   test("rejects when amount < 1 USDC", async () => {
-    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 0.5 });
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 0.5, memo: "user-1" });
     await expect(WalletService.verifyAndProcessDeposit("user-1", "fakehash")).rejects.toThrow(BadRequestError);
   });
 
+  test("rejects when memo does not match the calling user (anti-front-running)", async () => {
+    // Tx really did send USDC to the master wallet, but its on-chain memo
+    // attributes it to a different user — must not be credited to user-1.
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: "someone-else" });
+    await expect(WalletService.verifyAndProcessDeposit("user-1", "stolenhash")).rejects.toThrow(
+      /not attributed to your account/i,
+    );
+  });
+
+  test("rejects when deposit carries no attribution memo", async () => {
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: null });
+    await expect(WalletService.verifyAndProcessDeposit("user-1", "nomemohash")).rejects.toThrow(BadRequestError);
+  });
+
   test("credits balance on valid deposit", async () => {
-    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50 });
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: "user-1" });
 
     let walletUpdated = false;
     let txCreated = false;
@@ -87,7 +101,7 @@ describe("WalletService.verifyAndProcessDeposit", () => {
   });
 
   test("rejects duplicate txHash via P2002 (DB unique constraint)", async () => {
-    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50 });
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: "user-1" });
 
     (mockPrisma.$transaction as jest.Mock).mockRejectedValue({ code: "P2002" });
 
@@ -97,7 +111,7 @@ describe("WalletService.verifyAndProcessDeposit", () => {
   });
 
   test("concurrent deposits with same txHash: second gets P2002 error", async () => {
-    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50 });
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: "user-1" });
 
     let callCount = 0;
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {

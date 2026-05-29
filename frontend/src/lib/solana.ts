@@ -1,6 +1,8 @@
 // Real Solana multi-wallet adapter for Ashnance.
 // Supports Phantom, Backpack, Solflare, OKX, and Coinbase wallets.
 
+import { Buffer } from "buffer";
+
 export type WalletProvider = "PHANTOM" | "BACKPACK" | "SOLFLARE" | "OKX" | "COINBASE";
 
 export const walletOptions: { id: WalletProvider; name: string; icon: string }[] = [
@@ -145,13 +147,17 @@ export async function sendUsdcTransfer(params: {
   usdcMint: string;
   amount: number;
   network: string;
+  /** Attribution memo written on-chain so the backend can bind this deposit to
+   *  the calling user (prevents anyone else from claiming the same tx). */
+  memo: string;
   rpcUrl?: string;
 }): Promise<string> {
-  const { address, masterWallet, usdcMint, amount, network, rpcUrl } = params;
+  const { address, masterWallet, usdcMint, amount, network, memo, rpcUrl } = params;
   const provider = findProviderForAddress(address);
   if (!provider) throw new Error("No connected wallet found. Please connect your wallet and try again.");
+  if (!memo) throw new Error("Missing deposit attribution. Please reload and try again.");
 
-  const { Connection, PublicKey, Transaction, clusterApiUrl } = await import("@solana/web3.js");
+  const { Connection, PublicKey, Transaction, TransactionInstruction, clusterApiUrl } = await import("@solana/web3.js");
   const {
     getAssociatedTokenAddress,
     createTransferCheckedInstruction,
@@ -181,6 +187,14 @@ export async function sendUsdcTransfer(params: {
     tx.add(createAssociatedTokenAccountIdempotentInstruction(from, toAta, master, mint));
   }
   tx.add(createTransferCheckedInstruction(fromAta, mint, toAta, from, baseUnits, 6));
+  // On-chain attribution memo (SPL Memo program). The backend verifies this
+  // equals the calling user's id, so no one else can claim this deposit.
+  const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+  tx.add(new TransactionInstruction({
+    keys: [],
+    programId: MEMO_PROGRAM_ID,
+    data: Buffer.from(memo, "utf8"),
+  }));
 
   tx.feePayer = from;
   tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;

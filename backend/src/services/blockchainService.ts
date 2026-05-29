@@ -233,11 +233,13 @@ export class BlockchainService {
   // ----------------------------------------------------------
   /**
    * Verifies that a transaction sent USDC to the platform master wallet.
-   * Returns the deposited amount, or null if verification fails.
+   * Returns the deposited amount and the on-chain attribution memo (used to
+   * bind the deposit to the user who actually sent it), or null if no USDC
+   * reached the master wallet in this transaction.
    */
   static async verifyDepositTransaction(
     txHash: string
-  ): Promise<{ amount: number } | null> {
+  ): Promise<{ amount: number; memo: string | null } | null> {
     try {
       const connection = getConnection();
       const masterAddress = BlockchainService.getMasterWalletAddress();
@@ -252,6 +254,8 @@ export class BlockchainService {
       );
 
       if (!tx || !tx.meta) return null;
+      // A failed transaction never moved funds — never credit it.
+      if (tx.meta.err) return null;
 
       const postBalances = tx.meta.postTokenBalances ?? [];
       const preBalances  = tx.meta.preTokenBalances  ?? [];
@@ -264,7 +268,7 @@ export class BlockchainService {
           (post.uiTokenAmount.uiAmount ?? 0) -
           (pre?.uiTokenAmount.uiAmount ?? 0);
 
-        if (delta > 0) return { amount: delta };
+        if (delta > 0) return { amount: delta, memo: BlockchainService.extractMemo(tx) };
       }
 
       return null;
@@ -272,6 +276,34 @@ export class BlockchainService {
       console.error("[BlockchainService] verifyDepositTransaction error:", err);
       return null;
     }
+  }
+
+  /**
+   * Extracts the SPL Memo program text from a parsed transaction, if present.
+   * Used to attribute a deposit to the user who created the transaction.
+   */
+  private static extractMemo(tx: any): string | null {
+    const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+    const instructions = tx?.transaction?.message?.instructions ?? [];
+    for (const ix of instructions) {
+      const programId =
+        typeof ix?.programId?.toBase58 === "function"
+          ? ix.programId.toBase58()
+          : String(ix?.programId ?? "");
+      if (ix?.program === "spl-memo" || programId === MEMO_PROGRAM_ID) {
+        // Parsed memo instructions expose the text directly on `parsed`.
+        if (typeof ix?.parsed === "string") return ix.parsed;
+        if (typeof ix?.parsed?.toString === "function" && ix.parsed != null) {
+          return String(ix.parsed);
+        }
+      }
+    }
+    // Fallback: the runtime logs the memo as: Program log: Memo (len N): "..."
+    for (const log of tx?.meta?.logMessages ?? []) {
+      const m = /Memo \(len \d+\): "(.*)"/.exec(log);
+      if (m) return m[1];
+    }
+    return null;
   }
 
   // ----------------------------------------------------------

@@ -24,7 +24,7 @@ const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   // Snapshot current env
-  ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL"].forEach((k) => {
+  ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL", "FRONTEND_URL", "BACKEND_URL"].forEach((k) => {
     savedEnv[k] = process.env[k];
   });
 });
@@ -55,6 +55,8 @@ describe("Config — production startup secret validation", () => {
     process.env.JWT_SECRET = "dev-jwt-secret";
     process.env.JWT_REFRESH_SECRET = "strong-refresh-secret-value-64chars-xxxx";
     process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
@@ -65,6 +67,8 @@ describe("Config — production startup secret validation", () => {
     process.env.JWT_SECRET = "super-strong-random-secret-64chars-xxxxxxxxxxxxxxxxxxxxxxxxxxxx";
     process.env.JWT_REFRESH_SECRET = "dev-refresh-secret";
     process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
@@ -75,6 +79,8 @@ describe("Config — production startup secret validation", () => {
     process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
     process.env.JWT_REFRESH_SECRET = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5";
     process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
 
     expect(() => requireConfig()).not.toThrow();
   });

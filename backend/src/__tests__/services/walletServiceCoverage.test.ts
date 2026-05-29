@@ -106,27 +106,21 @@ describe("WalletService.getWallet", () => {
     await expect(WalletService.getWallet("user-404")).rejects.toThrow(NotFoundError);
   });
 
-  test("generates and saves deposit address when missing (lazy backfill)", async () => {
+  test("does NOT generate a deposit address when missing (on-demand deposit model)", async () => {
+    // Deposits are now made by connecting a wallet and sending USDC directly to
+    // the master wallet — no per-user deposit address is generated or monitored.
     (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValue({
       usdcBalance: "0",
       ashBalance: "0",
       cumulativeWeight: "0",
-      depositAddress: null, // missing
-    });
-    (mockPrisma.wallet.update as jest.Mock).mockResolvedValue({
-      usdcBalance: "0",
-      ashBalance: "0",
-      cumulativeWeight: "0",
-      depositAddress: ADDRESS,
+      depositAddress: null,
     });
 
     const result = await WalletService.getWallet("user-1");
 
-    expect(mockBlockchain.generateDepositAddress).toHaveBeenCalledWith("user-1");
-    expect(mockPrisma.wallet.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { depositAddress: ADDRESS } })
-    );
-    expect(result.depositAddress).toBe(ADDRESS);
+    expect(mockBlockchain.generateDepositAddress).not.toHaveBeenCalled();
+    expect(mockPrisma.wallet.update).not.toHaveBeenCalled();
+    expect(result.depositAddress).toBeNull();
   });
 });
 

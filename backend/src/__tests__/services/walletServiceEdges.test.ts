@@ -77,7 +77,7 @@ beforeEach(() => jest.clearAllMocks());
 // ===========================================================================
 describe("WalletService.verifyAndProcessDeposit — generic DB error", () => {
   test("re-throws non-P2002 errors from the transaction (line 91)", async () => {
-    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50 });
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 50, memo: "user-1" });
 
     const genericError = new Error("Network timeout");
     (mockPrisma.$transaction as jest.Mock).mockRejectedValue(genericError);

@@ -306,7 +306,9 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
         burn: { create: jest.fn().mockResolvedValue({ id: "burn-ref" }) },
         transaction: {
           create: jest.fn().mockImplementation((args: any) => {
-            if (args.data?.type === "REFERRAL_REWARD") referralTxCreated = true;
+            // burnService records the referral payout with the canonical "REFERRAL"
+            // type (the legacy "REFERRAL_REWARD" value is mapped to it on read).
+            if (args.data?.type === "REFERRAL") referralTxCreated = true;
             return {};
           }),
         },

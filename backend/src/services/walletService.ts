@@ -41,6 +41,15 @@ export class WalletService {
       );
     }
 
+    // Attribution check: the deposit must carry this user's id as an on-chain
+    // memo. Without this, anyone watching the public master wallet could submit
+    // someone else's deposit txHash and have it credited to their own account.
+    if (verified.memo !== userId) {
+      throw new BadRequestError(
+        "This transaction is not attributed to your account. Deposits must be made through the app's Deposit button so they can be credited to you."
+      );
+    }
+
     const { amount } = verified;
     if (amount < 1) throw new BadRequestError("Minimum deposit is 1 USDC");
 

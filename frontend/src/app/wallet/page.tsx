@@ -52,7 +52,10 @@ export default function WalletPage() {
 
 function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [amount, setAmount] = useState("");
-  const [connectedAddr, setConnectedAddr] = useState<string | null>(user.walletAddress ?? null);
+  // Always require an explicit connect in this tab: a wallet extension does not
+  // expose a live publicKey (needed to sign the transfer) until connect() is
+  // called this session, even if the user's address is known from a prior login.
+  const [connectedAddr, setConnectedAddr] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<WalletProvider | null>(null);
   const [depositing, setDepositing] = useState(false);
 
@@ -82,6 +85,7 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
         usdcMint: info.data.usdcMint,
         amount: a,
         network: info.data.network,
+        memo: user.id,
       });
       await api.deposit({ txHash });
       toast.success(`Deposited ${fmtUsd(a)}`);
