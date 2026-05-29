@@ -33,3 +33,7 @@ Thumbs.db
 # Solana deployment records (contain wallet addresses, regenerated per network)
 backend/scripts/ash-token-devnet.json
 backend/scripts/ash-token-mainnet.json
+
+# Design references (local only)
+design-refs/
+!design-refs/README.md
