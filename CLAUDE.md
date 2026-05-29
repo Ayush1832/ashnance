@@ -3,6 +3,40 @@
 Competitive USDC burn-to-win platform on Solana. Users burn USDC, climb a leaderboard,
 the #1 weight holder wins the pool when it fills.
 
+## MCP usage — proactively use these tools, don't wait to be asked
+
+The user installed Playwright, Chrome DevTools, and shadcn MCPs deliberately. Default to using them whenever the task fits, even if the prompt doesn't mention them. The user's prompts will often be terse ("fix this", "build that") — interpret the intent and reach for the right tool.
+
+### Playwright MCP — use AUTOMATICALLY when:
+- Building or changing any UI component / page / layout → verify it renders by navigating + screenshotting at 1440×900 desktop AND 375×667 mobile before claiming done
+- User reports something "looks broken", "doesn't work", "blank", "weird on mobile" → reproduce in browser before guessing
+- User mentions a specific URL, route, or visible behavior → navigate there and observe
+- Debugging an interaction (click, submit, redirect) → drive the browser through it
+- After any change touching `app/**/*.tsx`, `components/**/*.tsx`, `globals.css`, primitives
+
+Workflow: start `npm run dev` in background (only if not already running), navigate, wait for content, screenshot, check `browser_console_messages` for errors, check `browser_network_requests` for failed API calls. Examine the screenshots you take — don't just collect them.
+
+### Chrome DevTools MCP — use AUTOMATICALLY when:
+- Investigating a network / API issue ("the request isn't going through", "401 errors", "CORS")
+- Debugging a runtime error the user can see in console
+- Checking why something on a deployed (live) URL is misbehaving — DevTools MCP works against any URL, not just localhost
+- Performance complaints ("slow", "laggy") → record performance trace
+
+### shadcn MCP — use AUTOMATICALLY when:
+- User asks for a component type (dialog, dropdown, command palette, calendar, etc) and we don't have one
+- Before writing custom UI primitives from scratch, check if shadcn has a registry component that fits
+- Match the existing project style — our only shadcn primitive is `sonner`; adding new ones is fine but they need to be skinned with Ashnance design tokens (fire/ash/gold) not the default shadcn neutrals
+
+### When NOT to use these tools
+- Pure backend changes (services, routes, schema) with no UI surface — Playwright adds nothing
+- Reading code to answer a question — Read/Grep are faster
+- Tiny one-line fixes where the change is self-evidently correct
+
+### What "don't wait to be asked" means in practice
+- User says "the dashboard is broken" → navigate to /dashboard, screenshot, look at console — don't ask "should I check it in browser?"
+- User says "add a settings dropdown" → check shadcn for a dropdown-menu first, don't reinvent it
+- User says "deploy is failing" → use Chrome DevTools to inspect the live error, don't only read logs
+
 ## Tech Stack
 
 **Backend** (`/backend`)
