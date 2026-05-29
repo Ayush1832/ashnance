@@ -76,7 +76,9 @@ export function RankBadge({ rank }: { rank: number }) {
 }
 
 export function FireProgress({ value, max, className, label }: { value: number; max: number; className?: string; label?: ReactNode }) {
-  const pct = Math.min(100, (value / max) * 100);
+  // Guard against max <= 0 (e.g. empty pool): value/0 is NaN, which drops the
+  // width style and makes the bar render full instead of empty.
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
   return (
     <div className={cn("w-full", className)}>
       <div className="h-3 rounded-full bg-muted overflow-hidden">

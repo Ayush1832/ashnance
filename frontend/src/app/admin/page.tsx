@@ -206,9 +206,10 @@ function ConfigTab() {
     if (!cfg) return;
     setSaving(true);
     try {
-      // Save each changed config key individually
-      const entries = Object.entries(cfg) as [keyof BurnConfig, number][];
-      await Promise.all(entries.map(([k, v]) => api.adminSetConfig(k, v)));
+      // Persist only the editable fields. The backend config also returns
+      // runtime counters (e.g. total_ash_emitted, constant_factor) that are
+      // not shown here and must not be overwritten from this form.
+      await Promise.all(fields.map((f) => api.adminSetConfig(f.key, cfg[f.key] as number)));
       toast.success("Config saved");
     } catch { toast.error("Failed to save"); }
     setSaving(false);

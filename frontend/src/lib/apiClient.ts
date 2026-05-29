@@ -446,12 +446,12 @@ export const api = {
   },
 
   async ownerApproveWithdrawal(id: string) {
-    const data = await post(`/api/owner/withdrawal/${id}/approve`);
+    const data = await post(`/api/owner/withdrawal/approve/${id}`);
     return { success: true, data };
   },
 
   async ownerCancelWithdrawal(id: string) {
-    const data = await post(`/api/owner/withdrawal/${id}/cancel`);
+    const data = await post(`/api/owner/withdrawal/cancel/${id}`);
     return { success: true, data };
   },
 
