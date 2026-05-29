@@ -125,7 +125,7 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
           </div>
           <FireButton onClick={deposit} className="w-full" disabled={depositing || !amount}>
             <Plus className="h-4 w-4" />
-            {depositing ? "Confirm in your wallet…" : `Deposit ${amount && parseFloat(amount) > 0 ? fmtUsd(parseFloat(amount)) : "USDC"}`}
+            {depositing ? "Approve in wallet, then confirming…" : `Deposit ${amount && parseFloat(amount) > 0 ? fmtUsd(parseFloat(amount)) : "USDC"}`}
           </FireButton>
         </>
       ) : (

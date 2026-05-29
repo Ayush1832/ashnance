@@ -212,7 +212,10 @@ export async function sendUsdcTransfer(params: {
   }
   if (!signature) throw new Error("Wallet did not return a transaction signature.");
 
-  await connection.confirmTransaction(signature, "confirmed");
+  // Wait for "finalized" — the backend verifies the deposit at finalized
+  // commitment before crediting, so returning earlier would make the very
+  // first /deposit call fail with "could not verify" until the tx finalizes.
+  await connection.confirmTransaction(signature, "finalized");
   return signature;
 }
 
