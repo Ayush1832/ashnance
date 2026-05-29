@@ -579,14 +579,18 @@ export class AuthService {
   // ---- Helpers ----
 
   private static generateTokens(userId: string, email: string) {
+    // jti = unique nonce per token. Without it, two tokens minted for the same
+    // user in the same second are byte-identical (JWTs are deterministic), and
+    // saving the refresh token then violates the unique `token` constraint —
+    // which made POST /api/auth/refresh 500 and logged users out on reopen.
     const accessToken = jwt.sign(
-      { userId, email },
+      { userId, email, jti: crypto.randomUUID() },
       config.jwt.secret,
       { algorithm: "HS256", expiresIn: 900 }
     );
 
     const refreshToken = jwt.sign(
-      { userId, email, type: "refresh" },
+      { userId, email, type: "refresh", jti: crypto.randomUUID() },
       config.jwt.refreshSecret,
       { algorithm: "HS256", expiresIn: 604800 }
     );

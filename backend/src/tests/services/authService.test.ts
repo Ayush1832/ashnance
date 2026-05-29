@@ -14,6 +14,8 @@ jest.mock("../../utils/prisma", () => ({
     refreshToken: {
       create: jest.fn().mockResolvedValue({}),
       deleteMany: jest.fn().mockResolvedValue({}),
+      findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
     },
   },
 }));
@@ -172,5 +174,41 @@ describe("AuthService.login — lockout lifecycle (A5)", () => {
     const updateCall = (mockPrisma.user.update as jest.Mock).mock.calls[0][0];
     expect(updateCall.data.failedAttempts).toBe(1);
     expect(updateCall.data.lockedUntil).toBeUndefined(); // not yet locked
+  });
+});
+
+// ===========================================================================
+// Refresh-token uniqueness — regression for the duplicate-key 500 that logged
+// users out on reopen (tokens minted in the same second were byte-identical,
+// violating the unique `token` column when saved).
+// ===========================================================================
+describe("AuthService.refreshToken — mints unique tokens (no duplicate-key 500)", () => {
+  function mockStoredToken() {
+    (mockPrisma.refreshToken.findUnique as jest.Mock).mockResolvedValue({
+      id: "rt-old",
+      token: "old-token",
+      isRevoked: false,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      user: { id: "user-1", email: "test@example.com" },
+    });
+    (mockPrisma.refreshToken.update as jest.Mock).mockResolvedValue({});
+  }
+
+  test("two refreshes in the same tick produce distinct refresh tokens", async () => {
+    mockStoredToken();
+    const savedTokens: string[] = [];
+    (mockPrisma.refreshToken.create as jest.Mock).mockImplementation((args: { data: { token: string } }) => {
+      savedTokens.push(args.data.token);
+      return Promise.resolve({});
+    });
+
+    const a = await AuthService.refreshToken("old-token");
+    const b = await AuthService.refreshToken("old-token");
+
+    // Distinct tokens returned AND distinct tokens persisted → no unique-constraint collision
+    expect(a.refreshToken).not.toBe(b.refreshToken);
+    expect(a.accessToken).not.toBe(b.accessToken);
+    expect(savedTokens[0]).not.toBe(savedTokens[1]);
+    expect(savedTokens).toHaveLength(2);
   });
 });
