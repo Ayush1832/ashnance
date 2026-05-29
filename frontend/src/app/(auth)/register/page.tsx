@@ -3,17 +3,25 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Flame, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { AuthShell } from "@/components/ashnance/AuthShell";
 import { FireButton } from "@/components/ashnance/primitives";
 import { api, mapProfile } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
+import { cn } from "@/lib/utils";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const STRENGTH_LABELS = ["", "Weak", "Fair", "Good", "Strong", "Very Strong"];
-const STRENGTH_COLORS = ["", "bg-red-500", "bg-orange-400", "bg-yellow-400", "bg-green-400", "bg-green-500"];
+const STRENGTH_COLORS = [
+  "",
+  "bg-red-500",
+  "bg-orange-400",
+  "bg-yellow-400",
+  "bg-green-400",
+  "bg-green-500",
+];
 
 function passwordStrength(pw: string): number {
   let s = 0;
@@ -26,7 +34,7 @@ function passwordStrength(pw: string): number {
 
 function GoogleIcon() {
   return (
-    <svg className="h-5 w-5" viewBox="0 0 48 48">
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 48 48">
       <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
       <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
       <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
@@ -66,45 +74,51 @@ export default function RegisterPage() {
   }
 
   return (
-    <AuthShell>
+    <AuthShell variant="register">
       {/* Heading */}
       <div className="mb-6">
-        <h2 className="font-display text-2xl font-bold">Create your account</h2>
-        <p className="text-sm text-muted-foreground mt-1">Start burning.</p>
+        <div className="text-[10px] uppercase tracking-[0.25em] text-fire mb-2 font-semibold">Get started</div>
+        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">Create your account</h2>
+        <p className="text-sm text-muted-foreground mt-1.5">Light the first spark. The pool is waiting.</p>
       </div>
 
-      {/* Method tabs */}
-      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-6 text-xs">
-        <button
-          onClick={() => setMethod("email")}
-          className={`flex-1 h-8 rounded transition font-medium ${method === "email" ? "bg-fire text-background" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          Email
-        </button>
-        <button
-          onClick={() => setMethod("google")}
-          className={`flex-1 h-8 rounded transition font-medium ${method === "google" ? "bg-fire text-background" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          Google
-        </button>
+      {/* Method tabs — fire underline style */}
+      <div className="relative flex border-b border-border mb-6">
+        {(["email", "google"] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMethod(m)}
+            className={cn(
+              "relative flex-1 h-11 flex items-center justify-center gap-2 text-sm font-medium transition",
+              method === m ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {m === "email" ? <Mail className="h-4 w-4" /> : <GoogleIcon />}
+            {m === "email" ? "Email" : "Google"}
+            {method === m && (
+              <span className="absolute -bottom-px left-1/2 -translate-x-1/2 w-12 h-0.5 bg-fire rounded-full" />
+            )}
+          </button>
+        ))}
       </div>
 
+      {/* ── GOOGLE TAB ── */}
       {method === "google" && (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground text-center">
-            Sign up instantly with your Google account. No password needed.
+          <p className="text-xs text-muted-foreground -mt-2 mb-2">
+            Sign up instantly with your Google account. We never see your password.
           </p>
 
-          {/* Referral code — stored in localStorage and applied automatically after OAuth */}
           <input
-            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
-            placeholder="Referral code (optional)"
             value={referral}
             onChange={(e) => setReferral(e.target.value)}
+            placeholder="Referral code (optional)"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
           />
 
           <FireButton
             className="w-full gap-2"
+            size="lg"
             onClick={() => {
               if (referral) localStorage.setItem("pendingReferral", referral.trim());
               window.location.href = `${API_URL}/api/auth/google`;
@@ -114,31 +128,32 @@ export default function RegisterPage() {
             Continue with Google
           </FireButton>
 
-          <p className="text-xs text-muted-foreground text-center">
+          <p className="text-[11px] text-muted-foreground text-center pt-1">
             Already have an account? Google sign-in will log you in instead.
           </p>
         </div>
       )}
 
+      {/* ── EMAIL TAB ── */}
       {method === "email" && (
         <form className="space-y-4" onSubmit={submit} noValidate>
           <input
-            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
-            placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            placeholder="Username"
             autoComplete="username"
             required
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
           />
 
           <input
-            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
-            placeholder="Email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email address"
             autoComplete="email"
             required
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
           />
 
           <div>
@@ -147,33 +162,35 @@ export default function RegisterPage() {
                 value={pw}
                 onChange={(e) => setPw(e.target.value)}
                 type={showPw ? "text" : "password"}
-                className="w-full h-11 px-3 pr-10 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
                 placeholder="Password (min 8 characters)"
                 autoComplete="new-password"
                 minLength={8}
                 required
+                className="w-full h-12 px-4 pr-10 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
               />
               <button
                 type="button"
                 onClick={() => setShowPw(!showPw)}
-                className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                aria-label={showPw ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-fire transition"
               >
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
             {pw.length > 0 && (
-              <div className="mt-2 flex items-center gap-2">
-                <div className="flex-1 flex gap-0.5">
+              <div className="mt-2.5 flex items-center gap-2">
+                <div className="flex-1 flex gap-1">
                   {[1, 2, 3, 4].map((i) => (
                     <div
                       key={i}
-                      className={`flex-1 h-1 rounded-full transition-all ${
-                        strength >= i ? STRENGTH_COLORS[strength] : "bg-muted"
-                      }`}
+                      className={cn(
+                        "flex-1 h-1 rounded-full transition-all",
+                        strength >= i ? STRENGTH_COLORS[strength] : "bg-muted",
+                      )}
                     />
                   ))}
                 </div>
-                <span className="text-xs text-muted-foreground w-16 text-right">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground w-20 text-right">
                   {STRENGTH_LABELS[strength]}
                 </span>
               </div>
@@ -181,32 +198,36 @@ export default function RegisterPage() {
           </div>
 
           <input
-            className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-fire"
-            placeholder="Referral code (optional)"
             value={referral}
             onChange={(e) => setReferral(e.target.value)}
+            placeholder="Referral code (optional)"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
           />
 
-          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-fire/5 border border-fire/20 text-xs text-muted-foreground">
-            <span className="text-fire mt-0.5">🔥</span>
-            <span>Have a referral code? Your referrer earns <strong className="text-foreground">10% commission</strong> from every burn you make.</span>
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-fire/5 border border-fire/20 text-[11px] text-muted-foreground">
+            <Flame className="h-3.5 w-3.5 text-fire shrink-0 mt-0.5" />
+            <span>Have a referral code? Your referrer earns <strong className="text-foreground">10%</strong> from every burn you make.</span>
           </div>
 
-          <FireButton type="submit" className="w-full" disabled={loading}>
+          <FireButton type="submit" className="w-full" size="lg" disabled={loading}>
+            <Flame className="h-4 w-4" />
             {loading ? "Creating account…" : "Create Account"}
           </FireButton>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 my-1">
+          <div className="flex items-center gap-3 pt-1">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-xs text-muted-foreground">or</span>
+            <span className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">or continue with</span>
             <div className="flex-1 h-px bg-border" />
           </div>
 
           <button
             type="button"
-            onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
-            className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border bg-muted/50 text-sm font-medium hover:bg-muted transition"
+            onClick={() => {
+              if (referral) localStorage.setItem("pendingReferral", referral.trim());
+              window.location.href = `${API_URL}/api/auth/google`;
+            }}
+            className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border glass text-sm font-medium hover:border-fire/40 hover:bg-fire/5 transition"
           >
             <GoogleIcon />
             Continue with Google
@@ -214,9 +235,9 @@ export default function RegisterPage() {
         </form>
       )}
 
-      <div className="mt-5 text-center text-xs text-muted-foreground">
+      <div className="mt-6 text-center text-xs text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="text-foreground hover:text-primary font-medium">
+        <Link href="/login" className="text-foreground hover:text-fire font-medium transition">
           Sign in →
         </Link>
       </div>
