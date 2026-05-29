@@ -25,7 +25,8 @@ type AdminUser = {
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("users");
   const [round, setRound] = useState<Round | null>(null);
-  const [stats, setStats] = useState<{ totalUsers: number; totalBurns: number; activeVips: number; rewardPool: number } | null>(null);
+  // Only totalUsers is rendered here; the other tiles read from `round`.
+  const [stats, setStats] = useState<{ totalUsers: number } | null>(null);
 
   useEffect(() => {
     api.currentRound()
@@ -125,6 +126,11 @@ function UsersTab() {
     );
   }
 
+  // Shared responsive column template so header labels line up with row cells.
+  // Mobile drops the Email column (no room for it); sm+ shows all 5.
+  const gridCls =
+    "grid gap-3 grid-cols-[minmax(0,1fr)_44px_88px_44px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_56px_96px_56px]";
+
   return (
     <div className="space-y-4">
       <input
@@ -135,20 +141,23 @@ function UsersTab() {
         className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm max-w-md"
       />
       <GlassCard className="p-0 overflow-hidden">
-        <div className="grid text-xs uppercase tracking-wider text-muted-foreground px-5 py-2.5 border-b border-border"
-          style={{ gridTemplateColumns: "1fr 1fr auto auto auto" }}>
-          <span>User</span><span>Email</span><span className="text-center">VIP</span>
+        <div className={cn(gridCls, "text-xs uppercase tracking-wider text-muted-foreground px-5 py-2.5 border-b border-border")}>
+          <span>User</span><span className="hidden sm:block">Email</span><span className="text-center">VIP</span>
           <span className="text-center">Role</span><span className="text-center">Actions</span>
         </div>
         <div className="divide-y divide-border">
+          {filtered.length === 0 && (
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+              {search ? "No users match your search." : "No users yet."}
+            </div>
+          )}
           {filtered.map((u) => (
-            <div key={u.id} className={cn("grid items-center px-5 py-3 gap-3 text-sm", u.banned && "opacity-60")}
-              style={{ gridTemplateColumns: "1fr 1fr auto auto auto" }}>
-              <div>
+            <div key={u.id} className={cn(gridCls, "items-center px-5 py-3 text-sm", u.banned && "opacity-60")}>
+              <div className="min-w-0">
                 <div className="font-medium truncate">{u.username}</div>
                 <div className="text-xs text-muted-foreground">{timeAgo(u.createdAt)}</div>
               </div>
-              <div className="text-xs text-muted-foreground truncate">{u.email}</div>
+              <div className="hidden sm:block text-xs text-muted-foreground truncate">{u.email}</div>
               <div className="text-center">
                 {u.vip ? <span className="text-gold text-xs">VIP</span> : <span className="text-muted-foreground text-xs">—</span>}
               </div>
@@ -250,7 +259,7 @@ function ConfigTab() {
                   type="number"
                   step={f.step}
                   value={val}
-                  onChange={(e) => update(f.key, parseFloat(e.target.value))}
+                  onChange={(e) => { const n = parseFloat(e.target.value); update(f.key, Number.isNaN(n) ? 0 : n); }}
                   className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm font-mono"
                 />
                 {f.pct && (
