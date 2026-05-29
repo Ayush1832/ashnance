@@ -58,6 +58,7 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [connectedAddr, setConnectedAddr] = useState<string | null>(null);
   const [connecting, setConnecting] = useState<WalletProvider | null>(null);
   const [depositing, setDepositing] = useState(false);
+  const [recovering, setRecovering] = useState(false);
 
   async function connect(providerId: WalletProvider) {
     setConnecting(providerId);
@@ -98,6 +99,28 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
       toast.error(err instanceof Error ? err.message : "Deposit failed");
     }
     setDepositing(false);
+  }
+
+  // Safety net: if a transfer was sent but never credited (e.g. the tab closed
+  // before the deposit was reported), scan recent transfers for this user's
+  // deposits and credit any that were missed.
+  async function recover() {
+    setRecovering(true);
+    try {
+      const res = await api.recoverDeposits();
+      const { recovered, totalAmount } = res.data;
+      if (recovered > 0) {
+        toast.success(`Recovered ${recovered} deposit${recovered === 1 ? "" : "s"} — ${fmtUsd(totalAmount)} credited`);
+        api.profile()
+          .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
+          .catch(() => {});
+      } else {
+        toast("No missing deposits found", { description: "All your recent deposits are already credited." });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not check for missing deposits");
+    }
+    setRecovering(false);
   }
 
   return (
@@ -144,6 +167,18 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
       <div className="space-y-2 text-xs text-muted-foreground mt-4">
         <p>You&apos;ll approve a <span className="text-foreground font-medium">USDC</span> transfer on the <span className="text-foreground font-medium">Solana</span> network in your wallet.</p>
         <p>Funds are credited to your balance once the transaction is confirmed (usually under 30 seconds).</p>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">Sent USDC but it didn&apos;t show up?</p>
+        <button
+          type="button"
+          onClick={recover}
+          disabled={recovering}
+          className="text-xs font-medium text-fire hover:underline disabled:opacity-50 shrink-0"
+        >
+          {recovering ? "Checking…" : "Recover a deposit"}
+        </button>
       </div>
     </GlassCard>
   );

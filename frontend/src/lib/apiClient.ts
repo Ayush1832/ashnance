@@ -297,6 +297,13 @@ export const api = {
     return { success: true, data };
   },
 
+  async recoverDeposits() {
+    const data = await post<{ recovered: number; totalAmount: number; txHashes: string[] }>(
+      "/api/wallet/deposit/recover",
+    );
+    return { success: true, data };
+  },
+
   async withdraw(b: { amount: number; address: string; twoFaCode: string }) {
     const data = await post<{ txHash: string }>("/api/wallet/withdraw", b);
     return { success: true, data };

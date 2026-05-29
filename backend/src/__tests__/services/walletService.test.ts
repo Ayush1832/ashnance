@@ -17,6 +17,7 @@ jest.mock("../../utils/prisma", () => ({
 jest.mock("../../services/blockchainService", () => ({
   BlockchainService: {
     verifyDepositTransaction: jest.fn(),
+    getRecentDepositSignatures: jest.fn(),
     sendUsdcTransfer: jest.fn(),
     sendAshTransfer: jest.fn(),
     validateSolanaAddress: jest.fn().mockReturnValue(true),
@@ -139,6 +140,70 @@ describe("WalletService.verifyAndProcessDeposit", () => {
     if (r2.status === "rejected") {
       expect((r2.reason as BadRequestError).message).toContain("already processed");
     }
+  });
+});
+
+// ---- Deposit Recovery Tests ----
+
+describe("WalletService.recoverDeposits", () => {
+  function mockCreditTx() {
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        wallet: { update: jest.fn().mockResolvedValue({ usdcBalance: "150" }) },
+        transaction: { create: jest.fn().mockResolvedValue({ id: "tx-rec" }) },
+      };
+      return fn(tx);
+    });
+  }
+
+  test("credits only this user's uncredited deposits, skips others", async () => {
+    mockBlockchain.getRecentDepositSignatures.mockResolvedValue(["sig-mine", "sig-other", "sig-dup"]);
+    mockBlockchain.verifyDepositTransaction.mockImplementation(async (txHash: string) => {
+      if (txHash === "sig-mine")  return { amount: 50, memo: "user-1" };
+      if (txHash === "sig-other") return { amount: 50, memo: "someone-else" };
+      if (txHash === "sig-dup")   return { amount: 50, memo: "user-1" };
+      return null;
+    });
+
+    // sig-mine credits; sig-other fails memo check; sig-dup is already credited (P2002)
+    let call = 0;
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      call += 1;
+      if (call === 1) {
+        const tx = {
+          wallet: { update: jest.fn().mockResolvedValue({ usdcBalance: "150" }) },
+          transaction: { create: jest.fn().mockResolvedValue({ id: "tx-rec" }) },
+        };
+        return fn(tx);
+      }
+      throw { code: "P2002" }; // sig-dup already processed
+    });
+
+    const result = await WalletService.recoverDeposits("user-1");
+
+    expect(result.recovered).toBe(1);
+    expect(result.totalAmount).toBe(50);
+    expect(result.txHashes).toEqual(["sig-mine"]);
+  });
+
+  test("returns zero when there are no recent transfers", async () => {
+    mockBlockchain.getRecentDepositSignatures.mockResolvedValue([]);
+    const result = await WalletService.recoverDeposits("user-1");
+    expect(result.recovered).toBe(0);
+    expect(result.totalAmount).toBe(0);
+    expect(result.txHashes).toEqual([]);
+  });
+
+  test("credits multiple missed deposits for the user", async () => {
+    mockBlockchain.getRecentDepositSignatures.mockResolvedValue(["sig-a", "sig-b"]);
+    mockBlockchain.verifyDepositTransaction.mockResolvedValue({ amount: 25, memo: "user-1" });
+    mockCreditTx();
+
+    const result = await WalletService.recoverDeposits("user-1");
+
+    expect(result.recovered).toBe(2);
+    expect(result.totalAmount).toBe(50);
+    expect(result.txHashes).toEqual(["sig-a", "sig-b"]);
   });
 });
 

@@ -307,6 +307,45 @@ export class BlockchainService {
   }
 
   // ----------------------------------------------------------
+  // getRecentDepositSignatures
+  // ----------------------------------------------------------
+  /**
+   * Returns the most recent transaction signatures that touched the master
+   * wallet's USDC token account. Used by the on-demand deposit-recovery flow
+   * to find deposits that reached the platform but were never reported by the
+   * client (e.g. the browser closed before POST /api/wallet/deposit ran).
+   *
+   * This runs only when a user explicitly asks to recover — there is no
+   * background polling.
+   */
+  static async getRecentDepositSignatures(limit = 20): Promise<string[]> {
+    try {
+      const connection = getConnection();
+      const master = new PublicKey(BlockchainService.getMasterWalletAddress());
+      const mint = new PublicKey(USDC_MINT);
+
+      const tokenAccounts = await withTimeout(
+        connection.getParsedTokenAccountsByOwner(master, { mint }),
+        RPC_TIMEOUT_MS,
+        "getParsedTokenAccountsByOwner (master)"
+      );
+      if (tokenAccounts.value.length === 0) return [];
+
+      const ata = tokenAccounts.value[0].pubkey;
+      const signatures = await withTimeout(
+        connection.getSignaturesForAddress(ata, { limit }),
+        RPC_TIMEOUT_MS,
+        "getSignaturesForAddress (master ata)"
+      );
+      // Skip signatures the RPC already flagged as errored.
+      return signatures.filter((s) => !s.err).map((s) => s.signature);
+    } catch (err) {
+      console.error("[BlockchainService] getRecentDepositSignatures error:", err);
+      return [];
+    }
+  }
+
+  // ----------------------------------------------------------
   // sweepDepositToMaster
   // ----------------------------------------------------------
   /**

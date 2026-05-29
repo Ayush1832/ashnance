@@ -90,6 +90,40 @@ export class WalletService {
   }
 
   /**
+   * On-demand deposit recovery. Scans the most recent transfers to the master
+   * wallet and credits any that carry THIS user's attribution memo and have not
+   * already been credited. Used as a safety net when the client sent USDC but
+   * never reported the txHash (e.g. the tab closed before POST /deposit ran).
+   *
+   * Reuses verifyAndProcessDeposit per candidate, so the memo check, minimum
+   * amount, finalized-commitment check, and (txHash, type) idempotency all
+   * still apply. Other users' deposits fail the memo check and are skipped;
+   * already-credited ones hit the unique constraint and are skipped.
+   */
+  static async recoverDeposits(userId: string) {
+    const signatures = await BlockchainService.getRecentDepositSignatures(20);
+
+    let recovered = 0;
+    let totalAmount = 0;
+    const txHashes: string[] = [];
+
+    for (const txHash of signatures) {
+      try {
+        const res = await WalletService.verifyAndProcessDeposit(userId, txHash);
+        recovered += 1;
+        totalAmount += res.amount;
+        txHashes.push(txHash);
+      } catch {
+        // Expected during a scan: not this user's memo, already credited,
+        // below minimum, or unverifiable. Skip and keep going.
+        continue;
+      }
+    }
+
+    return { recovered, totalAmount, txHashes };
+  }
+
+  /**
    * @deprecated Legacy deposit used by deposit-address monitor.
    * Use verifyAndProcessDeposit for new direct deposits.
    */
