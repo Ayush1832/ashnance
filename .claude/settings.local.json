@@ -7,11 +7,15 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:api.github.com)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(cd \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\ashnance\" && mkdir -p .claude/skills && echo \"skills dir ready\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\LENOVO\\Desktop\\ashnance\\.claude\\skills"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "code-review-graph"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
