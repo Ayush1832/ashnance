@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, Flame, Trophy, Zap } from "lucide-react";
 import { FlameCanvas } from "@/components/effects/FlameCanvas";
+import { Logo } from "./Logo";
 
 export function AuthShell({
   children,
@@ -26,10 +27,7 @@ export function AuthShell({
           <ArrowLeft className="h-3.5 w-3.5" />
           BACK TO HOME
         </Link>
-        <div className="flex items-center gap-2 font-display font-bold tracking-tight">
-          <span className="text-xl">🔥</span>
-          <span className="hidden sm:inline">Ashnance</span>
-        </div>
+        <Logo size="md" />
       </header>
 
       {/* Main two-column grid: brand showcase | auth card */}
@@ -75,7 +73,7 @@ export function AuthShell({
             {/* Quick value props */}
             <div className="mt-10 space-y-4 max-w-md">
               <ValueProp
-                icon={<Flame className="h-4 w-4 text-fire" />}
+                icon={<Flame className="h-4 w-4 text-primary" />}
                 title="Burn to compete"
                 desc="Each burn earns weight + ASH tokens. Higher rank = bigger payout."
               />

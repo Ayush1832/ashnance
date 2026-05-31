@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -5,6 +7,7 @@ import {
   Flame, Wallet, Trophy, Gem, Sprout, Users, Settings, Shield, Crown,
   Bell, Menu, X, LayoutDashboard,
 } from "lucide-react";
+import { Logo } from "./Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { useGlobalToasts } from "@/hooks/useToasts";
 import { api } from "@/lib/apiClient";
@@ -48,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       const e = payload as { user: string; amount: number; ashReward: number; weight: number; timestamp: string };
       const now = Date.now();
       setNotifications((prev) => [
-        { id: String(now), text: `🔥 ${e.user} burned $${e.amount.toFixed(0)} USDC`, at: now },
+        { id: String(now), text: `🔥 ${e.user} burned $${Number(e.amount).toFixed(0)} USDC`, at: now },
         ...prev.slice(0, 19),
       ]);
     });
@@ -106,23 +109,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     : 0;
 
   return (
-    <div className="min-h-screen flex bg-background text-foreground">
-      <aside className="hidden md:flex flex-col w-60 border-r border-border bg-sidebar shrink-0 sticky top-0 h-screen">
-        <Link href="/dashboard" className="flex items-center gap-2 px-5 h-16 border-b border-border">
-          <span className="text-2xl">🔥</span>
-          <span className="font-display text-lg font-bold tracking-tight">Ashnance</span>
-        </Link>
-        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+    <div className="flex min-h-screen bg-background text-foreground">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-border bg-gradient-to-b from-sidebar to-background md:flex">
+        <div className="flex h-16 items-center border-b border-border px-5">
+          <Logo size="md" href="/dashboard" />
+        </div>
+        <nav data-lenis-prevent className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
           {navItems.map((it) => (
             <Link key={it.to} href={it.to}
               className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors",
+                "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300",
                 isActive(it.to)
-                  ? "bg-[rgba(255,69,0,0.12)] text-foreground border-l-2 border-primary"
-                  : "text-muted-foreground hover:bg-white/4 hover:text-foreground",
+                  ? "bg-fire/10 text-foreground"
+                  : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
                 'accent' in it && it.accent && "font-semibold",
               )}>
-              <it.icon className={cn("h-4 w-4", isActive(it.to) && 'accent' in it && it.accent && "text-primary")} />
+              {isActive(it.to) && (
+                <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-fire shadow-[0_0_10px_rgba(255,69,0,0.85)]" />
+              )}
+              <it.icon className={cn("size-4 transition-colors", isActive(it.to) ? "text-primary" : "group-hover:text-foreground")} />
               <span>{it.label}</span>
               {'accent' in it && it.accent && isActive(it.to) && (
                 <span className="ml-auto text-[10px] uppercase tracking-wider text-primary">live</span>
@@ -131,72 +136,74 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
           {isAdmin && (
             <Link href="/admin" className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm mt-4 border-t border-border pt-4",
+              "mt-4 flex items-center gap-3 rounded-xl border-t border-border px-3 py-2.5 pt-4 text-sm transition-colors",
               isActive("/admin") ? "text-warning" : "text-muted-foreground hover:text-foreground"
             )}>
-              <Shield className="h-4 w-4" /> Admin
+              <Shield className="size-4" /> Admin
             </Link>
           )}
           {isOwner && (
             <Link href="/owner" className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm",
+              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
               isActive("/owner") ? "text-gold" : "text-muted-foreground hover:text-foreground"
             )}>
-              <Crown className="h-4 w-4" /> Owner
+              <Crown className="size-4" /> Owner
             </Link>
           )}
         </nav>
-        <div className="p-3 border-t border-border text-[11px] text-muted-foreground">
-          Ashnance · Burn-to-Earn
+        <div className="border-t border-border p-4 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-2">
+            <span className="size-1.5 animate-pulse rounded-full bg-success" /> All systems operational
+          </span>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 h-16 border-b border-border bg-background/80 backdrop-blur-md flex items-center px-4 md:px-6 gap-3">
-          <button className="md:hidden p-2" onClick={() => setSidebarOpen(true)}>
-            <Menu className="h-5 w-5" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/70 px-4 backdrop-blur-xl md:px-6">
+          <button className="p-2 md:hidden" onClick={() => setSidebarOpen(true)}>
+            <Menu className="size-5" />
           </button>
           {round && (
-            <Link href="/burn" className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-md glass hover:glow-fire transition-shadow">
-              <Flame className="h-3.5 w-3.5 text-primary" />
+            <Link href="/burn" className="hidden items-center gap-2 rounded-full glass px-3 py-1.5 transition-shadow duration-300 hover:glow-fire md:flex">
+              <Flame className="size-3.5 text-primary" />
               <span className="text-xs text-muted-foreground">Round #{round.number}</span>
-              <div className="w-24 h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-1.5 w-24 overflow-hidden rounded-full bg-muted">
                 <div className="h-full progress-fire" style={{ width: `${poolPct}%` }} />
               </div>
               <span className="font-mono text-xs">{fmtUsd(round.prizePool)}</span>
             </Link>
           )}
           <div className="flex-1" />
-          <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-md glass text-xs text-[oklch(0.7_0.13_245)]">
+          <div className="hidden h-9 items-center gap-2 rounded-full glass px-3 text-xs text-[oklch(0.7_0.13_245)] sm:flex">
             <span className="font-mono">${fmtNum(user.usdcBalance, 2)}</span>
             <span className="text-muted-foreground">USDC</span>
           </div>
-          <div className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-md glass text-xs text-ash">
+          <div className="hidden h-9 items-center gap-2 rounded-full glass px-3 text-xs text-ash sm:flex">
             <span className="font-mono">{fmtNum(user.ashBalance)}</span>
             <span className="text-muted-foreground">ASH</span>
           </div>
           <div className="relative" ref={bellRef}>
             <button
-              className="p-2 rounded-md hover:bg-muted relative"
+              className="relative rounded-full p-2 transition-colors hover:bg-white/[0.06]"
               onClick={() => setBellOpen((v) => !v)}
             >
-              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Bell className="size-4 text-muted-foreground" />
               {notifications.length > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-primary" />
+                <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" />
               )}
             </button>
             {bellOpen && (
-              <div className="absolute right-0 top-11 w-80 glass-elevated rounded-md py-1 text-sm z-40 max-h-80 overflow-y-auto">
-                <div className="px-3 py-2 text-xs font-semibold text-muted-foreground border-b border-border">
+              <div data-lenis-prevent className="absolute right-0 top-12 z-40 max-h-80 w-80 animate-slide-in-top overflow-y-auto rounded-2xl glass-elevated py-1 text-sm">
+                <div className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">
                   Notifications
                 </div>
                 {notifications.length === 0 ? (
-                  <div className="px-3 py-4 text-xs text-muted-foreground text-center">No notifications yet</div>
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">No notifications yet</div>
                 ) : (
                   notifications.map((n) => (
-                    <div key={n.id} className="px-3 py-2.5 border-b border-border/50 last:border-0">
+                    <div key={n.id} className="border-b border-border/50 px-3 py-2.5 last:border-0">
                       <div className="text-xs">{n.text}</div>
-                      <div className="text-[10px] text-muted-foreground mt-0.5">
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">
                         {new Date(n.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       </div>
                     </div>
@@ -207,21 +214,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="relative">
             <button onClick={() => setMenuOpen(!menuOpen)}
-              className="w-9 h-9 rounded-full bg-fire flex items-center justify-center text-xs font-bold text-background">
+              className="grid size-9 place-items-center rounded-full bg-fire text-xs font-bold text-background shadow-[0_4px_14px_-4px_rgba(255,69,0,0.6)] ring-1 ring-white/15 transition-transform duration-300 hover:scale-105">
               {user.username ? user.username.slice(0,2).toUpperCase() : "?"}
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-11 w-48 glass-elevated rounded-md py-1 text-sm z-40">
-                <Link href="/settings" className="block px-3 py-2 hover:bg-muted">Profile</Link>
-                <Link href="/settings" className="block px-3 py-2 hover:bg-muted">Settings</Link>
-                <button onClick={logout} className="block w-full text-left px-3 py-2 hover:bg-muted text-danger">Log out</button>
+              <div className="absolute right-0 top-12 z-40 w-48 animate-slide-in-top rounded-2xl glass-elevated py-1 text-sm">
+                <Link href="/settings" className="block px-3 py-2 transition-colors hover:bg-white/[0.06]">Profile</Link>
+                <Link href="/settings" className="block px-3 py-2 transition-colors hover:bg-white/[0.06]">Settings</Link>
+                <button onClick={logout} className="block w-full px-3 py-2 text-left text-danger transition-colors hover:bg-white/[0.06]">Log out</button>
               </div>
             )}
           </div>
         </header>
-        <main className="flex-1 px-4 md:px-6 py-6 pb-24 md:pb-6">{children}</main>
+        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:pb-6">{children}</main>
 
-        <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-background/95 backdrop-blur-md border-t border-border flex">
+        <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 border-t border-border bg-background/80 backdrop-blur-xl md:hidden">
           {[
             { to: "/dashboard",   label: "Home",  icon: LayoutDashboard },
             { to: "/burn",        label: "Burn",  icon: Flame },
@@ -229,36 +236,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             { to: "/leaderboard", label: "Board", icon: Trophy },
           ].map((it) => (
             <Link key={it.to} href={it.to} className={cn(
-              "flex-1 flex flex-col items-center justify-center gap-1 text-[11px]",
+              "flex flex-1 flex-col items-center justify-center gap-1 text-[11px] transition-colors",
               isActive(it.to) ? "text-primary" : "text-muted-foreground"
             )}>
-              <it.icon className="h-5 w-5" /> {it.label}
+              <it.icon className="size-5" /> {it.label}
             </Link>
           ))}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground"
+            className="flex flex-1 flex-col items-center justify-center gap-1 text-[11px] text-muted-foreground"
           >
-            <Menu className="h-5 w-5" /> More
+            <Menu className="size-5" /> More
           </button>
         </nav>
       </div>
 
       {sidebarOpen && (
-        <div className="md:hidden fixed inset-0 z-50 bg-black/70" onClick={() => setSidebarOpen(false)}>
-          <aside className="w-64 h-full bg-sidebar p-4 space-y-1" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <span className="font-display text-lg">🔥 Ashnance</span>
-              <button onClick={() => setSidebarOpen(false)}><X className="h-5 w-5" /></button>
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)}>
+          <aside data-lenis-prevent className="h-full w-72 space-y-1 overflow-y-auto bg-gradient-to-b from-sidebar to-background p-4" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-5 flex items-center justify-between">
+              <Logo size="md" />
+              <button onClick={() => setSidebarOpen(false)}><X className="size-5" /></button>
             </div>
             {navItems.map((it) => (
               <Link key={it.to} href={it.to} onClick={() => setSidebarOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm hover:bg-muted">
-                <it.icon className="h-4 w-4" /> {it.label}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+                  isActive(it.to) ? "bg-fire/10 text-foreground" : "hover:bg-white/[0.04]",
+                )}>
+                <it.icon className={cn("size-4", isActive(it.to) && "text-primary")} /> {it.label}
               </Link>
             ))}
-            {isAdmin && <Link href="/admin" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-warning"><Shield className="h-4 w-4" /> Admin</Link>}
-            {isOwner && <Link href="/owner" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm text-gold"><Crown className="h-4 w-4" /> Owner</Link>}
+            {isAdmin && <Link href="/admin" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-warning"><Shield className="size-4" /> Admin</Link>}
+            {isOwner && <Link href="/owner" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gold"><Crown className="size-4" /> Owner</Link>}
           </aside>
         </div>
       )}

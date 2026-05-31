@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export function GlassCard({ className, children, ring }: { className?: string; children: ReactNode; ring?: boolean }) {
   return (
-    <div className={cn("rounded-xl p-5 glass", ring && "ring-fire", className)}>
+    <div className={cn("rounded-2xl p-5 glass transition-colors duration-300", ring && "ring-fire", className)}>
       {children}
     </div>
   );
@@ -24,12 +24,17 @@ export function FireButton({
   return (
     <button type={type} onClick={onClick} disabled={disabled}
       className={cn(
-        "relative overflow-hidden rounded-md font-semibold tracking-tight",
-        "bg-fire text-background transition-all",
-        "hover:glow-fire hover:scale-[1.01] active:scale-[0.99]",
-        "disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed",
+        "group relative overflow-hidden rounded-lg font-semibold tracking-tight",
+        "bg-fire text-background shadow-[0_6px_22px_-8px_rgba(255,69,0,0.65)]",
+        "transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "hover:-translate-y-0.5 hover:glow-fire active:translate-y-0 active:scale-[0.99]",
+        "disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none disabled:hover:translate-y-0",
         sizes[size], className,
       )}>
+      {/* glossy top highlight */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-b from-white/30 via-white/5 to-transparent opacity-70" />
+      {/* sheen that sweeps across on hover */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full" />
       <span className="relative z-10 flex items-center justify-center gap-2">{children}</span>
     </button>
   );
@@ -43,9 +48,10 @@ export function GhostButton({ children, onClick, className, size = "md", disable
   return (
     <button type={type} onClick={onClick} disabled={disabled}
       className={cn(
-        "rounded-md border border-border bg-transparent text-foreground transition",
-        "hover:bg-white/4 hover:border-primary/40",
-        "disabled:opacity-40 disabled:cursor-not-allowed",
+        "rounded-lg border border-border bg-white/[0.02] text-foreground backdrop-blur-sm",
+        "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "hover:-translate-y-0.5 hover:border-fire/40 hover:bg-white/[0.05]",
+        "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0",
         sizes[size], className,
       )}>{children}</button>
   );
@@ -60,9 +66,9 @@ export function StatTile({ label, value, sub, accent, className }: {
     usdc: "text-[oklch(0.7_0.13_245)]", gold: "text-gold",
   }[accent ?? "fire"];
   return (
-    <div className={cn("glass rounded-xl p-5", className)}>
+    <div className={cn("glass group relative overflow-hidden rounded-2xl p-5 transition-colors duration-300 hover:border-white/15", className)}>
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-2 text-3xl font-mono font-semibold", accent && accentColor)}>{value}</div>
+      <div className={cn("mt-2 font-mono text-3xl font-semibold", accent && accentColor)}>{value}</div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
     </div>
   );
@@ -92,9 +98,14 @@ export function FireProgress({ value, max, className, label }: { value: number; 
 export function SectionHeader({ eyebrow, title, sub, className }: { eyebrow?: string; title: string; sub?: string; className?: string }) {
   return (
     <div className={cn("mb-6", className)}>
-      {eyebrow && <div className="text-xs uppercase tracking-[0.2em] text-primary mb-2">{eyebrow}</div>}
-      <h1 className="font-display text-3xl md:text-4xl font-bold tracking-tight">{title}</h1>
-      {sub && <p className="text-muted-foreground mt-2 max-w-2xl">{sub}</p>}
+      {eyebrow && (
+        <div className="mb-2.5 inline-flex items-center gap-2 text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-fire" />
+          {eyebrow}
+        </div>
+      )}
+      <h1 className="font-display text-3xl font-bold tracking-tight md:text-4xl">{title}</h1>
+      {sub && <p className="mt-2 max-w-2xl text-muted-foreground">{sub}</p>}
     </div>
   );
 }

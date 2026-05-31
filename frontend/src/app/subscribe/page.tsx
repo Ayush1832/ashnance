@@ -14,7 +14,7 @@ const VIP_PRICE = 24.99;
 const VIP_DAYS = 30;
 
 const BENEFITS = [
-  { icon: <Flame className="h-5 w-5 text-fire" />, title: "+0.5 Weight per Burn", desc: "Every burn you make gains an extra 0.5 weight on top of the base formula." },
+  { icon: <Flame className="h-5 w-5 text-primary" />, title: "+0.5 Weight per Burn", desc: "Every burn you make gains an extra 0.5 weight on top of the base formula." },
   { icon: <Zap className="h-5 w-5 text-ash" />, title: "+20% ASH Rewards", desc: "Earn 20% more ASH tokens on every burn automatically." },
   { icon: <Star className="h-5 w-5 text-gold" />, title: "VIP Badge", desc: "Exclusive Holy Fire badge displayed on your profile and the leaderboard." },
   { icon: <Shield className="h-5 w-5 text-[oklch(0.7_0.13_245)]" />, title: "Priority Support", desc: "Dedicated support channel with faster response times." },

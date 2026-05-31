@@ -149,15 +149,17 @@
     background: radial-gradient(ellipse at top, rgba(255,69,0,0.18), transparent 60%);
   }
   .glass {
-    background: rgba(255,255,255,0.03);
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
     border: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
   }
   .glass-elevated {
-    background: rgba(255,255,255,0.05);
+    background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
     border: 1px solid rgba(255,255,255,0.1);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow: var(--shadow-float);
   }
   .glow-fire {
     box-shadow: 0 0 24px -4px rgba(255,69,0,0.45), 0 0 64px -16px rgba(255,140,0,0.25);
@@ -251,4 +253,196 @@ html { color-scheme: dark; }
       var(--color-background);
     min-height: 100vh;
   }
+}
+
+/* =================================================================== */
+/* ==============  CINEMATIC LAYER — premium fire  ================== */
+/* World-class landing + app redesign. Additive only: the existing    */
+/* .glass / .glow-fire / .ring-fire / .progress-fire utilities above  */
+/* are untouched so every authenticated screen keeps working.         */
+/* =================================================================== */
+
+:root {
+  /* molten aurora stops */
+  --ember-core:   oklch(0.72 0.21 38);    /* hot orange-red */
+  --ember-mid:    oklch(0.80 0.17 58);    /* orange */
+  --ember-gold:   oklch(0.86 0.15 82);    /* gold */
+  --ember-deep:   oklch(0.52 0.20 25);    /* crimson depth */
+  --ember-violet: oklch(0.46 0.13 305);   /* cool counter-depth for richness */
+
+  /* signature motion easings (used by CSS + JS) */
+  --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-back:  cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  /* premium layered, warm-tinted shadow scale */
+  --shadow-float: 0 2px 6px rgba(0,0,0,0.40), 0 14px 38px -14px rgba(0,0,0,0.62), 0 44px 100px -34px rgba(0,0,0,0.55);
+  --shadow-fire:  0 0 0 1px rgba(255,140,0,0.10), 0 12px 40px -12px rgba(255,69,0,0.42), 0 34px 100px -30px rgba(255,140,0,0.28);
+  --shadow-gold:  0 0 0 1px rgba(255,184,0,0.14), 0 12px 40px -12px rgba(255,184,0,0.42), 0 34px 100px -30px rgba(255,184,0,0.28);
+
+  /* mouse spotlight position — updated from JS via CSS vars */
+  --mx: 50%;
+  --my: 0%;
+}
+
+/* ---- film grain: kills gradient banding, adds a premium texture ---- */
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.45;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+@layer utilities {
+  /* ---- aurora blobs (composed by the AuroraBackground component) ---- */
+  .aurora-blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(72px);
+    will-change: transform, opacity;
+    pointer-events: none;
+  }
+
+  /* ---- premium glass surface: top-edge highlight + soft float shadow ---- */
+  .glass-card {
+    position: relative;
+    border-radius: var(--radius-2xl);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.012)),
+      rgba(17,17,22,0.55);
+    border: 1px solid rgba(255,255,255,0.08);
+    backdrop-filter: blur(18px) saturate(135%);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    box-shadow: var(--shadow-float);
+  }
+  .glass-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.22), transparent 38%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ---- interactive lift + fire glow on hover ---- */
+  .card-glow {
+    transition: transform 0.5s var(--ease-quint), box-shadow 0.5s var(--ease-quint), border-color 0.5s var(--ease-quint);
+  }
+  .card-glow:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-fire);
+    border-color: rgba(255,140,0,0.32);
+  }
+
+  /* ---- mouse-tracked radial spotlight (uses --mx/--my set in JS) ---- */
+  .spotlight { position: relative; }
+  .spotlight::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(520px circle at var(--mx) var(--my), rgba(255,140,0,0.12), transparent 42%);
+    opacity: 0;
+    transition: opacity 0.45s var(--ease-quint);
+  }
+  .spotlight:hover::after { opacity: 1; }
+
+  /* ---- molten animated headline gradient (for the emphasis word) ---- */
+  .text-molten {
+    background: linear-gradient(100deg, #FFE9D2 0%, #FFB347 22%, #FF6A1F 48%, #FFB800 72%, #FFE9D2 100%);
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: molten-sheen 9s linear infinite;
+  }
+
+  /* ---- gradient hairline border (static, premium edge) ---- */
+  .border-sheen {
+    position: relative;
+  }
+  .border-sheen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, rgba(255,140,0,0.45), rgba(255,184,0,0.15) 40%, transparent 70%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ---- edge-fade masks for cinematic section transitions ---- */
+  .mask-fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent); mask-image: linear-gradient(to bottom, #000 62%, transparent); }
+  .mask-fade-t { -webkit-mask-image: linear-gradient(to top, #000 62%, transparent); mask-image: linear-gradient(to top, #000 62%, transparent); }
+  .mask-fade-x { -webkit-mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(to right, transparent, #000 10%, #000 90%, transparent); }
+
+  /* ---- soft ambient glows ---- */
+  .glow-soft { box-shadow: 0 0 60px -12px rgba(255,106,31,0.30); }
+  .text-glow { text-shadow: 0 0 28px rgba(255,106,31,0.35); }
+
+  /* ---- gentle ambient float for floating UI ---- */
+  .float-y { animation: float-y 7s var(--ease-quint) infinite; }
+  .float-y-slow { animation: float-y 11s var(--ease-quint) infinite; }
+
+  /* ---- marquee track ---- */
+  .animate-marquee { animation: marquee 38s linear infinite; }
+
+  /* ---- conic shimmer ring (premium loading / accent) ---- */
+  .conic-fire {
+    background: conic-gradient(from 0deg, transparent, rgba(255,106,31,0.0), rgba(255,140,0,0.55), rgba(255,184,0,0.65), rgba(255,106,31,0.0), transparent);
+  }
+}
+
+@keyframes molten-sheen { to { background-position: 220% center; } }
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+@keyframes marquee { to { transform: translateX(-50%); } }
+@keyframes drift-a {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(7%, -5%, 0) scale(1.14); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes drift-b {
+  0%   { transform: translate3d(0, 0, 0) scale(1.05); }
+  50%  { transform: translate3d(-6%, 6%, 0) scale(0.92); }
+  100% { transform: translate3d(0, 0, 0) scale(1.05); }
+}
+@keyframes drift-c {
+  0%   { transform: translate3d(0, 0, 0) scale(1); }
+  50%  { transform: translate3d(5%, 8%, 0) scale(1.1); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+.anim-drift-a { animation: drift-a 24s var(--ease-quint) infinite; }
+.anim-drift-b { animation: drift-b 30s var(--ease-quint) infinite; }
+.anim-drift-c { animation: drift-c 27s var(--ease-quint) infinite; }
+
+/* ---- respect reduced-motion: stop ambient loops, keep layout intact ---- */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-blob, .anim-drift-a, .anim-drift-b, .anim-drift-c,
+  .animate-marquee, .text-molten, .float-y, .float-y-slow,
+  .ember-bg::before, .progress-fire, .ring-fire::before, .pulse-gold {
+    animation: none !important;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto !important; }
 }

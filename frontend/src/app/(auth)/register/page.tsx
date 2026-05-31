@@ -205,7 +205,7 @@ export default function RegisterPage() {
           />
 
           <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-fire/5 border border-fire/20 text-[11px] text-muted-foreground">
-            <Flame className="h-3.5 w-3.5 text-fire shrink-0 mt-0.5" />
+            <Flame className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
             <span>Have a referral code? Your referrer earns <strong className="text-foreground">10%</strong> from every burn you make.</span>
           </div>
 

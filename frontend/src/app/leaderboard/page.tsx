@@ -51,12 +51,14 @@ export default function LeaderboardPage() {
     <AppShell>
       <SectionHeader eyebrow="Standings" title="Leaderboard" sub="All-time winners, top burners, top referrers, and ASH holders." />
 
-      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs overflow-x-auto">
+      <div className="mb-5 flex gap-1 overflow-x-auto rounded-full glass p-1 text-xs">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={cn(
-              "flex-1 h-8 rounded whitespace-nowrap px-3 transition",
-              tab === t.key ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground",
+              "h-8 flex-1 whitespace-nowrap rounded-full px-3 transition-all duration-300",
+              tab === t.key
+                ? "bg-fire font-semibold text-background shadow-[0_4px_14px_-4px_rgba(255,69,0,0.55)]"
+                : "text-muted-foreground hover:text-foreground",
             )}>
             {t.label}
           </button>

@@ -203,10 +203,10 @@ export default function BurnPage() {
               {PRESETS.map((p) => (
                 <button key={p}
                   onClick={() => { setAmount(p); setUseCustom(false); }}
-                  className={`h-10 rounded-md text-sm font-semibold transition border ${
+                  className={`h-10 rounded-lg border text-sm font-semibold transition-all duration-300 ${
                     !useCustom && amount === p
-                      ? "bg-fire text-background border-fire glow-fire"
-                      : "border-border glass hover:border-primary/40"
+                      ? "border-fire bg-fire text-background glow-fire"
+                      : "border-border glass hover:-translate-y-0.5 hover:border-fire/40"
                   }`}
                 >
                   ${p}
@@ -220,7 +220,7 @@ export default function BurnPage() {
                 value={custom}
                 onChange={(e) => { setCustom(e.target.value); setUseCustom(true); }}
                 onFocus={() => setUseCustom(true)}
-                className="flex-1 h-10 px-3 rounded-md bg-muted border border-border text-sm"
+                className="h-10 flex-1 rounded-lg border border-border bg-muted px-3 text-sm transition-colors focus:border-fire/50 focus:outline-none"
                 min={config.min_burn_amount}
                 max={config.max_burn_amount}
               />
@@ -236,7 +236,7 @@ export default function BurnPage() {
           <GlassCard>
             <div className="text-sm font-medium mb-4">Weight preview</div>
             <div className="space-y-2">
-              <WeightRow label="Base weight" value={w.base} icon={<Flame className="h-3.5 w-3.5 text-fire" />} />
+              <WeightRow label="Base weight" value={w.base} icon={<Flame className="h-3.5 w-3.5 text-primary" />} />
               <WeightRow label="VIP bonus (+0.5)" value={w.vipBonus} icon={<Star className="h-3.5 w-3.5 text-gold" />}
                 muted={!isVip} mutedMsg="Unlock Holy Fire VIP" />
               <WeightRow label="Boost bonus (+0.5)" value={w.boostBonus} icon={<Zap className="h-3.5 w-3.5 text-ash" />}

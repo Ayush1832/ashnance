@@ -81,7 +81,7 @@ export default function ReferralsPage() {
         <div className="text-sm font-semibold mb-4">How referrals work</div>
         <div className="grid sm:grid-cols-3 gap-4">
           {[
-            { icon: <Users className="h-5 w-5 text-fire" />, step: "1. Share your link", desc: "Your referral registers using your code or link." },
+            { icon: <Users className="h-5 w-5 text-primary" />, step: "1. Share your link", desc: "Your referral registers using your code or link." },
             { icon: <TrendingUp className="h-5 w-5 text-ash" />, step: "2. They burn USDC", desc: "Every burn they make triggers a 10% commission for you." },
             { icon: <Zap className="h-5 w-5 text-gold" />, step: "3. You earn USDC", desc: "Commission is paid instantly from the dedicated referral pool." },
           ].map((s) => (

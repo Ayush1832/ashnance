@@ -1,6 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { SmoothScroll } from "@/components/motion/SmoothScroll";
+import { ScrollProgress } from "@/components/motion/ScrollProgress";
+import { GrainOverlay } from "@/components/effects/GrainOverlay";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -27,9 +30,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    // data-scroll-behavior="smooth": Next 16 no longer overrides scroll-behavior
+    // on navigation, so we opt back in for in-page anchors / Lenis.
+    <html lang="en" className="dark" data-scroll-behavior="smooth">
       <body suppressHydrationWarning>
-        {children}
+        <GrainOverlay />
+        <ScrollProgress />
+        <SmoothScroll>{children}</SmoothScroll>
         <Toaster position="top-right" theme="dark" />
       </body>
     </html>
