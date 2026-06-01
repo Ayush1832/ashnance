@@ -113,7 +113,7 @@ export default function RegisterPage() {
             value={referral}
             onChange={(e) => setReferral(e.target.value)}
             placeholder="Referral code (optional)"
-            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
           />
 
           <FireButton
@@ -143,7 +143,7 @@ export default function RegisterPage() {
             placeholder="Username"
             autoComplete="username"
             required
-            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
           />
 
           <input
@@ -153,7 +153,7 @@ export default function RegisterPage() {
             placeholder="Email address"
             autoComplete="email"
             required
-            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
           />
 
           <div>
@@ -166,7 +166,7 @@ export default function RegisterPage() {
                 autoComplete="new-password"
                 minLength={8}
                 required
-                className="w-full h-12 px-4 pr-10 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+                className="w-full h-12 px-4 pr-10 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
               />
               <button
                 type="button"
@@ -201,10 +201,10 @@ export default function RegisterPage() {
             value={referral}
             onChange={(e) => setReferral(e.target.value)}
             placeholder="Referral code (optional)"
-            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+            className="w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
           />
 
-          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-fire/5 border border-fire/20 text-[11px] text-muted-foreground">
+          <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-md bg-primary/5 border border-primary/20 text-[11px] text-muted-foreground">
             <Flame className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
             <span>Have a referral code? Your referrer earns <strong className="text-foreground">10%</strong> from every burn you make.</span>
           </div>
@@ -227,7 +227,7 @@ export default function RegisterPage() {
               if (referral) localStorage.setItem("pendingReferral", referral.trim());
               window.location.href = `${API_URL}/api/auth/google`;
             }}
-            className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border glass text-sm font-medium hover:border-fire/40 hover:bg-fire/5 transition"
+            className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border glass text-sm font-medium hover:border-primary/40 hover:bg-primary/5 transition"
           >
             <GoogleIcon />
             Continue with Google

@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { Flame } from "lucide-react";
 import { socket } from "@/lib/socketClient";

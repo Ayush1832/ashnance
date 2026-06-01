@@ -120,7 +120,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               className={cn(
                 "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all duration-300",
                 isActive(it.to)
-                  ? "bg-fire/10 text-foreground"
+                  ? "bg-primary/10 text-foreground"
                   : "text-muted-foreground hover:bg-white/[0.04] hover:text-foreground",
                 'accent' in it && it.accent && "font-semibold",
               )}>
@@ -262,7 +262,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link key={it.to} href={it.to} onClick={() => setSidebarOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-                  isActive(it.to) ? "bg-fire/10 text-foreground" : "hover:bg-white/[0.04]",
+                  isActive(it.to) ? "bg-primary/10 text-foreground" : "hover:bg-white/[0.04]",
                 )}>
                 <it.icon className={cn("size-4", isActive(it.to) && "text-primary")} /> {it.label}
               </Link>

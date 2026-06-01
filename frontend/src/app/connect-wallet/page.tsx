@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowRight, Check, ExternalLink, Wallet as WalletIcon } from "lucide-react";
 import { api, mapProfile } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
 import { detectWallets, connectWallet, signMessage, type WalletProvider } from "@/lib/wallets";
+import { Logo } from "@/components/ashnance/Logo";
+import { FireButton } from "@/components/ashnance/primitives";
 
 export default function ConnectWalletPage() {
   const router = useRouter();
@@ -80,92 +83,112 @@ export default function ConnectWalletPage() {
     router.replace("/dashboard");
   }
 
-  if (!ready) return (
-    <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div style={{ width: "24px", height: "24px", border: "2px solid rgba(255,77,0,0.3)", borderTopColor: "#FF4D00", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  );
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="size-6 animate-spin rounded-full border-2 border-white/15 border-t-primary" />
+      </div>
+    );
+  }
 
   const installedWallets = wallets.filter((w) => w.installed);
   const otherWallets     = wallets.filter((w) => !w.installed);
   const busy = status === "connecting" || status === "signing";
 
   return (
-    <div style={{ minHeight: "100vh", background: "#080808", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }}>
-      <div style={{ width: "100%", maxWidth: "460px", background: "#0f0f0f", border: "1px solid rgba(255,77,0,0.25)", borderRadius: "8px", padding: "40px 32px", textAlign: "center" }}>
-        <div style={{ fontSize: "52px", margin: "0 0 12px" }}>
-          {status === "success" ? "✅" : "🔗"}
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-6">
+      <div className="pointer-events-none absolute inset-0 bg-fire-radial" />
+      <div className="pointer-events-none absolute inset-0 ember-bg" />
 
-        <div style={{ fontFamily: "var(--font-display, monospace)", fontSize: "18px", letterSpacing: "4px", color: "#fff", marginBottom: "8px" }}>
-          {status === "success" ? "WALLET LINKED!" : "CONNECT WALLET"}
-        </div>
-
-        {status !== "success" && (
-          <div style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", lineHeight: "1.8", marginBottom: "28px" }}>
-            LINK A SOLANA WALLET TO DEPOSIT, BURN, AND WITHDRAW.
-            SIGNING IS FREE — NO SOL SPENT.
+      <div className="relative w-full max-w-md">
+        <div className="glass-elevated ring-fire rounded-2xl p-8 text-center">
+          <div className="mb-7 flex justify-center">
+            <Logo size="lg" />
           </div>
-        )}
 
-        {status === "success" && address && (
-          <div style={{ fontSize: "11px", color: "#FFB800", letterSpacing: "2px", marginBottom: "24px" }}>
-            {address.slice(0, 8)}...{address.slice(-6)}
-            <br />
-            <span style={{ color: "#555", marginTop: "4px", display: "block" }}>REDIRECTING...</span>
+          <div className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-primary/10 ring-1 ring-primary/25">
+            {status === "success"
+              ? <Check className="size-6 text-success" />
+              : <WalletIcon className="size-6 text-primary" />}
           </div>
-        )}
 
-        {(status === "connecting" || status === "signing") && (
-          <div style={{ fontSize: "11px", color: "#FF4D00", letterSpacing: "2px", marginBottom: "16px" }}>
-            {status === "connecting" ? "CONNECTING..." : "SIGN IN YOUR WALLET ✍"}
-          </div>
-        )}
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            {status === "success" ? "Wallet linked!" : "Connect your wallet"}
+          </h1>
 
-        {error && (
-          <div style={{ background: "rgba(255,0,0,0.08)", border: "1px solid rgba(255,0,0,0.3)", borderRadius: "4px", padding: "10px 14px", marginBottom: "16px", fontSize: "10px", color: "#ff6b6b", letterSpacing: "1px", textAlign: "left" }}>
-            ⚠ {error}
-          </div>
-        )}
+          {status === "success" ? (
+            address && (
+              <p className="mt-2 font-mono text-sm text-gold">
+                {address.slice(0, 8)}…{address.slice(-6)}
+                <span className="mt-1 block text-xs text-muted-foreground">Redirecting…</span>
+              </p>
+            )
+          ) : (
+            <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
+              Link a Solana wallet to deposit, burn, and withdraw. Signing is free — no SOL spent.
+            </p>
+          )}
 
-        {status !== "success" && (
-          <>
-            {installedWallets.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "16px" }}>
-                {installedWallets.map((w) => (
-                  <button key={w.name} onClick={() => handleConnect(w)} disabled={busy} style={{ width: "100%", padding: "14px 16px", background: busy ? "rgba(255,77,0,0.3)" : "linear-gradient(135deg, #FF4D00, #ff6b00)", border: "none", borderRadius: "4px", color: "#fff", fontFamily: "var(--font-display, monospace)", fontSize: "12px", letterSpacing: "3px", cursor: busy ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
-                    <span style={{ fontSize: "20px" }}>{w.icon}</span>
-                    CONNECT {w.name.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", marginBottom: "16px" }}>
-                NO WALLET DETECTED. INSTALL ONE BELOW:
-              </div>
-            )}
+          {busy && (
+            <div className="mt-4 text-xs font-medium uppercase tracking-[0.2em] text-primary">
+              {status === "connecting" ? "Connecting…" : "Sign in your wallet ✍"}
+            </div>
+          )}
 
-            {otherWallets.length > 0 && (
-              <>
-                {installedWallets.length > 0 && (
-                  <div style={{ fontSize: "8px", color: "#333", letterSpacing: "2px", margin: "12px 0 10px" }}>MORE WALLETS</div>
-                )}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "center", marginBottom: "20px" }}>
-                  {otherWallets.map((w) => (
-                    <a key={w.name} href={w.downloadUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "10px", color: "#555", letterSpacing: "1px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", padding: "8px 14px", textDecoration: "none", display: "flex", alignItems: "center", gap: "6px" }}>
-                      {w.icon} {w.name} ↗
-                    </a>
+          {error && (
+            <div className="mt-4 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2.5 text-left text-xs text-danger">
+              ⚠ {error}
+            </div>
+          )}
+
+          {status !== "success" && (
+            <div className="mt-6 space-y-4">
+              {installedWallets.length > 0 ? (
+                <div className="space-y-2.5">
+                  {installedWallets.map((w) => (
+                    <FireButton key={w.name} size="lg" className="w-full" onClick={() => handleConnect(w)} disabled={busy}>
+                      <span className="text-lg">{w.icon}</span>
+                      Connect {w.name}
+                      <ArrowRight className="size-4" />
+                    </FireButton>
                   ))}
                 </div>
-              </>
-            )}
+              ) : (
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                  No wallet detected. Install one below:
+                </div>
+              )}
 
-            <button onClick={handleSkip} style={{ width: "100%", padding: "10px", background: "transparent", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "4px", color: "#444", fontFamily: "var(--font-display, monospace)", fontSize: "10px", letterSpacing: "2px", cursor: "pointer" }}>
-              SKIP FOR NOW (LIMITED ACCESS)
-            </button>
-          </>
-        )}
+              {otherWallets.length > 0 && (
+                <div>
+                  {installedWallets.length > 0 && (
+                    <div className="mb-3 text-[10px] uppercase tracking-[0.2em] text-muted-foreground">More wallets</div>
+                  )}
+                  <div className="flex flex-wrap justify-center gap-2">
+                    {otherWallets.map((w) => (
+                      <a
+                        key={w.name}
+                        href={w.downloadUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full glass px-3.5 py-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        <span>{w.icon}</span> {w.name} <ExternalLink className="size-3" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleSkip}
+                className="w-full rounded-lg border border-border py-2.5 text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:border-white/20 hover:text-foreground"
+              >
+                Skip for now (limited access)
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -30,7 +30,7 @@ export default function SettingsPage() {
             className={cn(
               "flex items-center gap-2 h-9 px-4 rounded-md text-sm border transition whitespace-nowrap",
               tab === t.key
-                ? "bg-fire text-background border-fire font-semibold"
+                ? "bg-fire text-background border-primary font-semibold"
                 : "border-border glass text-muted-foreground hover:text-foreground",
             )}>
             {t.icon}{t.label}

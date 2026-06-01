@@ -195,7 +195,7 @@ export function BurnResultModal({ result, onClose }: { result: BurnResult; onClo
               </div>
             )}
             {result.newRank <= 3 && result.newRank > 1 && (
-              <div className="glass rounded-xl p-3 mb-4 border border-fire/30 flex items-center gap-2 justify-center text-fire">
+              <div className="glass rounded-xl p-3 mb-4 border border-primary/30 flex items-center gap-2 justify-center text-fire">
                 <TrendingUp className="h-5 w-5 shrink-0" />
                 <span className="font-semibold">Top 3! Keep burning to claim #1</span>
               </div>

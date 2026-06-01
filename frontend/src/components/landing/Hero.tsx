@@ -196,7 +196,7 @@ export function Hero({ round }: { round: Round | null }) {
             </div>
           </TiltCard>
           {/* reflection / floor glow */}
-          <div className="pointer-events-none absolute -bottom-16 left-1/2 h-32 w-3/4 -translate-x-1/2 rounded-[50%] bg-fire/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 left-1/2 h-32 w-3/4 -translate-x-1/2 rounded-[50%] bg-primary/20 blur-3xl" />
         </motion.div>
       </div>
     </section>

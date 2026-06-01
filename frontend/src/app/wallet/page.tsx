@@ -30,12 +30,14 @@ export default function WalletPage() {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs">
+      <div className="mb-5 flex gap-1 overflow-x-auto rounded-full glass p-1 text-xs">
         {(["deposit","withdraw","history","whitelist"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn(
-              "flex-1 h-8 rounded capitalize transition",
-              tab === t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground",
+              "h-8 flex-1 whitespace-nowrap rounded-full capitalize transition-all duration-300",
+              tab === t
+                ? "bg-fire font-semibold text-background shadow-[0_4px_14px_-4px_rgba(255,69,0,0.55)]"
+                : "text-muted-foreground hover:text-foreground",
             )}>
             {t === "whitelist" ? "Whitelist" : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>

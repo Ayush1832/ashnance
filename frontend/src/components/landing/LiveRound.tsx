@@ -40,7 +40,7 @@ export function LiveRound({ round }: { round: Round | null }) {
             {(top.length ? top : FALLBACK).map((r, i) => (
               <div
                 key={r.userId ?? i}
-                className="flex items-center gap-3 rounded-2xl border border-border bg-white/[0.02] px-4 py-3 transition-colors hover:border-fire/25 hover:bg-white/[0.04]"
+                className="flex items-center gap-3 rounded-2xl border border-border bg-white/[0.02] px-4 py-3 transition-colors hover:border-primary/25 hover:bg-white/[0.04]"
               >
                 <RankBadge rank={r.rank} />
                 <span className="truncate text-sm">{r.isAnonymous ? "Anonymous" : r.username}</span>
@@ -61,7 +61,7 @@ export function LiveRound({ round }: { round: Round | null }) {
 
         <motion.div style={{ scale: ringScale, opacity: ringOpacity }} className="flex justify-center">
           <div className="relative">
-            <div className="pointer-events-none absolute inset-0 -z-10 animate-pulse rounded-full bg-fire/10 blur-3xl" />
+            <div className="pointer-events-none absolute inset-0 -z-10 animate-pulse rounded-full bg-primary/10 blur-3xl" />
             <div className="relative grid place-items-center rounded-full border border-border bg-white/[0.02] p-10 backdrop-blur-sm">
               <RoundProgressRing size={300} round={round} />
             </div>

@@ -25,7 +25,7 @@ export function SocialProof({ round }: { round: Round | null }) {
   return (
     <section className="relative mx-auto max-w-6xl px-5 py-20">
       <div className="glass-card relative overflow-hidden rounded-[32px] p-8 sm:p-12">
-        <div className="pointer-events-none absolute -left-20 top-0 size-72 rounded-full bg-fire/10 blur-3xl" />
+        <div className="pointer-events-none absolute -left-20 top-0 size-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="pointer-events-none absolute -right-20 bottom-0 size-72 rounded-full bg-gold/10 blur-3xl" />
 
         <div className="relative text-center">

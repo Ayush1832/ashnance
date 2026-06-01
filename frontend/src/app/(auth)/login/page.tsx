@@ -229,7 +229,7 @@ function LoginPageInner() {
             <button
               type="button"
               onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
-              className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border glass text-sm font-medium hover:border-fire/40 hover:bg-fire/5 transition"
+              className="w-full h-11 flex items-center justify-center gap-3 rounded-md border border-border glass text-sm font-medium hover:border-primary/40 hover:bg-primary/5 transition"
             >
               <GoogleIcon />
               Continue with Google
@@ -258,7 +258,7 @@ function LoginPageInner() {
                       toast.error(err instanceof Error ? err.message : "Failed to connect wallet");
                     }
                   }}
-                  className="w-full flex items-center gap-3 h-12 px-4 rounded-md glass text-sm transition hover:border-fire/40 hover:bg-fire/5 group"
+                  className="w-full flex items-center gap-3 h-12 px-4 rounded-md glass text-sm transition hover:border-primary/40 hover:bg-primary/5 group"
                 >
                   <span className="text-xl">{w.icon}</span>
                   <span className="font-medium">{w.name}</span>
@@ -321,7 +321,7 @@ function LoginPageInner() {
                   key={i}
                   maxLength={1}
                   inputMode="numeric"
-                  className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted/60 border border-border focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 transition"
+                  className="w-11 h-12 text-center font-mono text-lg rounded-md bg-muted/60 border border-border focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition"
                   onChange={(e) => {
                     const digits = twoFaCode.split("");
                     digits[i] = e.target.value.slice(-1);
@@ -376,7 +376,7 @@ function FireInput({
       className={cn(
         "w-full h-12 px-4 rounded-md bg-muted/60 border border-border text-sm",
         "placeholder:text-muted-foreground/70",
-        "focus:outline-none focus:border-fire focus:ring-2 focus:ring-fire/30 focus:bg-muted",
+        "focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 focus:bg-muted",
         "transition",
         className,
       )}

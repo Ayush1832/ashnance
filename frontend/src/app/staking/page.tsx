@@ -20,7 +20,7 @@ async function refreshUserProfile() {
 
 const POOL_COLORS: Record<string, string> = {
   EMBER:   "text-orange-400 border-orange-400/30",
-  FLAME:   "text-fire border-fire/30",
+  FLAME:   "text-fire border-primary/30",
   INFERNO: "text-red-400 border-red-400/30",
 };
 

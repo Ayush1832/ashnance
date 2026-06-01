@@ -140,20 +140,20 @@ function StepCard({
       transition={{ duration: 0.8, ease: EASE_OUT }}
       className={cn(
         "glass-card relative overflow-hidden rounded-3xl p-7 transition-all duration-500 sm:p-9",
-        active ? "border-fire/30 shadow-[var(--shadow-fire)]" : "shadow-[var(--shadow-float)]",
+        active ? "border-primary/30 shadow-[var(--shadow-fire)]" : "shadow-[var(--shadow-float)]",
       )}
     >
       <div
         className={cn(
           "pointer-events-none absolute -right-10 -top-10 size-40 rounded-full blur-3xl transition-opacity duration-500",
-          active ? "bg-fire/20 opacity-100" : "opacity-0",
+          active ? "bg-primary/20 opacity-100" : "opacity-0",
         )}
       />
       <div className="flex items-start justify-between">
         <div
           className={cn(
             "grid size-14 place-items-center rounded-2xl border transition-colors duration-500",
-            active ? "border-fire/40 bg-fire/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground",
+            active ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-white/[0.02] text-muted-foreground",
           )}
         >
           <Icon className="size-6" />

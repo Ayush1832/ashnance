@@ -114,14 +114,14 @@ function AuthCallback() {
   return (
     <div style={{
       minHeight: "100vh",
-      background: "var(--black)",
+      background: "var(--background)",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
       justifyContent: "center",
       fontFamily: "var(--font-display)",
       letterSpacing: "4px",
-      color: "var(--fire-orange)",
+      color: "var(--primary)",
       fontSize: "24px",
       gap: "16px",
     }}>

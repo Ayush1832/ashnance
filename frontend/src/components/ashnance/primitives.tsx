@@ -50,7 +50,7 @@ export function GhostButton({ children, onClick, className, size = "md", disable
       className={cn(
         "rounded-lg border border-border bg-white/[0.02] text-foreground backdrop-blur-sm",
         "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-        "hover:-translate-y-0.5 hover:border-fire/40 hover:bg-white/[0.05]",
+        "hover:-translate-y-0.5 hover:border-primary/40 hover:bg-white/[0.05]",
         "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0",
         sizes[size], className,
       )}>{children}</button>

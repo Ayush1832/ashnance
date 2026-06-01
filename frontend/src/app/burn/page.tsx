@@ -205,8 +205,8 @@ export default function BurnPage() {
                   onClick={() => { setAmount(p); setUseCustom(false); }}
                   className={`h-10 rounded-lg border text-sm font-semibold transition-all duration-300 ${
                     !useCustom && amount === p
-                      ? "border-fire bg-fire text-background glow-fire"
-                      : "border-border glass hover:-translate-y-0.5 hover:border-fire/40"
+                      ? "border-primary bg-fire text-background glow-fire"
+                      : "border-border glass hover:-translate-y-0.5 hover:border-primary/40"
                   }`}
                 >
                   ${p}
@@ -220,7 +220,7 @@ export default function BurnPage() {
                 value={custom}
                 onChange={(e) => { setCustom(e.target.value); setUseCustom(true); }}
                 onFocus={() => setUseCustom(true)}
-                className="h-10 flex-1 rounded-lg border border-border bg-muted px-3 text-sm transition-colors focus:border-fire/50 focus:outline-none"
+                className="h-10 flex-1 rounded-lg border border-border bg-muted px-3 text-sm transition-colors focus:border-primary/50 focus:outline-none"
                 min={config.min_burn_amount}
                 max={config.max_burn_amount}
               />
