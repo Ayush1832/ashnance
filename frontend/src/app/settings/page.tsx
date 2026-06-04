@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Shield, Key, User, Coins, Eye, EyeOff, Check, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { fmtNum } from "@/lib/format";
@@ -23,7 +24,9 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("profile");
   return (
     <AppShell>
-      <SectionHeader eyebrow="Account" title="Settings" sub="Manage your profile, security, and ASH claims." />
+      <Reveal>
+        <SectionHeader eyebrow="Account" title="Settings" sub="Manage your profile, security, and ASH claims." />
+      </Reveal>
       <div className="flex gap-2 mb-6 overflow-x-auto">
         {TABS.map((t) => (
           <button key={t.key} onClick={() => setTab(t.key)}

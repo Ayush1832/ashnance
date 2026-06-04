@@ -6,6 +6,7 @@ import { Flame, Zap, Star, Users, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { GlassCard, SectionHeader, FireButton, RankBadge } from "@/components/ashnance/primitives";
+import { Reveal } from "@/components/motion/Reveal";
 import { RoundProgressRing } from "@/components/ashnance/RoundProgressRing";
 import { BurnResultModal, type BurnResult } from "@/components/ashnance/BurnResultModal";
 import { useAuth } from "@/hooks/useAuth";
@@ -190,8 +191,11 @@ export default function BurnPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Compete" title="Burn USDC" sub="Burn USDC to earn weight, climb the leaderboard, and win the prize pool." />
+      <Reveal>
+        <SectionHeader eyebrow="Compete" title="Burn USDC" sub="Burn USDC to earn weight, climb the leaderboard, and win the prize pool." />
+      </Reveal>
 
+      <Reveal delay={0.08}>
       <div className="grid lg:grid-cols-[1fr_340px] gap-6">
         {/* Left column */}
         <div className="space-y-5">
@@ -367,6 +371,7 @@ export default function BurnPage() {
           )}
         </div>
       </div>
+      </Reveal>
 
       {burnResult && <BurnResultModal result={burnResult} onClose={() => setBurnResult(null)} />}
     </AppShell>

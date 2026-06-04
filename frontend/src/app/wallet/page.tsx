@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { ExternalLink, Clock, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatusBadge, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { fmtUsd, fmtNum, timeAgo, countdown } from "@/lib/format";
@@ -22,7 +23,9 @@ export default function WalletPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Assets" title="Wallet" sub="Manage your USDC and ASH balances." />
+      <Reveal>
+        <SectionHeader eyebrow="Assets" title="Wallet" sub="Manage your USDC and ASH balances." />
+      </Reveal>
 
       <div className="grid sm:grid-cols-2 gap-4 mb-6">
         <StatTile label="USDC Balance" value={fmtUsd(user.usdcBalance)} sub="Available to burn or withdraw" accent="usdc" />

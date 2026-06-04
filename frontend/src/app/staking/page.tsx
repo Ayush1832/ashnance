@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Sprout, Lock, X } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { api, mapProfile } from "@/lib/apiClient";
@@ -73,8 +74,11 @@ export default function StakingPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Earn yield" title="Stake ASH" sub="Lock ASH in EMBER, FLAME, or INFERNO pools to earn passive yield." />
+      <Reveal>
+        <SectionHeader eyebrow="Earn yield" title="Stake ASH" sub="Lock ASH in EMBER, FLAME, or INFERNO pools to earn passive yield." />
+      </Reveal>
 
+      <Reveal delay={0.08}>
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
         <StatTile label="ASH Balance" value={fmtNum(user.ashBalance) + " ASH"} sub="Available to stake" accent="ash" />
         <StatTile label="Total Staked" value={fmtNum(totalStaked) + " ASH"} sub="Across all pools" accent="fire" />
@@ -174,6 +178,8 @@ export default function StakingPage() {
           </div>
         </GlassCard>
       )}
+
+      </Reveal>
 
       {modal && (
         <StakeModal

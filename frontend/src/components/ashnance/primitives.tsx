@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export function GlassCard({ className, children, ring }: { className?: string; children: ReactNode; ring?: boolean }) {
   return (
-    <div className={cn("rounded-2xl p-5 glass transition-colors duration-300", ring && "ring-fire", className)}>
+    <div className={cn("rounded-2xl p-5 glass-card transition-colors duration-300", ring && "ring-fire", className)}>
       {children}
     </div>
   );
@@ -66,7 +66,7 @@ export function StatTile({ label, value, sub, accent, className }: {
     usdc: "text-[oklch(0.7_0.13_245)]", gold: "text-gold",
   }[accent ?? "fire"];
   return (
-    <div className={cn("glass group relative overflow-hidden rounded-2xl p-5 transition-colors duration-300 hover:border-white/15", className)}>
+    <div className={cn("glass-card group relative overflow-hidden rounded-2xl p-5 transition-colors duration-300 hover:border-white/15", className)}>
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={cn("mt-2 font-mono text-3xl font-semibold", accent && accentColor)}>{value}</div>
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}

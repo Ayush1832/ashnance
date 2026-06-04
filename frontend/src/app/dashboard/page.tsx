@@ -69,8 +69,6 @@ export default function Dashboard() {
   return (
     <AppShell>
       <div className="relative">
-        {/* ambient warmth behind the fold */}
-        <div className="pointer-events-none absolute inset-x-0 -top-6 -z-10 h-72 bg-[radial-gradient(ellipse_70%_100%_at_50%_-20%,rgba(255,69,0,0.10),transparent_70%)]" />
         <Reveal>
           <div className="mb-7">
             <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Dashboard</div>

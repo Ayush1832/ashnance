@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, RankBadge } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,9 @@ export default function LeaderboardPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Standings" title="Leaderboard" sub="All-time winners, top burners, top referrers, and ASH holders." />
+      <Reveal>
+        <SectionHeader eyebrow="Standings" title="Leaderboard" sub="All-time winners, top burners, top referrers, and ASH holders." />
+      </Reveal>
 
       <div className="mb-5 flex gap-1 overflow-x-auto rounded-full glass p-1 text-xs">
         {TABS.map((t) => (

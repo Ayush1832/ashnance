@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader } from "@/components/ashnance/primitives";
 import { api } from "@/lib/apiClient";
 import { fmtNum } from "@/lib/format";
@@ -98,7 +99,9 @@ export default function TransactionsPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Wallet" title="Transaction History" sub="All your burns, wins, deposits, and withdrawals." />
+      <Reveal>
+        <SectionHeader eyebrow="Wallet" title="Transaction History" sub="All your burns, wins, deposits, and withdrawals." />
+      </Reveal>
 
       {/* Filter tabs */}
       <div className="flex gap-1.5 flex-wrap mb-4">

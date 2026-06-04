@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   Flame, Wallet, Trophy, Gem, Sprout, Users, Settings, Shield, Crown,
   Bell, Menu, X, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "./Logo";
+import { AppAura } from "./AppAura";
 import { useAuth } from "@/hooks/useAuth";
 import { useGlobalToasts } from "@/hooks/useToasts";
 import { api } from "@/lib/apiClient";
@@ -226,7 +228,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
         </header>
-        <main className="flex-1 px-4 py-6 pb-24 md:px-6 md:pb-6">{children}</main>
+        <main className="relative isolate flex-1 px-4 py-6 pb-24 md:px-6 md:pb-6">
+          <AppAura />
+          {/* opacity-only page entrance — no transform/filter, so fixed modals
+              inside pages keep anchoring to the viewport. */}
+          <motion.div
+            key={path}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            className="relative z-10"
+          >
+            {children}
+          </motion.div>
+        </main>
 
         <nav className="fixed inset-x-0 bottom-0 z-30 flex h-16 border-t border-border bg-background/80 backdrop-blur-xl md:hidden">
           {[

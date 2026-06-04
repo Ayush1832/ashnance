@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Ban, UserCheck, Save } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
 import { api } from "@/lib/apiClient";
@@ -39,7 +40,9 @@ export default function AdminPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Operations" title="Admin" sub="Manage users and platform config." />
+      <Reveal>
+        <SectionHeader eyebrow="Operations" title="Admin" sub="Manage users and platform config." />
+      </Reveal>
 
       {/* Stats */}
       <div className="grid sm:grid-cols-4 gap-4 mb-6">

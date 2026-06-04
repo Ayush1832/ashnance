@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Copy, Users, TrendingUp, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/apiClient";
@@ -44,12 +45,15 @@ export default function ReferralsPage() {
 
   return (
     <AppShell>
-      <SectionHeader
-        eyebrow="Bring burners"
-        title="Referrals"
-        sub={`Earn ${fmtNum(REFERRAL_COMMISSION * 100)}% of every burn made by your referrals, sourced from the referral pool.`}
-      />
+      <Reveal>
+        <SectionHeader
+          eyebrow="Bring burners"
+          title="Referrals"
+          sub={`Earn ${fmtNum(REFERRAL_COMMISSION * 100)}% of every burn made by your referrals, sourced from the referral pool.`}
+        />
+      </Reveal>
 
+      <Reveal delay={0.08}>
       {/* Stats */}
       <div className="grid sm:grid-cols-3 gap-4 mb-6">
         <StatTile label="Total Earned" value={fmtUsd(totalEarned)} sub="From referral pool" accent="usdc" />
@@ -136,6 +140,7 @@ export default function ReferralsPage() {
           </div>
         )}
       </GlassCard>
+      </Reveal>
     </AppShell>
   );
 }

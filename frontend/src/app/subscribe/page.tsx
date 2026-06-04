@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Star, Flame, Zap, Shield } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { calcWeight, calcAsh } from "@/lib/mock";
@@ -43,8 +44,11 @@ export default function VipPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="VIP" title="Holy Fire VIP" sub="Burn harder. Earn more. Stand out." />
+      <Reveal>
+        <SectionHeader eyebrow="VIP" title="Holy Fire VIP" sub="Burn harder. Earn more. Stand out." />
+      </Reveal>
 
+      <Reveal delay={0.08}>
       {/* Status card */}
       {isVip ? (
         <GlassCard ring className="mb-6 border border-gold/40">
@@ -129,6 +133,7 @@ export default function VipPage() {
           <span>Extra ASH: <span className="font-mono text-ash">+{fmtNum(ashWith - ashWithout)}</span></span>
         </div>
       </GlassCard>
+      </Reveal>
     </AppShell>
   );
 }

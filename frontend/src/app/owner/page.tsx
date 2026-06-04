@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { AlertTriangle, Play, StopCircle, Download } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
+import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile, FireProgress } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum } from "@/lib/format";
 import { api } from "@/lib/apiClient";
@@ -48,7 +49,9 @@ export default function OwnerPage() {
 
   return (
     <AppShell>
-      <SectionHeader eyebrow="Control" title="Owner" sub="Solvency, withdrawals, round management, and burn config." />
+      <Reveal>
+        <SectionHeader eyebrow="Control" title="Owner" sub="Solvency, withdrawals, round management, and burn config." />
+      </Reveal>
 
       {/* Solvency alert */}
       {!loading && solvency && !solvency.solvent && (
