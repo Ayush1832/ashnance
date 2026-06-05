@@ -7,7 +7,7 @@ import { TrustBar } from "@/components/landing/TrustBar";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { LiveRound } from "@/components/landing/LiveRound";
 import { SocialProof } from "@/components/landing/SocialProof";
-import { PoolMechanics } from "@/components/landing/PoolMechanics";
+import { BeyondTheAshes } from "@/components/landing/BeyondTheAshes";
 import { AshSection } from "@/components/landing/AshSection";
 import { Vip } from "@/components/landing/Vip";
 import { Winners } from "@/components/landing/Winners";
@@ -43,7 +43,7 @@ export default function LandingPage() {
       <HowItWorks />
       <LiveRound round={round} />
       <SocialProof round={round} />
-      <PoolMechanics />
+      <BeyondTheAshes />
       <AshSection />
       <Vip />
       <Winners winners={winners} />
