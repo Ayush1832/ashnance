@@ -159,6 +159,18 @@ export class BlockchainService {
     return USDC_MINT;
   }
 
+  /**
+   * Returns the cluster the backend is actually connected to, derived from the
+   * RPC URL. This is the single source of truth for the network so the frontend
+   * builds deposit transactions for the same cluster the backend verifies on.
+   */
+  static getNetwork(): "mainnet-beta" | "testnet" | "devnet" {
+    const url = RPC_URL.toLowerCase();
+    if (url.includes("mainnet")) return "mainnet-beta";
+    if (url.includes("testnet")) return "testnet";
+    return "devnet";
+  }
+
   // ----------------------------------------------------------
   // validateSolanaAddress
   // ----------------------------------------------------------

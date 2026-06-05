@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { ExternalLink, Clock, Plus, Minus } from "lucide-react";
+import { AlertTriangle, ExternalLink, Clock, Plus, Minus } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { Reveal } from "@/components/motion/Reveal";
@@ -64,6 +64,15 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [connecting, setConnecting] = useState<WalletProvider | null>(null);
   const [depositing, setDepositing] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [network, setNetwork] = useState<string | null>(null);
+
+  // Surface the cluster the platform runs on so users know which network their
+  // wallet must be set to — a mismatched wallet makes the transfer revert.
+  useEffect(() => {
+    api.walletPlatformInfo()
+      .then((res) => { if (res.success && res.data) setNetwork(res.data.network); })
+      .catch(() => {});
+  }, []);
 
   async function connect(providerId: WalletProvider) {
     setConnecting(providerId);
@@ -107,7 +116,16 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
         .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
         .catch(() => {});
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Deposit failed");
+      const raw = err instanceof Error ? err.message : "";
+      const net = network === "mainnet-beta" ? "Mainnet" : network === "devnet" ? "Devnet" : null;
+      // Wallet/tx failures (incl. Phantom's vague "Unexpected error") almost
+      // always mean the wallet is on the wrong cluster — point the user at it.
+      const vague = !raw || /unexpected error|revert|simulat|failed to send|insufficient|blockhash/i.test(raw);
+      toast.error(
+        vague && net
+          ? `Deposit failed — set your wallet's network to ${net}${net === "Devnet" ? " and use Devnet USDC" : ""}, then try again.`
+          : raw || "Deposit failed",
+      );
     }
     setDepositing(false);
   }
@@ -137,6 +155,21 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   return (
     <GlassCard>
       <div className="text-sm font-medium mb-4">Deposit USDC</div>
+
+      {network && network !== "mainnet-beta" && (
+        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-3 text-xs text-warning">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="leading-relaxed">
+            <span className="font-semibold">This platform runs on Solana Devnet.</span>{" "}
+            Set your wallet&apos;s network to <strong>Devnet</strong> and use Devnet USDC before depositing — a wallet on Mainnet will fail with &ldquo;transaction reverted&rdquo;.
+          </div>
+        </div>
+      )}
+      {network === "mainnet-beta" && (
+        <div className="mb-4 inline-flex items-center gap-2 rounded-full glass px-3 py-1.5 text-[11px] text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-success" /> Solana Mainnet
+        </div>
+      )}
 
       <div className="mb-4">
         <label className="text-xs text-muted-foreground mb-1 block">Amount (USDC)</label>
@@ -185,7 +218,7 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
       )}
 
       <div className="space-y-2 text-xs text-muted-foreground mt-4">
-        <p>You&apos;ll approve a <span className="text-foreground font-medium">USDC</span> transfer on the <span className="text-foreground font-medium">Solana</span> network in your wallet.</p>
+        <p>You&apos;ll approve a <span className="text-foreground font-medium">USDC</span> transfer on <span className="text-foreground font-medium">Solana {network === "mainnet-beta" ? "Mainnet" : network === "devnet" ? "Devnet" : ""}</span> in your wallet.</p>
         <p>Funds are credited to your balance once the transaction is confirmed (usually under 30 seconds).</p>
       </div>
 

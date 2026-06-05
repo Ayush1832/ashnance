@@ -24,9 +24,9 @@ router.get("/platform-info", (_req, res: Response) => {
     data: {
       masterWallet: BlockchainService.getMasterWalletAddress(),
       usdcMint: BlockchainService.getUsdcMint(),
-      network: process.env.USDC_MINT
-        ? (process.env.USDC_MINT === "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" ? "mainnet-beta" : "devnet")
-        : (process.env.NODE_ENV === "production" ? "mainnet-beta" : "devnet"),
+      // Derived from the actual RPC connection so it always matches the mint the
+      // frontend builds the deposit transaction with.
+      network: BlockchainService.getNetwork(),
     },
   });
 });
