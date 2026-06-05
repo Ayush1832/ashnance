@@ -664,11 +664,28 @@ export class BlockchainService {
       RPC_TIMEOUT_MS,
       "getLatestBlockhash (confirm)"
     );
-    await withTimeout(
-      connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
-      RPC_TIMEOUT_MS,
-      "confirmTransaction"
-    );
+    try {
+      await withTimeout(
+        connection.confirmTransaction({ signature: txHash, ...latestBlockhash }, "confirmed"),
+        RPC_TIMEOUT_MS,
+        "confirmTransaction"
+      );
+    } catch (confirmErr) {
+      // The transfer was already broadcast (we have txHash). If confirmation
+      // times out, check the real on-chain status before reporting failure —
+      // otherwise the caller would refund a transfer that actually landed.
+      const status = await BlockchainService.getTransactionStatus(txHash).catch(() => null);
+      if (status === "confirmed" || status === "finalized") {
+        console.log(`[BlockchainService] confirm timed out but tx is ${status} — tx: ${txHash}`);
+        return txHash;
+      }
+      const e: any = new Error(
+        `USDC transfer broadcast but not confirmed (tx: ${txHash}) — reconcile before any refund.`
+      );
+      e.signature = txHash;
+      e.unconfirmed = true;
+      throw e;
+    }
 
     console.log(
       `[BlockchainService] USDC transfer confirmed — ${amountUsdc} USDC to ${toAddress}, tx: ${txHash}`

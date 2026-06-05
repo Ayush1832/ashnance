@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from "../middleware/auth";
 import { requireAdmin } from "../middleware/adminAuth";
 import { prisma } from "../utils/prisma";
 import { BadRequestError } from "../utils/errors";
+import { updatePrizeConfigSchema } from "../utils/validators";
 
 const router = Router();
 
@@ -61,20 +62,20 @@ router.get("/prizes", async (_req, res: Response, next: NextFunction) => {
 router.put("/prizes/:tier", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const tier = req.params.tier as string;
-    const { value, poolPercent, probability, isActive } = req.body;
+    // Validate the (partial) body against the prize-config bounds — prevents
+    // mass-assignment / out-of-range values feeding prize-payout math.
+    const data = updatePrizeConfigSchema.omit({ tier: true }).partial().parse(req.body);
 
     const prize = await prisma.prizeConfig.update({
       where: { tier: tier as "JACKPOT" | "BIG" | "MEDIUM" | "SMALL" },
-      data: {
-        ...(value !== undefined && { value }),
-        ...(poolPercent !== undefined && { poolPercent }),
-        ...(probability !== undefined && { probability }),
-        ...(isActive !== undefined && { isActive }),
-      },
+      data,
     });
 
     res.json({ success: true, data: prize });
-  } catch (error) { next(error); }
+  } catch (error: any) {
+    if (error?.name === "ZodError") return next(new BadRequestError(error.errors[0].message));
+    next(error);
+  }
 });
 
 // ============== PLATFORM CONFIG ==============
@@ -157,6 +158,7 @@ router.put("/users/:id/role", async (req: AuthRequest, res: Response, next: Next
     const id = req.params.id as string;
     const { role } = req.body;
     if (!["USER", "ADMIN"].includes(role)) throw new BadRequestError("Invalid role");
+    if (id === req.user!.userId) throw new BadRequestError("You cannot change your own role.");
 
     const user = await prisma.user.update({
       where: { id },
@@ -173,11 +175,20 @@ router.put("/users/:id/ban", async (req: AuthRequest, res: Response, next: NextF
   try {
     const id = req.params.id as string;
     const { ban } = req.body;
+    if (id === req.user!.userId) throw new BadRequestError("You cannot ban yourself.");
     const user = await prisma.user.update({
       where: { id },
       data: { isBanned: !!ban },
       select: { id: true, username: true, isBanned: true },
     });
+    // On ban, revoke all refresh tokens so the user can't refresh a session; the
+    // access token is also rejected centrally by authenticate() (isBanned check).
+    if (ban) {
+      await prisma.refreshToken.updateMany({
+        where: { userId: id, isRevoked: false },
+        data: { isRevoked: true },
+      });
+    }
     res.json({ success: true, data: user });
   } catch (error) { next(error); }
 });

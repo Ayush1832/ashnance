@@ -163,6 +163,9 @@ export class WalletService {
     twoFaCode: string
   ) {
     if (amount < 10) throw new BadRequestError("Minimum withdrawal is $10 USDC");
+    if (!BlockchainService.validateSolanaAddress(address)) {
+      throw new BadRequestError("Invalid destination Solana address");
+    }
 
     // Get user + wallet
     const user = await prisma.user.findUnique({
@@ -270,8 +273,23 @@ export class WalletService {
     let txHash: string;
     try {
       txHash = await BlockchainService.sendUsdcTransfer(address, amount);
-    } catch (err) {
-      // Refund the reserved balance and mark transaction as failed
+    } catch (err: any) {
+      // If the transfer was broadcast but its confirmation is uncertain, the tx
+      // MAY have landed — refunding would double-pay. Do NOT refund; mark it for
+      // manual reconciliation instead and alert.
+      if (err?.unconfirmed && err?.signature) {
+        await prisma.transaction.update({
+          where: { id: pendingTxId },
+          data: { status: "PROCESSING", txHash: err.signature },
+        });
+        const alert = `Withdrawal BROADCAST but UNCONFIRMED — NOT refunded (avoids double-spend).\nuserId=${userId}\namount=${amount}\ntxHash=${err.signature}\naddress=${address}\npendingTxId=${pendingTxId}`;
+        console.error("[CRITICAL]", alert);
+        EmailService.sendCriticalAlert("Withdrawal unconfirmed — verify on-chain before refunding", alert).catch(() => {});
+        throw new BadRequestError(
+          "Your withdrawal was submitted and is still confirming. If it doesn't arrive shortly, contact support — your balance was not refunded to avoid a double payment."
+        );
+      }
+      // Genuine broadcast failure (the transfer was never sent) — safe to refund.
       console.error("[WalletService] On-chain withdrawal failed — refunding:", err);
       await prisma.wallet.update({ where: { userId }, data: { usdcBalance: { increment: amount } } });
       await prisma.transaction.update({ where: { id: pendingTxId }, data: { status: "FAILED" } });
@@ -416,8 +434,11 @@ export class WalletService {
     });
     if (existing) throw new ConflictError("Address already whitelisted");
 
-    const isProduction = process.env.NODE_ENV === "production";
-    const activatesAt = isProduction
+    // Apply the 24h cooldown whenever we're on mainnet (real funds), derived from
+    // the actual RPC network — NOT NODE_ENV, which could be misset and silently
+    // disable this control on a live mainnet deployment.
+    const isMainnet = BlockchainService.getNetwork() === "mainnet-beta";
+    const activatesAt = isMainnet
       ? new Date(Date.now() + WHITELIST_COOLDOWN_MS)
       : null;
 

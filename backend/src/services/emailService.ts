@@ -31,6 +31,11 @@ export class EmailService {
     const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
+    // Don't reveal whether an account exists (enumeration): for an unknown email
+    // we silently no-op so the route still returns a generic success.
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (!existing) return;
+
     await prisma.user.update({
       where: { email },
       data: { pendingOtp: otp, otpExpiresAt: expiresAt },

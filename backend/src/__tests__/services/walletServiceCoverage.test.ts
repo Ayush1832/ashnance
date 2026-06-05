@@ -28,6 +28,7 @@ jest.mock("../../services/blockchainService", () => ({
     sendAshTransfer: jest.fn(),
     validateSolanaAddress: jest.fn().mockReturnValue(true),
     generateDepositAddress: jest.fn().mockResolvedValue("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"),
+    getNetwork: jest.fn().mockReturnValue("devnet"),
   },
 }));
 

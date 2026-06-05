@@ -348,7 +348,15 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
       email: string;
       name: string;
       picture?: string;
+      verified_email?: boolean;
+      email_verified?: boolean;
     };
+
+    // Reject explicitly-unverified Google emails — prevents an attacker from
+    // presenting a victim's email on an unverified Google identity.
+    if (googleUser.verified_email === false || googleUser.email_verified === false) {
+      return res.redirect(`${config.frontendUrl}/login?error=google_unverified`);
+    }
 
     // 3. Find or create user
     const result = await AuthService.loginWithGoogle({

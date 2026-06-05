@@ -184,7 +184,7 @@ router.post("/claim-ash", authenticate, async (req: AuthRequest, res: Response, 
 });
 
 // GET /api/wallet/onchain/:address — Get on-chain USDC balance for any Solana address
-router.get("/onchain/:address", async (req, res: Response, next: NextFunction) => {
+router.get("/onchain/:address", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const address = req.params.address as string;
     if (!BlockchainService.validateSolanaAddress(address)) {

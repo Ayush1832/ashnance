@@ -69,8 +69,19 @@ const authLimiter = rateLimit({
   max: 10,
   message: { success: false, error: "Too many auth attempts" },
 });
-app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/login", authLimiter); // also covers /login/recovery by prefix
 app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/wallet", authLimiter);
+app.use("/api/auth/link-wallet", authLimiter);
+app.use("/api/auth/challenge", authLimiter);
+
+// Tight limit for the public on-chain balance proxy (RPC cost / DoS guard)
+const onchainLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { success: false, error: "Too many balance lookups, please slow down" },
+});
+app.use("/api/wallet/onchain", onchainLimiter);
 
 // OTP endpoint — strict limit: 5 requests per 10 minutes per IP
 const otpLimiter = rateLimit({

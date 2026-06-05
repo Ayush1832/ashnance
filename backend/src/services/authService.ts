@@ -282,17 +282,36 @@ export class AuthService {
       include: { user: true },
     });
 
-    if (!stored || stored.isRevoked || stored.expiresAt < new Date()) {
+    if (!stored) {
       throw new UnauthorizedError("Invalid or expired refresh token");
     }
 
-    // Revoke old token
+    // Reuse of an ALREADY-rotated token is a theft signal — the legitimate client
+    // rotated it, so whoever presents it again is likely an attacker. Revoke the
+    // whole token family to force a fresh login for everyone.
+    if (stored.isRevoked) {
+      await prisma.refreshToken.updateMany({
+        where: { userId: stored.userId, isRevoked: false },
+        data: { isRevoked: true },
+      });
+      throw new UnauthorizedError("Session invalidated for security. Please log in again.");
+    }
+
+    if (stored.expiresAt < new Date()) {
+      throw new UnauthorizedError("Invalid or expired refresh token");
+    }
+
+    // Banned users cannot refresh a session.
+    if (stored.user.isBanned) {
+      throw new UnauthorizedError("Your account has been suspended.");
+    }
+
+    // Rotate: revoke the presented token, issue a fresh pair.
     await prisma.refreshToken.update({
       where: { id: stored.id },
       data: { isRevoked: true },
     });
 
-    // Issue new tokens
     const tokens = AuthService.generateTokens(stored.user.id, stored.user.email);
     await AuthService.saveRefreshToken(stored.user.id, tokens.refreshToken);
 
@@ -421,6 +440,14 @@ export class AuthService {
     let user = await prisma.user.findUnique({ where: { email: data.email } });
 
     if (user) {
+      // Only let Google sign-in assume an existing account if that account was
+      // actually created via Google. Otherwise it's an email/password (or wallet)
+      // account, and logging in by matching email alone would be account takeover.
+      if (user.authProvider !== "GOOGLE") {
+        throw new ConflictError(
+          "An account with this email already exists. Please sign in with your password."
+        );
+      }
       // Update avatar if not set
       if (!user.avatarUrl && data.avatarUrl) {
         user = await prisma.user.update({
@@ -500,7 +527,9 @@ export class AuthService {
         const newUser = await tx.user.create({
           data: {
             id:            walletUserId,
-            email:         `${data.publicKey.toLowerCase()}@wallet.ashnance`,
+            // Solana addresses are case-sensitive — do NOT lowercase, or two
+            // distinct addresses differing only by case collide on this email.
+            email:         `${data.publicKey}@wallet.ashnance`,
             username,
             solanaAddress: data.publicKey,
             authProvider:  "WALLET",
@@ -582,6 +611,12 @@ export class AuthService {
     await prisma.user.update({
       where: { id: userId },
       data: { passwordHash: newHash },
+    });
+    // Invalidate all existing sessions so a compromised refresh token can't
+    // survive a password change.
+    await prisma.refreshToken.updateMany({
+      where: { userId, isRevoked: false },
+      data: { isRevoked: true },
     });
   }
 
