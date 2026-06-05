@@ -143,6 +143,15 @@ export class AuthService {
         window: 1,
       });
       if (!valid) {
+        // Count a wrong 2FA code as a failed attempt and lock after 3 — otherwise
+        // an attacker who already has the password could brute-force the 6-digit
+        // TOTP (the per-IP rate limit alone is defeated by IP rotation).
+        const attempts = user.failedAttempts + 1;
+        const lockData =
+          attempts >= 3
+            ? { failedAttempts: attempts, lockedUntil: new Date(Date.now() + 30 * 60 * 1000) }
+            : { failedAttempts: attempts };
+        await prisma.user.update({ where: { id: user.id }, data: lockData });
         throw new UnauthorizedError("Invalid 2FA code");
       }
     }

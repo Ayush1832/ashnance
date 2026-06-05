@@ -246,6 +246,7 @@ describe("DB Failure After On-Chain Withdrawal", () => {
           wallet: {
             findUnique: jest.fn().mockResolvedValue({ usdcBalance: "100" }),
             update: jest.fn().mockResolvedValue({ usdcBalance: "90" }),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
           transaction: { create: jest.fn().mockResolvedValue({ id: "pending-tx" }) },
         };
@@ -476,6 +477,7 @@ describe("WalletService.processWithdrawal — finalWallet null after step-3", ()
           wallet: {
             findUnique: jest.fn().mockResolvedValue({ usdcBalance: "100" }),
             update: jest.fn().mockResolvedValue({ usdcBalance: "90" }),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
           transaction: { create: jest.fn().mockResolvedValue({ id: "pending-tx" }) },
         };
@@ -531,6 +533,7 @@ describe("WalletService.processWithdrawal — critical alert email failure swall
           wallet: {
             findUnique: jest.fn().mockResolvedValue({ usdcBalance: "100" }),
             update: jest.fn().mockResolvedValue({ usdcBalance: "90" }),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
           transaction: { create: jest.fn().mockResolvedValue({ id: "pending-tx" }) },
         };

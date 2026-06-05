@@ -108,6 +108,7 @@ function mockFullTransaction(options: {
       wallet: {
         findUnique: jest.fn().mockResolvedValue({ usdcBalance }),
         update: jest.fn().mockResolvedValue({ usdcBalance: "995", cumulativeWeight: "1.002" }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
       profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -143,6 +144,7 @@ describe("BurnService.executeBurn — with active round", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "995", cumulativeWeight: "1.002" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -181,6 +183,7 @@ describe("BurnService.executeBurn — with active round", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "2" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -221,6 +224,7 @@ describe("BurnService.executeBurn — with active round", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "2" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -373,6 +377,7 @@ describe("BurnService.executeBurn — referral rewards (§21 edge cases)", () =>
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "1.002" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
         profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -560,6 +565,7 @@ describe("BurnService.executeBurn — insufficient balance inside tx", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "5" }), // less than 10
           update: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }), // guarded debit fails
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
@@ -667,6 +673,7 @@ describe("BurnService.executeBurn — currentWallet null in tx", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue(null), // triggers ?? 0 at balance check
           update: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }), // guarded debit fails (no wallet)
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
@@ -679,7 +686,7 @@ describe("BurnService.executeBurn — currentWallet null in tx", () => {
       return fn(tx);
     });
     const err = await BurnService.executeBurn("user-1", 10).catch((e) => e);
-    expect(err.message).toMatch(/\$0/); // ?? 0 branch hit
+    expect(err.message).toMatch(/Insufficient balance/i); // guarded debit fails when wallet missing
   });
 });
 

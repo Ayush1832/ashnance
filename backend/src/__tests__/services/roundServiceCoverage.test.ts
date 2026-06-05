@@ -309,7 +309,7 @@ describe("RoundService.endRound — ?? fallback branches + rewardPool null", () 
   function mockSuccessTx() {
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
-        round: { update: jest.fn().mockResolvedValue({}) },
+        round: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         wallet: {
           update: jest.fn().mockResolvedValue({ usdcBalance: "300", cumulativeWeight: "0" }),
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),

@@ -84,7 +84,10 @@ function makeRewardPool(balance: number) {
 function mockTxSuccess() {
   (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
     const tx = {
-      round: { update: jest.fn().mockResolvedValue({}) },
+      round: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }), // atomic round claim succeeds
+      },
       wallet: {
         update: jest.fn().mockResolvedValue({ usdcBalance: "100", cumulativeWeight: "0" }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -319,9 +322,9 @@ describe("RoundService.endRound — Prize Safety Cap (Req #7)", () => {
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
         round: {
-          update: jest.fn().mockImplementation((args: any) => {
+          updateMany: jest.fn().mockImplementation((args: any) => {
             capturedPrizeAmount = args.data.prizeAmount;
-            return {};
+            return { count: 1 };
           }),
         },
         wallet: {
@@ -378,7 +381,7 @@ describe("RoundService.endRound — Winner Reset & 10% Decay (Reqs #1 & #2)", ()
 
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
-        round: { update: jest.fn().mockResolvedValue({}) },
+        round: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         wallet: {
           update: jest.fn().mockImplementation((args: any) => {
             walletUpdateCalls.push(args);
@@ -421,7 +424,7 @@ describe("RoundService.endRound — Winner Reset & 10% Decay (Reqs #1 & #2)", ()
     const userUpdateCalls: any[] = [];
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
       const tx = {
-        round: { update: jest.fn().mockResolvedValue({}) },
+        round: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         wallet: {
           update: jest.fn().mockResolvedValue({ usdcBalance: "100", cumulativeWeight: "0" }),
           updateMany: jest.fn().mockResolvedValue({}),

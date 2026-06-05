@@ -17,6 +17,7 @@ jest.mock("../../utils/prisma", () => ({
       findUnique: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
+      updateMany: jest.fn(),
       findMany: jest.fn(),
     },
     profitPool: {
@@ -125,6 +126,7 @@ describe("OwnerService.approveWithdrawal — self-approve rejection", () => {
     (mockPrisma.ownerWithdrawalRequest.findUnique as jest.Mock).mockResolvedValue(
       makePendingRequest({ initiatorEmail: OWNER1 })
     );
+    (mockPrisma.ownerWithdrawalRequest.updateMany as jest.Mock).mockResolvedValue({ count: 1 }); // atomic claim succeeds
     await expect(OwnerService.approveWithdrawal(OWNER1, "req-1")).rejects.toThrow(UnauthorizedError);
     expect(mockBlockchain.sendUsdcTransfer).not.toHaveBeenCalled();
   });
@@ -147,6 +149,7 @@ describe("OwnerService.approveWithdrawal — two-owner happy path", () => {
     (mockPrisma.ownerWithdrawalRequest.findUnique as jest.Mock).mockResolvedValue(
       makePendingRequest({ initiatorEmail: OWNER1 })
     );
+    (mockPrisma.ownerWithdrawalRequest.updateMany as jest.Mock).mockResolvedValue({ count: 1 }); // atomic claim succeeds
 
     mockBlockchain.sendUsdcTransfer
       .mockResolvedValueOnce("txhash-owner1")
@@ -184,6 +187,7 @@ describe("Partial Owner Withdrawal", () => {
     (mockPrisma.ownerWithdrawalRequest.findUnique as jest.Mock).mockResolvedValue(
       makePendingRequest({ initiatorEmail: OWNER1 })
     );
+    (mockPrisma.ownerWithdrawalRequest.updateMany as jest.Mock).mockResolvedValue({ count: 1 }); // atomic claim succeeds
 
     mockBlockchain.sendUsdcTransfer
       .mockResolvedValueOnce("txhash-owner1") // owner1 succeeds

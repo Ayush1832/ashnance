@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../config";
-import { UnauthorizedError, AccountLockedError } from "../utils/errors";
+import { UnauthorizedError, AccountLockedError, ForbiddenError } from "../utils/errors";
 import { prisma } from "../utils/prisma";
 
 export interface AuthPayload {
@@ -33,11 +33,17 @@ export const authenticate = async (
     // Check if user account is locked
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
-      select: { id: true, email: true, lockedUntil: true },
+      select: { id: true, email: true, lockedUntil: true, isBanned: true },
     });
 
     if (!user) {
       throw new UnauthorizedError("User not found");
+    }
+
+    // Centrally block banned users at the auth layer so a ban can't be bypassed
+    // by simply continuing to use an already-issued token on any endpoint.
+    if (user.isBanned) {
+      throw new ForbiddenError("Your account has been suspended.");
     }
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {

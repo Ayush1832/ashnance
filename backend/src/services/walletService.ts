@@ -237,17 +237,16 @@ export class WalletService {
     let pendingTxId: string;
     try {
       const reservation = await prisma.$transaction(async (tx: any) => {
-        const currentWallet = await tx.wallet.findUnique({
-          where: { userId },
-          select: { usdcBalance: true },
-        });
-        if (!currentWallet || Number(currentWallet.usdcBalance) < amount) {
-          throw new InsufficientBalanceError();
-        }
-        const updatedWallet = await tx.wallet.update({
-          where: { userId },
+        // Atomic GUARDED debit — only decrement if the balance still covers the
+        // amount. Prevents two concurrent withdrawals (or a withdraw racing a
+        // burn) from both passing a stale read and draining the balance twice.
+        const debit = await tx.wallet.updateMany({
+          where: { userId, usdcBalance: { gte: amount } },
           data: { usdcBalance: { decrement: amount } },
         });
+        if (debit.count === 0) {
+          throw new InsufficientBalanceError();
+        }
         const pendingTx = await tx.transaction.create({
           data: {
             userId,
@@ -259,7 +258,7 @@ export class WalletService {
             metadata: { address },
           },
         });
-        return { wallet: updatedWallet, pendingTxId: pendingTx.id };
+        return { pendingTxId: pendingTx.id };
       });
       pendingTxId = reservation.pendingTxId;
     } catch (err) {
@@ -341,10 +340,15 @@ export class WalletService {
           );
         }
 
-        await tx.wallet.update({
-          where: { userId },
+        // Atomic GUARDED debit — fails (count 0) if a concurrent claim already
+        // moved the balance below claimAmount, preventing double-claim drain.
+        const debit = await tx.wallet.updateMany({
+          where: { userId, ashBalance: { gte: claimAmount } },
           data: { ashBalance: { decrement: claimAmount } },
         });
+        if (debit.count === 0) {
+          throw new BadRequestError("ASH balance changed — please try again.");
+        }
         return claimAmount;
       });
       amount = reserved;

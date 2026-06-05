@@ -191,6 +191,17 @@ export class OwnerService {
 
     const now = new Date();
 
+    // Atomically claim the request before any on-chain send so a second
+    // concurrent approval can't trigger a duplicate payout. `approvedAt` is null
+    // until claimed, so it acts as the lock token (no schema/enum change needed).
+    const claimed = await prisma.ownerWithdrawalRequest.updateMany({
+      where: { id: requestId, status: "PENDING", approvedAt: null },
+      data: { approverEmail, approvedAt: now },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestError("Withdrawal request is already being processed or is no longer pending.");
+    }
+
     // --- Transfer 1: owner1 (60%) ---
     let txHash1: string;
     try {
@@ -202,10 +213,11 @@ export class OwnerService {
       throw new Error(`Owner1 on-chain transfer failed — nothing was sent: ${err.message}`);
     }
 
-    // Record txHash1 immediately so it's never lost
+    // Record txHash1 immediately so it's never lost (approverEmail/approvedAt
+    // were already set atomically above when the request was claimed).
     await prisma.ownerWithdrawalRequest.update({
       where: { id: requestId },
-      data: { txHash1, approverEmail, approvedAt: now },
+      data: { txHash1 },
     });
 
     // --- Transfer 2: owner2 (40%) ---

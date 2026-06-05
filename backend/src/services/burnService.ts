@@ -56,24 +56,35 @@ export class BurnService {
       : new Date();
     const boostExpiresAt = new Date(base.getTime() + burnCfg.boost_duration_ms);
 
-    await prisma.wallet.update({
-      where: { userId },
-      data: {
-        ashBalance:    { decrement: burnCfg.boost_cost_ash },
-        boostExpiresAt,
-      },
+    // Atomic guarded debit + log in one transaction. The `gte` guard prevents
+    // concurrent boost/burn requests from both passing a stale balance read and
+    // driving ASH negative (previously this was a bare, unguarded update).
+    const debited = await prisma.$transaction(async (tx: any) => {
+      const res = await tx.wallet.updateMany({
+        where: { userId, ashBalance: { gte: burnCfg.boost_cost_ash } },
+        data: {
+          ashBalance:    { decrement: burnCfg.boost_cost_ash },
+          boostExpiresAt,
+        },
+      });
+      if (res.count === 0) return false;
+      await tx.transaction.create({
+        data: {
+          userId,
+          type: "BOOST",
+          amount: burnCfg.boost_cost_ash,
+          currency: "ASH",
+          status: "COMPLETED",
+          description: `ASH boost activated — +0.5 weight for 1 hour`,
+        },
+      });
+      return true;
     });
-
-    await prisma.transaction.create({
-      data: {
-        userId,
-        type: "BOOST",
-        amount: burnCfg.boost_cost_ash,
-        currency: "ASH",
-        status: "COMPLETED",
-        description: `ASH boost activated — +0.5 weight for 1 hour`,
-      },
-    });
+    if (!debited) {
+      throw new InsufficientBalanceError(
+        `Insufficient ASH. Need ${burnCfg.boost_cost_ash} ASH to activate boost.`
+      );
+    }
 
     // Real on-chain burn from platform ASH treasury — reduces circulating supply
     if (process.env.ASH_MINT_ADDRESS) {
@@ -218,25 +229,27 @@ export class BurnService {
     let newRoundPool = 0;
 
     const burn = await prisma.$transaction(async (tx: any) => {
-      // 1. Check balance atomically, then deduct USDC + update cumulativeWeight
-      const currentWallet = await tx.wallet.findUnique({
-        where: { userId },
-        select: { usdcBalance: true },
-      });
-      if (!currentWallet || Number(currentWallet.usdcBalance) < amountUsdc) {
-        throw new InsufficientBalanceError(
-          `Insufficient balance. You have $${currentWallet?.usdcBalance ?? 0} USDC, need $${amountUsdc}`
-        );
-      }
-      const updatedWallet = await tx.wallet.update({
-        where: { userId },
+      // 1. Atomic GUARDED debit: only decrement if the balance still covers the
+      //    burn. The `gte` guard pushes the invariant into the DB, so concurrent
+      //    burns/withdrawals can't both pass a stale balance read (TOCTOU) and
+      //    drive the wallet negative while minting double weight/ASH.
+      const debit = await tx.wallet.updateMany({
+        where: { userId, usdcBalance: { gte: amountUsdc } },
         data: {
           usdcBalance:      { decrement: amountUsdc },
           ashBalance:       { increment: ashReward },
           cumulativeWeight: { increment: finalWeight },
         },
       });
-      newCumulativeWeight = Number(updatedWallet.cumulativeWeight);
+      if (debit.count === 0) {
+        throw new InsufficientBalanceError(
+          `Insufficient balance to participate with $${amountUsdc} USDC.`
+        );
+      }
+      // Display value only — the authoritative increment committed atomically
+      // above (re-reading is unnecessary and avoids an extra round-trip).
+      // user.wallet is non-null here (guarded at the top of executeBurn).
+      newCumulativeWeight = Number(user.wallet!.cumulativeWeight) + finalWeight;
 
       // 2. Split into pools
       await tx.rewardPool.updateMany({

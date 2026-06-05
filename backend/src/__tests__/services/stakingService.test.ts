@@ -60,7 +60,7 @@ function makePosition(overrides: Record<string, unknown> = {}) {
 function mockTx() {
   (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
     const tx = {
-      wallet: { update: jest.fn().mockResolvedValue({ ashBalance: "1000" }) },
+      wallet: { update: jest.fn().mockResolvedValue({ ashBalance: "1000" }), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       stakingPosition: {
         create: jest.fn().mockResolvedValue({ ...makePosition(), id: "pos-new" }),
         update: jest.fn().mockResolvedValue(makePosition()),

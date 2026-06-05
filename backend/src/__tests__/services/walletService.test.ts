@@ -290,6 +290,7 @@ describe("WalletService.processWithdrawal", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "5" }), // only $5, need $10
           update: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }), // guarded debit fails (insufficient)
         },
         transaction: { create: jest.fn() },
       };
@@ -311,6 +312,7 @@ describe("WalletService.processWithdrawal", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "100" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "90" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }), // guarded debit succeeds
         },
         transaction: { create: jest.fn().mockResolvedValue({ id: "tx-pending" }) },
       };
@@ -374,6 +376,7 @@ describe("WalletService.claimAsh", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ ashBalance: "5000" }),
           update: jest.fn().mockResolvedValue({ ashBalance: "0" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }), // guarded debit succeeds
         },
       };
       return fn(tx);
@@ -400,6 +403,7 @@ describe("WalletService.claimAsh", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ ashBalance: "5000" }),
           update: jest.fn().mockResolvedValue({ ashBalance: "0" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }), // guarded debit succeeds
         },
       };
       return fn(tx);

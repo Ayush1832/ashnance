@@ -56,10 +56,17 @@ export class VipService {
     const result = await prisma.$transaction(async (tx: any) => {
       // Deduct payment
       if (tierConfig.price > 0) {
-        await tx.wallet.update({
-          where: { userId },
+        // Atomic guarded debit — prevents concurrent subscribes from both
+        // passing a stale balance read and driving the wallet negative.
+        const debit = await tx.wallet.updateMany({
+          where: { userId, usdcBalance: { gte: tierConfig.price } },
           data: { usdcBalance: { decrement: tierConfig.price } },
         });
+        if (debit.count === 0) {
+          throw new InsufficientBalanceError(
+            `Insufficient balance. Need $${tierConfig.price} USDC.`
+          );
+        }
 
         // Transaction log
         await tx.transaction.create({

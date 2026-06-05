@@ -265,9 +265,12 @@ export class RoundService {
     const prizeAmount = Math.min(Number(round.currentPool), maxSafePrize);
 
     await prisma.$transaction(async (tx: any) => {
-      // 1. Mark round complete
-      await tx.round.update({
-        where: { id: roundId },
+      // 1. Atomically claim the round (ACTIVE -> COMPLETED). Only ONE concurrent
+      //    end-round call wins this; the rest get count 0 and abort — preventing
+      //    a double prize payout when two burns cross the target simultaneously,
+      //    or when a burn-triggered end races the owner's manual end / auto-expiry.
+      const claimed = await tx.round.updateMany({
+        where: { id: roundId, status: "ACTIVE" },
         data: {
           status: "COMPLETED",
           winnerId: winner.userId,
@@ -275,6 +278,9 @@ export class RoundService {
           endedAt: new Date(),
         },
       });
+      if (claimed.count === 0) {
+        throw new BadRequestError("Round already ended");
+      }
 
       // 2. Credit winner
       await tx.wallet.update({

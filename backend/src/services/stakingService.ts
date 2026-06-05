@@ -65,11 +65,15 @@ export class StakingService {
     const lockedUntil = new Date(Date.now() + pool.lockDays * 24 * 60 * 60 * 1000);
 
     const result = await prisma.$transaction(async (tx: any) => {
-      // Deduct ASH from wallet
-      await tx.wallet.update({
-        where: { userId },
+      // Atomic guarded debit — prevents concurrent stakes from both passing a
+      // stale balance read and driving ASH negative.
+      const debit = await tx.wallet.updateMany({
+        where: { userId, ashBalance: { gte: amount } },
         data: { ashBalance: { decrement: amount } },
       });
+      if (debit.count === 0) {
+        throw new InsufficientBalanceError("Insufficient ASH balance");
+      }
 
       // Create staking position
       const position = await tx.stakingPosition.create({

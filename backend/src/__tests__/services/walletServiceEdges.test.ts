@@ -122,6 +122,7 @@ describe("WalletService.processWithdrawal — step-3 success path", () => {
           wallet: {
             findUnique: jest.fn().mockResolvedValue({ usdcBalance: "100" }),
             update: jest.fn().mockResolvedValue({ usdcBalance: "90" }),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
           },
           transaction: { create: jest.fn().mockResolvedValue({ id: "pending-tx" }) },
         };

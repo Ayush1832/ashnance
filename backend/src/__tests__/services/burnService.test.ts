@@ -95,6 +95,7 @@ function mockTransaction(returnValue: unknown) {
       wallet: {
         findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
         update: jest.fn().mockResolvedValue({ usdcBalance: "950", cumulativeWeight: "1.002" }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
       profitPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -149,6 +150,7 @@ describe("BurnService.executeBurn — balance check (atomic)", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "4" }), // below $5 burn
           update: jest.fn(),
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }), // guarded debit fails
         },
         rewardPool: { updateMany: jest.fn() },
         profitPool: { updateMany: jest.fn() },
@@ -177,6 +179,7 @@ describe("BurnService.executeBurn — pool split accounting", () => {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
           update: jest.fn().mockResolvedValue({ usdcBalance: "990", cumulativeWeight: "1.002" }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
         rewardPool: {
           updateMany: jest.fn().mockImplementation(({ data }: any) => {
@@ -217,9 +220,9 @@ describe("BurnService.executeBurn — ASH reward", () => {
       const tx = {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
-          update: jest.fn().mockImplementation(({ data }: any) => {
+          updateMany: jest.fn().mockImplementation(({ data }: any) => {
             ashCredited = data.ashBalance.increment;
-            return { usdcBalance: "990", cumulativeWeight: "1.002" };
+            return { count: 1 };
           }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -254,9 +257,9 @@ describe("BurnService.executeBurn — ASH reward", () => {
       const tx = {
         wallet: {
           findUnique: jest.fn().mockResolvedValue({ usdcBalance: "1000" }),
-          update: jest.fn().mockImplementation(({ data }: any) => {
+          updateMany: jest.fn().mockImplementation(({ data }: any) => {
             ashCredited = data.ashBalance.increment;
-            return { usdcBalance: "990", cumulativeWeight: "1.502" };
+            return { count: 1 };
           }),
         },
         rewardPool: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -303,9 +306,13 @@ describe("BurnService.activateBoost", () => {
       ashBalance: "1000",
       boostExpiresAt: null,
     });
-    const futureDate = new Date(Date.now() + 3600000);
-    (mockPrisma.wallet.update as jest.Mock).mockResolvedValue({ boostExpiresAt: futureDate });
-    (mockPrisma.transaction.create as jest.Mock).mockResolvedValue({});
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        wallet: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        transaction: { create: jest.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
+    });
 
     const result = await BurnService.activateBoost("user-1");
     expect(result.ashDeducted).toBe(1000);
@@ -320,11 +327,18 @@ describe("BurnService.activateBoost", () => {
     });
 
     let newExpiry: Date | null = null;
-    (mockPrisma.wallet.update as jest.Mock).mockImplementation(({ data }: any) => {
-      newExpiry = data.boostExpiresAt;
-      return { boostExpiresAt: newExpiry };
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        wallet: {
+          updateMany: jest.fn().mockImplementation(({ data }: any) => {
+            newExpiry = data.boostExpiresAt;
+            return { count: 1 };
+          }),
+        },
+        transaction: { create: jest.fn().mockResolvedValue({}) },
+      };
+      return fn(tx);
     });
-    (mockPrisma.transaction.create as jest.Mock).mockResolvedValue({});
 
     await BurnService.activateBoost("user-1");
 
