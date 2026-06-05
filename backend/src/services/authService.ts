@@ -73,6 +73,9 @@ export class AuthService {
           data: {
             referrerId: referredById,
             refereeId: newUser.id,
+            // Inactive until the referee actually burns (proof of activity).
+            // Prevents farming weight/commission with sign-ups that never burn.
+            isActive: false,
           },
         });
       }

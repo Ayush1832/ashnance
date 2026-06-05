@@ -242,7 +242,8 @@ router.post("/apply-referral", authenticate, async (req: AuthRequest, res: Respo
         where: { referrerId: referrer.id, refereeId: userId },
       });
       if (!existing) {
-        await tx.referral.create({ data: { referrerId: referrer.id, refereeId: userId } });
+        // Inactive until the referee actually burns (proof of activity) — see burnService.
+        await tx.referral.create({ data: { referrerId: referrer.id, refereeId: userId, isActive: false } });
       }
     });
 

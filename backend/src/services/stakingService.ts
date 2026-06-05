@@ -5,6 +5,11 @@ import {
   InsufficientBalanceError,
 } from "../utils/errors";
 
+// Hard cap on ASH staked per position. ASH is the in-app reward token
+// (~100 ASH per $1 burned), so this is a generous but finite ceiling that bounds
+// how much yield any single position can mint.
+const MAX_STAKE_ASH = 10_000_000;
+
 export class StakingService {
   /**
    * Get all active staking pools
@@ -51,8 +56,16 @@ export class StakingService {
     const pool = await prisma.stakingPool.findUnique({ where: { id: poolId } });
     if (!pool || !pool.isActive) throw new NotFoundError("Pool not found or inactive");
 
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestError("Invalid stake amount");
+    }
     if (amount < Number(pool.minStake)) {
       throw new BadRequestError(`Minimum stake is ${pool.minStake} ASH`);
+    }
+    // Hard upper bound per position — bounds the yield a single position can mint
+    // (rewards = amount × APY × time), preventing an unbounded-emission exploit.
+    if (amount > MAX_STAKE_ASH) {
+      throw new BadRequestError(`Maximum stake is ${MAX_STAKE_ASH.toLocaleString()} ASH per position`);
     }
 
     const wallet = await prisma.wallet.findUnique({ where: { userId } });

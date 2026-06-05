@@ -318,7 +318,9 @@ export class BurnService {
 
           await tx.referral.updateMany({
             where: { referrerId: user.referredById, refereeId: userId },
-            data: { totalBurns: { increment: 1 }, totalEarned: { increment: actualReward } },
+            // The referee burned → activate the referral (proof of activity), so it
+            // now counts toward the referrer's weight bonus.
+            data: { totalBurns: { increment: 1 }, totalEarned: { increment: actualReward }, isActive: true },
           });
 
           await tx.transaction.create({
@@ -343,7 +345,8 @@ export class BurnService {
           // Referral pool empty — update burn count only, reward queued for later
           await tx.referral.updateMany({
             where: { referrerId: user.referredById, refereeId: userId },
-            data: { totalBurns: { increment: 1 } },
+            // Activate on the referee's burn even when the pool was empty for the reward.
+            data: { totalBurns: { increment: 1 }, isActive: true },
           });
         }
       }
