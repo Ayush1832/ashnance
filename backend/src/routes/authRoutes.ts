@@ -6,8 +6,30 @@ import { BadRequestError, UnauthorizedError, NotFoundError } from "../utils/erro
 import { EmailService } from "../services/emailService";
 import { config } from "../config";
 import { prisma } from "../utils/prisma";
+import { issueChallenge } from "../utils/walletChallenge";
 
 const router = Router();
+
+// ── Refresh-token cookie (HttpOnly → not readable by JS, unlike localStorage) ──
+// Frontend (www.ashnance.com) and API (api.ashnance.com) are different origins but
+// the same site, so cross-origin fetches need SameSite=None; Secure in production.
+const REFRESH_COOKIE = "ash_rt";
+function refreshCookieOpts() {
+  const isProd = config.nodeEnv === "production";
+  return {
+    httpOnly: true,
+    secure: isProd, // SameSite=None requires Secure
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
+    path: "/api/auth", // only sent to auth endpoints
+  };
+}
+function setRefreshCookie(res: Response, token?: string) {
+  if (!token) return;
+  res.cookie(REFRESH_COOKIE, token, { ...refreshCookieOpts(), maxAge: 7 * 24 * 60 * 60 * 1000 });
+}
+function clearRefreshCookie(res: Response) {
+  res.clearCookie(REFRESH_COOKIE, refreshCookieOpts());
+}
 
 // POST /api/auth/send-otp — send OTP to email for registration or login
 router.post("/send-otp", async (req: Request, res: Response, next: NextFunction) => {
@@ -40,11 +62,13 @@ router.post("/register", async (req: Request, res: Response, next: NextFunction)
       const valid = await EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
       if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
       const result = await AuthService.register({ email: email.toLowerCase().trim(), username, referralCode });
+      setRefreshCookie(res, result.refreshToken);
       return res.status(201).json({ success: true, data: result });
     }
     const data = registerSchema.parse(req.body);
     const result = await AuthService.register(data);
 
+    setRefreshCookie(res, result.refreshToken);
     res.status(201).json({
       success: true,
       data: result,
@@ -67,6 +91,7 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
       const valid = await EmailService.verifyOtp(email.toLowerCase().trim(), otp.toString().trim());
       if (!valid) throw new UnauthorizedError("Invalid or expired OTP");
       const result = await AuthService.loginByEmail(email.toLowerCase().trim());
+      setRefreshCookie(res, result.refreshToken);
       return res.json({ success: true, data: result });
     }
     const data = loginSchema.parse(req.body);
@@ -87,6 +112,7 @@ router.post("/login", async (req: Request, res: Response, next: NextFunction) =>
       throw error;
     }
 
+    setRefreshCookie(res, result.refreshToken);
     res.json({
       success: true,
       data: result,
@@ -111,6 +137,7 @@ router.post("/login/recovery", async (req: Request, res: Response, next: NextFun
       password as string,
       (recoveryCode as string).trim()
     );
+    setRefreshCookie(res, result.refreshToken);
     res.json({ success: true, data: result });
   } catch (error: any) {
     next(error);
@@ -120,11 +147,13 @@ router.post("/login/recovery", async (req: Request, res: Response, next: NextFun
 // POST /api/auth/refresh
 router.post("/refresh", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    // Prefer the HttpOnly cookie; fall back to the body for older clients.
+    const refreshToken = req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken;
     if (!refreshToken) throw new BadRequestError("Refresh token required");
 
     const tokens = await AuthService.refreshToken(refreshToken);
 
+    setRefreshCookie(res, tokens.refreshToken);
     res.json({
       success: true,
       data: tokens,
@@ -137,11 +166,11 @@ router.post("/refresh", async (req: Request, res: Response, next: NextFunction) 
 // POST /api/auth/logout
 router.post("/logout", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const { refreshToken } = req.body;
+    const refreshToken = req.cookies?.[REFRESH_COOKIE] || req.body?.refreshToken;
     if (refreshToken) {
       await AuthService.logout(refreshToken);
     }
-
+    clearRefreshCookie(res);
     res.json({ success: true, message: "Logged out" });
   } catch (error) {
     next(error);
@@ -193,6 +222,19 @@ router.put("/password", authenticate, async (req: AuthRequest, res: Response, ne
 // WALLET AUTH (Phantom / Solflare)
 // ============================================================
 
+// POST /api/auth/challenge — issue a single-use nonce for wallet sign-in (anti-replay).
+// The client must sign the returned message and submit it to /wallet or /link-wallet.
+router.post("/challenge", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { publicKey } = req.body;
+    if (!publicKey || typeof publicKey !== "string" || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(publicKey)) {
+      throw new BadRequestError("A valid Solana publicKey is required");
+    }
+    const message = issueChallenge(publicKey);
+    res.json({ success: true, data: { message } });
+  } catch (error) { next(error); }
+});
+
 // POST /api/auth/wallet — verify wallet signature, return JWT (standalone wallet login)
 router.post("/wallet", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -201,6 +243,7 @@ router.post("/wallet", async (req: Request, res: Response, next: NextFunction) =
       throw new BadRequestError("publicKey, signature, and message are required");
     }
     const result = await AuthService.loginWithWallet({ publicKey, signature, message });
+    setRefreshCookie(res, result.refreshToken);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -369,6 +412,7 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
 
     // 4. Redirect to frontend with tokens in URL fragment (hash) — not sent to server,
     //    not recorded in server access logs or browser history.
+    setRefreshCookie(res, result.refreshToken);
     const fragment = new URLSearchParams({
       accessToken:  result.accessToken,
       refreshToken: result.refreshToken,

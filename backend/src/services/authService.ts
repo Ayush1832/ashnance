@@ -6,6 +6,7 @@ import speakeasy from "speakeasy";
 import { PublicKey } from "@solana/web3.js";
 import { prisma } from "../utils/prisma";
 import { config } from "../config";
+import { consumeChallenge } from "../utils/walletChallenge";
 import {
   ConflictError,
   UnauthorizedError,
@@ -398,11 +399,9 @@ export class AuthService {
       throw new BadRequestError("Invalid Solana public key");
     }
 
-    // Replay attack prevention (5 min window)
-    const match = data.message.match(/timestamp:(\d+)/);
-    if (!match) throw new BadRequestError("Invalid message format");
-    if (Date.now() - parseInt(match[1]) > 5 * 60 * 1000) {
-      throw new UnauthorizedError("Message expired. Please try again.");
+    // Single-use server nonce prevents signature replay (see loginWithWallet).
+    if (!consumeChallenge(data.publicKey, data.message)) {
+      throw new UnauthorizedError("Invalid or expired challenge. Please request a new one.");
     }
 
     // Verify signature
@@ -502,11 +501,11 @@ export class AuthService {
       throw new BadRequestError("Invalid Solana public key");
     }
 
-    // Verify timestamp in message to prevent replay attacks (5 min window)
-    const match = data.message.match(/timestamp:(\d+)/);
-    if (!match) throw new BadRequestError("Invalid sign-in message format");
-    const ts = parseInt(match[1]);
-    if (Date.now() - ts > 5 * 60 * 1000) throw new UnauthorizedError("Sign-in message expired. Please try again.");
+    // Single-use server nonce prevents signature replay: the message must carry a
+    // challenge we issued for THIS public key, and it's consumed on first use.
+    if (!consumeChallenge(data.publicKey, data.message)) {
+      throw new UnauthorizedError("Invalid or expired sign-in challenge. Please request a new one.");
+    }
 
     // Verify signature using nacl
     const msgBytes = new TextEncoder().encode(data.message);

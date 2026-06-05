@@ -46,10 +46,11 @@ function getRefreshToken(): string | null {
   return localStorage.getItem("refreshToken");
 }
 
-function setTokens(accessToken: string, refreshToken: string) {
+function setTokens(accessToken: string, _refreshToken?: string) {
   if (typeof window === "undefined") return;
   localStorage.setItem("accessToken", accessToken);
-  localStorage.setItem("refreshToken", refreshToken);
+  // The refresh token now lives in an HttpOnly cookie set by the backend — it is
+  // intentionally NOT persisted to JS-readable storage so XSS can't exfiltrate it.
 }
 
 function clearTokens() {
@@ -75,8 +76,11 @@ async function maybeRefresh(): Promise<void> {
   const access = getAccessToken();
   if (access && !isTokenExpiringSoon(access)) return;
 
-  const refresh = getRefreshToken();
-  if (!refresh) return;
+  // The refresh token is in an HttpOnly cookie (not readable here). A legacy token
+  // may still sit in localStorage from before the cookie migration — send it as a
+  // body fallback so those sessions transparently move onto the cookie.
+  const legacyRefresh = getRefreshToken();
+  if (!access && !legacyRefresh) return; // not logged in — nothing to refresh
 
   if (refreshPromise) return refreshPromise;
 
@@ -85,11 +89,14 @@ async function maybeRefresh(): Promise<void> {
       const res = await fetch(`${BASE}/api/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: refresh }),
+        credentials: "include", // send + receive the HttpOnly refresh cookie
+        body: legacyRefresh ? JSON.stringify({ refreshToken: legacyRefresh }) : undefined,
       });
-      const json = await res.json();
-      if (json.success && json.data?.accessToken) {
-        setTokens(json.data.accessToken, json.data.refreshToken);
+      const json = await res.json().catch(() => ({}));
+      if (json?.success && json.data?.accessToken) {
+        setTokens(json.data.accessToken);
+        // Migrated onto the cookie — drop the legacy localStorage refresh token.
+        if (typeof window !== "undefined") localStorage.removeItem("refreshToken");
       } else {
         clearTokens();
         userStore.clear();
@@ -124,6 +131,7 @@ async function request<T = unknown>(
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
+    credentials: "include", // send the HttpOnly refresh cookie to /api/auth/* + store Set-Cookie on login
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -176,6 +184,12 @@ export const api = {
     return { success: true, data };
   },
 
+  // Fetch a single-use server nonce message to sign (anti-replay for wallet auth).
+  async walletChallenge(publicKey: string): Promise<string> {
+    const data = await post<{ message: string }>("/api/auth/challenge", { publicKey }, false);
+    return data.message;
+  },
+
   async walletLogin(b: { publicKey: string; signature: number[]; message: string }) {
     const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
       "/api/auth/wallet", b, false,
@@ -214,11 +228,10 @@ export const api = {
   },
 
   async logout() {
-    const refreshToken = getRefreshToken();
+    // Always hit the endpoint — the HttpOnly cookie carries the refresh token and
+    // must be cleared server-side (legacy localStorage token sent as a fallback).
     try {
-      if (refreshToken) {
-        await post("/api/auth/logout", { refreshToken });
-      }
+      await post("/api/auth/logout", { refreshToken: getRefreshToken() });
     } catch {
       // fire-and-forget; don't block logout on network failure
     }

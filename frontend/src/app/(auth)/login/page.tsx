@@ -281,7 +281,7 @@ function LoginPageInner() {
                 onClick={async () => {
                   setLoading(true);
                   try {
-                    const message = `Sign in to Ashnance\ntimestamp:${Date.now()}`;
+                    const message = await api.walletChallenge(walletAddr);
                     const sig = await signMessage(walletAddr, message);
                     const res = await api.walletLogin({ publicKey: walletAddr, signature: sig.signature, message: sig.message });
                     if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));

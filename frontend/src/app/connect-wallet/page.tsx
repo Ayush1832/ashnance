@@ -51,7 +51,7 @@ export default function ConnectWalletPage() {
       setAddress(publicKey);
       setStatus("signing");
 
-      const message = `Welcome to Ashnance!\n\nSign this message to link your wallet.\nThis does not cost any SOL.\n\ntimestamp:${Date.now()}`;
+      const message = await api.walletChallenge(publicKey);
       const sig = await signMessage(wallet.provider, message);
       const sigArray = Array.from(sig);
 
