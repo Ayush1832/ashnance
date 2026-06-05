@@ -12,7 +12,7 @@ import { api } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
 import { mapProfile } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
-import { walletOptions, connectWallet, sendUsdcTransfer, truncate, type WalletProvider } from "@/lib/solana";
+import { walletOptions, connectWallet, disconnectWallet, sendUsdcTransfer, truncate, type WalletProvider } from "@/lib/solana";
 import type { Transaction, WhitelistAddress } from "@/lib/types";
 
 type Tab = "deposit" | "withdraw" | "history" | "whitelist";
@@ -75,6 +75,12 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
       toast.error(err instanceof Error ? err.message : "Failed to connect wallet");
     }
     setConnecting(null);
+  }
+
+  async function disconnect() {
+    await disconnectWallet();
+    setConnectedAddr(null);
+    toast.success("Wallet disconnected");
   }
 
   async function deposit() {
@@ -147,9 +153,18 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
 
       {connectedAddr ? (
         <>
-          <div className="glass rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between text-xs">
+          <div className="glass rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between gap-3 text-xs">
             <span className="text-muted-foreground">Paying from</span>
-            <span className="font-mono">{truncate(connectedAddr, 6)}</span>
+            <div className="flex items-center gap-2.5">
+              <span className="font-mono">{truncate(connectedAddr, 6)}</span>
+              <button
+                type="button"
+                onClick={disconnect}
+                className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-danger/40 hover:text-danger"
+              >
+                Disconnect
+              </button>
+            </div>
           </div>
           <FireButton onClick={deposit} className="w-full" disabled={depositing || !amount}>
             <Plus className="h-4 w-4" />

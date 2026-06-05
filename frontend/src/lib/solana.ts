@@ -57,6 +57,17 @@ export async function connectWallet(
   return { address };
 }
 
+/** Best-effort disconnect of the last-connected wallet provider so the user can
+ *  link a different wallet. Safe to call even if nothing is connected. */
+export async function disconnectWallet(): Promise<void> {
+  try {
+    await _lastProvider?.disconnect?.();
+  } catch {
+    /* provider may not support disconnect — clearing the cache is enough */
+  }
+  _lastProvider = null;
+}
+
 export async function signMessage(
   address: string,
   message: string,
