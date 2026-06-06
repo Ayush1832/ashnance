@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Flame, Wallet, Trophy, Gem, Sprout, Users, Settings, Shield, Crown,
+  Flame, Wallet, Trophy, Gem, Users, Settings, Shield, Crown,
   Bell, Menu, X, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "./Logo";
@@ -24,7 +24,8 @@ const navItems = [
   { to: "/wallet",      label: "Wallet",      icon: Wallet },
   { to: "/leaderboard", label: "Leaderboard", icon: Trophy },
   { to: "/subscribe",   label: "VIP",         icon: Gem },
-  { to: "/staking",     label: "Stake ASH",   icon: Sprout },
+  // Staking is a Phase 2 feature — nav item hidden for the Phase 1 launch.
+  // { to: "/staking",     label: "Stake ASH",   icon: Sprout },
   { to: "/referrals",   label: "Referrals",   icon: Users },
   { to: "/settings",    label: "Settings",    icon: Settings },
 ] as const;
