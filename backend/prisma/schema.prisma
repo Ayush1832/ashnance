@@ -293,6 +293,20 @@ model PlatformConfig {
   @@map("platform_configs")
 }
 
+// ---- WAITLIST (Coming Soon page) ----
+// Pre-launch email subscribers. Stored for future launch-announcement campaigns;
+// emails are NOT sent automatically.
+model Subscriber {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  ipAddress String?
+  source    String   @default("Landing Page")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("subscribers")
+}
+
 // ---- REWARD POOL ----
 model RewardPool {
   id            String   @id @default(uuid())

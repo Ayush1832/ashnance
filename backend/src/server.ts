@@ -83,6 +83,14 @@ const onchainLimiter = rateLimit({
 });
 app.use("/api/wallet/onchain", onchainLimiter);
 
+// Waitlist signup — anti-spam: 10 submissions per hour per IP
+const subscribeLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, error: "Too many signups from this network, please try again later" },
+});
+app.use("/api/subscribe", subscribeLimiter);
+
 // OTP endpoint — strict limit: 5 requests per 10 minutes per IP
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,

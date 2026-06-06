@@ -441,6 +441,58 @@ export const api = {
     return { success: true };
   },
 
+  // ── Launch mode / waitlist ──────────────────────────────────────────────────
+
+  async launchStatus() {
+    const data = await get<{ launchMode: boolean; launchAt: string | null }>("/api/launch-status", false);
+    return { success: true, data };
+  },
+
+  async subscribe(email: string) {
+    const data = await post<{ subscribed?: boolean; alreadySubscribed?: boolean }>(
+      "/api/subscribe", { email }, false,
+    );
+    return { success: true, data };
+  },
+
+  async adminLaunch() {
+    const data = await get<{ launchMode: boolean; launchAt: string | null }>("/api/admin/launch");
+    return { success: true, data };
+  },
+
+  async adminSetLaunch(b: { launchMode?: boolean; launchAt?: string | null }) {
+    await put("/api/admin/launch", b);
+    return { success: true };
+  },
+
+  async adminSubscribers(q?: { search?: string; page?: number }) {
+    const params = new URLSearchParams();
+    if (q?.search) params.set("search", q.search);
+    if (q?.page) params.set("page", String(q.page));
+    const qs = params.toString();
+    const data = await get<{
+      items: { id: string; email: string; source: string; ipAddress: string | null; createdAt: string }[];
+      total: number; page: number; pages: number;
+    }>(`/api/admin/subscribers${qs ? "?" + qs : ""}`);
+    return { success: true, data };
+  },
+
+  async adminDeleteSubscriber(id: string) {
+    await del(`/api/admin/subscribers/${id}`);
+    return { success: true };
+  },
+
+  // CSV endpoint returns a file (not JSON) — raw fetch with auth, return the text.
+  async adminExportSubscribersCsv(): Promise<string> {
+    await maybeRefresh();
+    const res = await fetch(`${BASE}/api/admin/subscribers/export`, {
+      headers: { ...authHeader() },
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Export failed");
+    return res.text();
+  },
+
   // ── Owner ─────────────────────────────────────────────────────────────────
 
   async ownerSolvency() {

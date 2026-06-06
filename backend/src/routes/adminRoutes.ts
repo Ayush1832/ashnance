@@ -193,6 +193,84 @@ router.put("/users/:id/ban", async (req: AuthRequest, res: Response, next: NextF
   } catch (error) { next(error); }
 });
 
+// ============== WAITLIST / LAUNCH MODE ==============
+
+// GET /api/admin/subscribers?search=&page=&limit=
+router.get("/subscribers", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const search = ((req.query.search as string) || "").trim();
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const where = search ? { email: { contains: search, mode: "insensitive" as const } } : {};
+    const [items, total] = await Promise.all([
+      prisma.subscriber.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+      prisma.subscriber.count({ where }),
+    ]);
+    res.json({ success: true, data: { items, total, page, pages: Math.ceil(total / limit) } });
+  } catch (error) { next(error); }
+});
+
+// GET /api/admin/subscribers/export — CSV of ALL subscribers (defined before /:id)
+router.get("/subscribers/export", async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const subs = await prisma.subscriber.findMany({ orderBy: { createdAt: "desc" } });
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      "email,source,ipAddress,createdAt",
+      ...subs.map((s) => [s.email, s.source, s.ipAddress, s.createdAt.toISOString()].map(esc).join(",")),
+    ].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="ashnance-subscribers.csv"');
+    res.send(csv);
+  } catch (error) { next(error); }
+});
+
+// DELETE /api/admin/subscribers/:id
+router.delete("/subscribers/:id", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    await prisma.subscriber.delete({ where: { id: req.params.id as string } });
+    res.json({ success: true, message: "Subscriber removed" });
+  } catch (error) { next(error); }
+});
+
+// GET /api/admin/launch — current launch-mode config
+router.get("/launch", async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const rows = await prisma.platformConfig.findMany({ where: { key: { in: ["launch_mode", "launch_at"] } } });
+    const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
+    res.json({ success: true, data: { launchMode: map["launch_mode"] === "on", launchAt: map["launch_at"] || null } });
+  } catch (error) { next(error); }
+});
+
+// PUT /api/admin/launch — toggle launch mode and/or set the countdown date
+router.put("/launch", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { launchMode, launchAt } = req.body as { launchMode?: boolean; launchAt?: string | null };
+    if (launchMode !== undefined) {
+      const value = launchMode ? "on" : "off";
+      await prisma.platformConfig.upsert({
+        where: { key: "launch_mode" },
+        create: { key: "launch_mode", value },
+        update: { value },
+      });
+    }
+    if (launchAt !== undefined) {
+      let value = "";
+      if (launchAt) {
+        const d = new Date(launchAt);
+        if (isNaN(d.getTime())) throw new BadRequestError("Invalid launch date");
+        value = d.toISOString();
+      }
+      await prisma.platformConfig.upsert({
+        where: { key: "launch_at" },
+        create: { key: "launch_at", value },
+        update: { value },
+      });
+    }
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+
 // ============== REWARD POOL ==============
 
 // GET /api/admin/pool

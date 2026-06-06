@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { SmoothScroll } from "@/components/motion/SmoothScroll";
 import { ScrollProgress } from "@/components/motion/ScrollProgress";
 import { GrainOverlay } from "@/components/effects/GrainOverlay";
+import { LaunchGate } from "@/components/launch/LaunchGate";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -36,7 +37,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         <GrainOverlay />
         <ScrollProgress />
-        <SmoothScroll>{children}</SmoothScroll>
+        <SmoothScroll>
+          <LaunchGate>{children}</LaunchGate>
+        </SmoothScroll>
         <Toaster position="top-right" theme="dark" />
       </body>
     </html>

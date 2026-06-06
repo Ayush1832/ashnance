@@ -1,17 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Ban, UserCheck, Save } from "lucide-react";
+import { Ban, UserCheck, Save, Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { Reveal } from "@/components/motion/Reveal";
-import { GlassCard, SectionHeader, FireButton, StatTile } from "@/components/ashnance/primitives";
+import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
 import { api } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 import type { BurnConfig, Round } from "@/lib/types";
 
-type Tab = "users" | "config";
+type Tab = "users" | "config" | "subscribers" | "launch";
+
+const TAB_LABELS: Record<Tab, string> = {
+  users: "Users",
+  config: "Config",
+  subscribers: "Subscribers",
+  launch: "Launch Mode",
+};
 
 type AdminUser = {
   id: string;
@@ -67,18 +74,20 @@ export default function AdminPage() {
         />
       </div>
 
-      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs w-fit">
-        {(["users","config"] as Tab[]).map((t) => (
+      <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs w-fit flex-wrap">
+        {(["users","config","subscribers","launch"] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
-            className={cn("h-8 px-5 rounded capitalize transition",
+            className={cn("h-8 px-5 rounded transition",
               tab === t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground")}>
-            {t === "users" ? "Users" : "Config"}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {tab === "users" && <UsersTab />}
       {tab === "config" && <ConfigTab />}
+      {tab === "subscribers" && <SubscribersTab />}
+      {tab === "launch" && <LaunchTab />}
     </AppShell>
   );
 }
@@ -279,6 +288,179 @@ function ConfigTab() {
           </FireButton>
         </div>
       </GlassCard>
+    </div>
+  );
+}
+
+function SubscribersTab() {
+  const [subs, setSubs] = useState<
+    { id: string; email: string; source: string; ipAddress: string | null; createdAt: string }[]
+  >([]);
+  const [total, setTotal] = useState(0);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  async function load(q = "") {
+    setLoading(true);
+    try {
+      const res = await api.adminSubscribers({ search: q });
+      if (res.success) { setSubs(res.data.items); setTotal(res.data.total); }
+    } catch { toast.error("Failed to load subscribers"); }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    const t = setTimeout(() => load(search), search ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  async function remove(id: string) {
+    try {
+      await api.adminDeleteSubscriber(id);
+      setSubs((p) => p.filter((s) => s.id !== id));
+      setTotal((t) => Math.max(0, t - 1));
+      toast.success("Subscriber removed");
+    } catch { toast.error("Delete failed"); }
+  }
+
+  async function exportCsv() {
+    try {
+      const csv = await api.adminExportSubscribersCsv();
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "ashnance-subscribers.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("Export failed"); }
+  }
+
+  const gridCls = "grid gap-3 grid-cols-[minmax(0,1fr)_84px_36px] sm:grid-cols-[minmax(0,1fr)_140px_140px_36px]";
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          type="text"
+          placeholder="Search by email…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-10 px-3 rounded-md bg-muted border border-border text-sm flex-1 min-w-48 max-w-md"
+        />
+        <span className="text-sm text-muted-foreground">{total} subscriber{total === 1 ? "" : "s"}</span>
+        <GhostButton onClick={exportCsv}><Download className="h-4 w-4" /> Export CSV</GhostButton>
+      </div>
+
+      <GlassCard className="p-0 overflow-hidden">
+        <div className={cn(gridCls, "text-xs uppercase tracking-wider text-muted-foreground px-5 py-2.5 border-b border-border")}>
+          <span>Email</span><span className="hidden sm:block">Source</span><span>Joined</span><span />
+        </div>
+        <div className="divide-y divide-border">
+          {loading && <div className="px-5 py-8 text-center text-sm text-muted-foreground">Loading…</div>}
+          {!loading && subs.length === 0 && (
+            <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+              {search ? "No subscribers match your search." : "No subscribers yet."}
+            </div>
+          )}
+          {!loading && subs.map((s) => (
+            <div key={s.id} className={cn(gridCls, "items-center px-5 py-3 text-sm")}>
+              <div className="truncate">{s.email}</div>
+              <div className="hidden sm:block text-xs text-muted-foreground truncate">{s.source}</div>
+              <div className="text-xs text-muted-foreground">{timeAgo(s.createdAt)}</div>
+              <button onClick={() => remove(s.id)} className="p-1.5 rounded text-danger hover:bg-danger/10 justify-self-center">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function LaunchTab() {
+  const [launchMode, setLaunchMode] = useState(false);
+  const [launchAt, setLaunchAt] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.adminLaunch()
+      .then((res) => {
+        if (res.success) {
+          setLaunchMode(res.data.launchMode);
+          setLaunchAt(res.data.launchAt ? toLocalInput(res.data.launchAt) : "");
+        }
+      })
+      .catch(() => toast.error("Failed to load launch settings"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await api.adminSetLaunch({
+        launchMode,
+        launchAt: launchAt ? new Date(launchAt).toISOString() : null,
+      });
+      toast.success("Launch settings saved");
+    } catch { toast.error("Failed to save"); }
+    setSaving(false);
+  }
+
+  if (loading) {
+    return <GlassCard><div className="text-sm text-muted-foreground text-center py-8">Loading…</div></GlassCard>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <GlassCard>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="font-display text-lg font-semibold">Launch Mode</div>
+            <p className="text-sm text-muted-foreground mt-1 max-w-md">
+              When ON, the public sees the Coming Soon page across the whole site.
+              Admins and owners keep full access. Turn OFF to instantly restore the
+              live platform — no data is lost.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setLaunchMode((v) => !v)}
+            aria-pressed={launchMode}
+            className={cn("relative h-7 w-12 shrink-0 rounded-full transition-colors", launchMode ? "bg-fire" : "bg-border")}
+          >
+            <span className={cn("absolute top-1 h-5 w-5 rounded-full bg-white transition-transform", launchMode ? "translate-x-6" : "translate-x-1")} />
+          </button>
+        </div>
+        {launchMode && (
+          <div className="mt-4 rounded-lg border border-warning/30 bg-warning/5 px-4 py-2.5 text-xs text-warning">
+            Launch Mode is ON — visitors currently see the Coming Soon page.
+          </div>
+        )}
+      </GlassCard>
+
+      <GlassCard>
+        <label className="text-xs text-muted-foreground mb-1 block">Launch date &amp; time (countdown target)</label>
+        <input
+          type="datetime-local"
+          value={launchAt}
+          onChange={(e) => setLaunchAt(e.target.value)}
+          className="w-full h-10 px-3 rounded-md bg-muted border border-border text-sm font-mono max-w-sm"
+        />
+        <p className="text-xs text-muted-foreground mt-2">Leave empty to hide the countdown timer on the Coming Soon page.</p>
+      </GlassCard>
+
+      <FireButton onClick={save} disabled={saving}>
+        <Save className="h-4 w-4" />{saving ? "Saving…" : "Save Launch Settings"}
+      </FireButton>
     </div>
   );
 }

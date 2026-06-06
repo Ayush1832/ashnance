@@ -81,3 +81,8 @@ export const updatePlatformConfigSchema = z.object({
   key: z.string().min(1),
   value: z.string(),
 });
+
+// ---- WAITLIST (Coming Soon) ----
+export const subscribeSchema = z.object({
+  email: z.string().trim().email("Please enter a valid email address").max(254),
+});
