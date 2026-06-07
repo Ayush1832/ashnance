@@ -105,7 +105,7 @@ app.get("/api/health", (_req, res) => {
   res.json({
     success: true,
     service: "Ashnance API",
-    version: "1.0.0",
+    version: "1.0.1",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
