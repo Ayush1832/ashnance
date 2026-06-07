@@ -33,8 +33,12 @@ export default function AdminLoginPage() {
     setLoading(false);
   }
 
-  async function signIn(e: FormEvent) {
+  async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    // Before a code is requested, submit/Enter should SEND the code — not attempt
+    // a login with an empty code.
+    if (!sent) { await sendOtp(); return; }
+    if (otp.length !== 6) { toast.error("Enter the 6-digit code"); return; }
     setLoading(true);
     try {
       // Backend verifies the code AND that the account is an admin/owner; a
@@ -66,7 +70,7 @@ export default function AdminLoginPage() {
           Restricted area — authorized administrators only. We&apos;ll email you a one-time sign-in code.
         </p>
 
-        <form onSubmit={signIn} className="space-y-4">
+        <form onSubmit={onSubmit} className="space-y-4">
           <Input type="email" placeholder="Admin email" value={email} onChange={setEmail} autoComplete="email" />
           <FireButton type="button" className="w-full" onClick={sendOtp} disabled={loading || !email}>
             <Mail className="h-4 w-4" /> {sent ? "Resend Code" : "Send Code"}
