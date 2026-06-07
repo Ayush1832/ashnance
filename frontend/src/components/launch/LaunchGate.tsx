@@ -24,14 +24,12 @@ export function LaunchGate({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const pathname = usePathname();
   const [launchMode, setLaunchMode] = useState<boolean | null>(null);
-  const [launchAt, setLaunchAt] = useState<string | null>(null);
 
   useEffect(() => {
     api
       .launchStatus()
       .then((res) => {
         setLaunchMode(res.data.launchMode);
-        setLaunchAt(res.data.launchAt);
       })
       .catch(() => setLaunchMode(false)); // fail open — never hard-block the site if status is unreachable
   }, []);
@@ -50,5 +48,5 @@ export function LaunchGate({ children }: { children: ReactNode }) {
   // (useAuth fetches it) — wait before deciding to show Coming Soon.
   if (hasSession() && !user) return <div className="min-h-screen bg-background" />;
 
-  return <ComingSoon launchAt={launchAt} />;
+  return <ComingSoon />;
 }
