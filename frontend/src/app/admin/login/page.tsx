@@ -3,83 +3,56 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Flame, Mail, ShieldCheck, Eye, EyeOff } from "lucide-react";
+import { Mail, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { FireButton } from "@/components/ashnance/primitives";
 import { api, mapProfile } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
 import { cn } from "@/lib/utils";
 
-// Dedicated admin login — separate from the player login. Accepts the same
-// owner/admin accounts but verifies the role and rejects normal users.
+// Dedicated admin login — OTP (email code) only. Uses the same owner/admin
+// accounts; after sign-in the role is verified and normal users are rejected.
 export default function AdminLoginPage() {
   const nav = useRouter();
-  const [otpMode, setOtpMode] = useState(false);
-  const [need2fa, setNeed2fa] = useState(false);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
-  const [twoFaCode, setTwoFaCode] = useState("");
-  const [show, setShow] = useState(false);
+  const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // After any successful sign-in, confirm the account is an admin/owner.
-  async function gateAdmin(): Promise<boolean> {
+  async function sendOtp() {
+    if (!email) { toast.error("Enter your admin email first"); return; }
+    setLoading(true);
     try {
+      await api.sendOtp(email);
+      setSent(true);
+      toast.success("Code sent to your email");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send code");
+    }
+    setLoading(false);
+  }
+
+  async function signIn(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await api.login({ email, otp });
+      // Verify the account is actually an admin/owner before letting them in.
       const res = await api.profile();
       const mapped = mapProfile(res.data as Record<string, unknown>);
       if (mapped.role === "ADMIN" || mapped.role === "OWNER") {
         userStore.update(mapped);
         toast.success("Welcome, admin");
         nav.replace("/admin");
-        return true;
+        return;
       }
-    } catch { /* fall through to rejection */ }
-    await api.logout();
-    toast.error("This area is for administrators only.");
-    return false;
-  }
-
-  async function passwordLogin(e: FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const res = await api.login({ email, password });
-      if (res.data.requires2fa) { setNeed2fa(true); setLoading(false); return; }
-      if (!(await gateAdmin())) setLoading(false);
+      await api.logout();
+      toast.error("This area is for administrators only.");
+      setLoading(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign in failed");
       setLoading(false);
     }
-  }
-
-  async function verify2fa() {
-    setLoading(true);
-    try {
-      await api.loginWith2fa({ email, password, twoFaCode });
-      if (!(await gateAdmin())) { setNeed2fa(false); setLoading(false); }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Invalid code");
-      setLoading(false);
-    }
-  }
-
-  async function otpLogin(e: FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      await api.login({ email, otp });
-      if (!(await gateAdmin())) setLoading(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "OTP sign in failed");
-      setLoading(false);
-    }
-  }
-
-  async function sendOtp() {
-    if (!email) { toast.error("Enter your admin email first"); return; }
-    try { await api.sendOtp(email); toast.success("Code sent to your email"); }
-    catch (err) { toast.error(err instanceof Error ? err.message : "Failed to send code"); }
   }
 
   return (
@@ -95,41 +68,32 @@ export default function AdminLoginPage() {
             <h1 className="font-display text-xl font-bold leading-none">Admin Access</h1>
           </div>
         </div>
-        <p className="mb-6 text-sm text-muted-foreground">Restricted area — authorized administrators only.</p>
+        <p className="mb-6 text-sm text-muted-foreground">
+          Restricted area — authorized administrators only. We&apos;ll email you a one-time sign-in code.
+        </p>
 
-        {otpMode ? (
-          <form onSubmit={otpLogin} className="space-y-4">
-            <Input type="email" placeholder="Admin email" value={email} onChange={setEmail} autoComplete="email" />
-            <FireButton type="button" className="w-full" onClick={sendOtp}><Mail className="h-4 w-4" /> Send Code</FireButton>
-            <Input className="text-center font-mono tracking-[0.4em]" placeholder="● ● ● ● ● ●" value={otp} onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" />
-            <FireButton type="submit" className="w-full" disabled={loading || !otp || !email}>{loading ? "Signing in…" : "Sign In with Code"}</FireButton>
-            <button type="button" onClick={() => setOtpMode(false)} className="block w-full text-center text-xs text-muted-foreground transition hover:text-fire">← Use password instead</button>
-          </form>
-        ) : (
-          <form onSubmit={passwordLogin} className="space-y-3.5">
-            <Input type="email" placeholder="Admin email" value={email} onChange={setEmail} autoComplete="email" />
-            <div className="relative">
-              <Input type={show ? "text" : "password"} placeholder="Password" value={password} onChange={setPassword} autoComplete="current-password" className="pr-10" />
-              <button type="button" onClick={() => setShow(!show)} aria-label={show ? "Hide password" : "Show password"} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-fire">
-                {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <FireButton type="submit" className="w-full" size="lg" disabled={loading}><Flame className="h-4 w-4" />{loading ? "Signing in…" : "Sign In"}</FireButton>
-            <button type="button" onClick={() => setOtpMode(true)} className="block w-full text-center text-xs text-muted-foreground transition hover:text-fire">Use email code (OTP) instead</button>
-          </form>
-        )}
+        <form onSubmit={signIn} className="space-y-4">
+          <Input type="email" placeholder="Admin email" value={email} onChange={setEmail} autoComplete="email" />
+          <FireButton type="button" className="w-full" onClick={sendOtp} disabled={loading || !email}>
+            <Mail className="h-4 w-4" /> {sent ? "Resend Code" : "Send Code"}
+          </FireButton>
+          {sent && (
+            <>
+              <Input
+                className="text-center font-mono tracking-[0.4em]"
+                placeholder="● ● ● ● ● ●"
+                value={otp}
+                onChange={(v) => setOtp(v.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+                inputMode="numeric"
+              />
+              <FireButton type="submit" className="w-full" size="lg" disabled={loading || otp.length !== 6}>
+                {loading ? "Signing in…" : "Sign In"}
+              </FireButton>
+            </>
+          )}
+        </form>
       </div>
-
-      {need2fa && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/85 p-4 backdrop-blur-md">
-          <div className="glass-card w-full max-w-md rounded-2xl p-8">
-            <h2 className="font-display text-2xl font-bold">Two-Factor Authentication</h2>
-            <p className="mb-6 mt-2 text-sm text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
-            <Input className="mb-6 text-center font-mono text-lg tracking-[0.4em]" placeholder="● ● ● ● ● ●" value={twoFaCode} onChange={(v) => setTwoFaCode(v.replace(/\D/g, "").slice(0, 6))} maxLength={6} inputMode="numeric" />
-            <FireButton className="w-full" size="lg" disabled={loading || twoFaCode.length !== 6} onClick={verify2fa}><Flame className="h-4 w-4" />{loading ? "Verifying…" : "Verify"}</FireButton>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
