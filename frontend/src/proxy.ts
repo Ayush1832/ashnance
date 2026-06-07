@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// Host-based separation of the admin panel from the player site.
+// Host-based separation of the admin panel from the player site (Next 16 "proxy",
+// formerly "middleware").
 // - admin.ashnance.com  → serves ONLY the /admin area (its own login + console).
 // - www/apex            → the player site; /admin is NOT reachable here.
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const host = (req.headers.get("host") || "").toLowerCase();
   const isAdminHost = host.startsWith("admin.");
   const { pathname } = req.nextUrl;
