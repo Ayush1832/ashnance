@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Ban, UserCheck, Save, Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { AppShell } from "@/components/ashnance/AppShell";
+import { AdminShell } from "@/components/admin/AdminShell";
 import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
@@ -46,7 +46,7 @@ export default function AdminPage() {
   }, []);
 
   return (
-    <AppShell>
+    <AdminShell>
       <Reveal>
         <SectionHeader eyebrow="Operations" title="Admin" sub="Manage users and platform config." />
       </Reveal>
@@ -88,7 +88,7 @@ export default function AdminPage() {
       {tab === "config" && <ConfigTab />}
       {tab === "subscribers" && <SubscribersTab />}
       {tab === "launch" && <LaunchTab />}
-    </AppShell>
+    </AdminShell>
   );
 }
 

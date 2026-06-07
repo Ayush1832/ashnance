@@ -9,7 +9,7 @@ import { ComingSoon } from "./ComingSoon";
 
 // Routes that stay reachable in launch mode so an admin can sign in and toggle it
 // off. A non-admin who logs in here still hits the gate on every other route.
-const EXEMPT = ["/login", "/register", "/auth"];
+const EXEMPT = ["/login", "/register", "/auth", "/admin"];
 
 function hasSession() {
   return typeof window !== "undefined" && !!localStorage.getItem("accessToken");
