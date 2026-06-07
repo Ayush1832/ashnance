@@ -296,8 +296,14 @@ export class AuthService {
       data: { failedAttempts: 0, lockedUntil: null },
     });
 
-    const tokens = AuthService.generateTokens(user.id, user.email);
-    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+    // 1-day admin session: a dedicated longer-lived access token and NO refresh
+    // token, so the admin panel stays signed in for the day and re-authenticates
+    // the next day.
+    const accessToken = jwt.sign(
+      { userId: user.id, email: user.email, jti: crypto.randomUUID() },
+      config.jwt.secret,
+      { algorithm: "HS256", expiresIn: 86400 }
+    );
 
     return {
       user: {
@@ -309,7 +315,7 @@ export class AuthService {
         referralCode: user.referralCode,
         role: user.role,
       },
-      ...tokens,
+      accessToken,
     };
   }
 

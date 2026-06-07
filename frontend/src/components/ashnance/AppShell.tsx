@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Flame, Wallet, Trophy, Gem, Users, Settings, Shield, Crown,
+  Flame, Wallet, Trophy, Gem, Users, Settings, Shield,
   Bell, Menu, X, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "./Logo";
@@ -137,21 +137,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}
             </Link>
           ))}
-          {isAdmin && (
-            <Link href="/admin" className={cn(
+          {(isAdmin || isOwner) && (
+            <a href="https://admin.ashnance.com" className={cn(
               "mt-4 flex items-center gap-3 rounded-xl border-t border-border px-3 py-2.5 pt-4 text-sm transition-colors",
-              isActive("/admin") ? "text-warning" : "text-muted-foreground hover:text-foreground"
+              "text-muted-foreground hover:text-foreground"
             )}>
-              <Shield className="size-4" /> Admin
-            </Link>
-          )}
-          {isOwner && (
-            <Link href="/owner" className={cn(
-              "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
-              isActive("/owner") ? "text-gold" : "text-muted-foreground hover:text-foreground"
-            )}>
-              <Crown className="size-4" /> Owner
-            </Link>
+              <Shield className="size-4" /> Admin Console
+            </a>
           )}
         </nav>
         <div className="border-t border-border p-4 text-[11px] text-muted-foreground">
@@ -283,8 +275,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <it.icon className={cn("size-4", isActive(it.to) && "text-primary")} /> {it.label}
               </Link>
             ))}
-            {isAdmin && <Link href="/admin" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-warning"><Shield className="size-4" /> Admin</Link>}
-            {isOwner && <Link href="/owner" onClick={() => setSidebarOpen(false)} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gold"><Crown className="size-4" /> Owner</Link>}
+            {(isAdmin || isOwner) && <a href="https://admin.ashnance.com" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-warning"><Shield className="size-4" /> Admin Console</a>}
           </aside>
         </div>
       )}

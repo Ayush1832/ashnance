@@ -343,7 +343,7 @@ router.post("/admin/login", async (req: Request, res: Response, next: NextFuncti
     const valid = await EmailService.verifyOtp(normalized, String(otp).trim());
     if (!valid) throw new UnauthorizedError("Invalid or expired code");
     const result = await AuthService.adminLoginByEmail(normalized);
-    setRefreshCookie(res, result.refreshToken);
+    // No refresh cookie for admin — the 1-day access token IS the session.
     res.json({ success: true, data: result });
   } catch (error) { next(error); }
 });

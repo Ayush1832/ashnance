@@ -24,6 +24,10 @@ export function proxy(req: NextRequest) {
       url.pathname = "/";
       return NextResponse.redirect(url);
     }
+    // The old owner panel is consolidated into the admin console.
+    if (pathname.startsWith("/owner")) {
+      return NextResponse.redirect("https://admin.ashnance.com");
+    }
   }
   return NextResponse.next();
 }

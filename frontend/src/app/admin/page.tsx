@@ -12,7 +12,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { BurnConfig, Round } from "@/lib/types";
 
-type Tab = "users" | "config" | "subscribers" | "launch" | "profit";
+type Tab = "users" | "config" | "subscribers" | "launch" | "profit" | "rounds";
 
 const TAB_LABELS: Record<Tab, string> = {
   users: "Users",
@@ -20,6 +20,7 @@ const TAB_LABELS: Record<Tab, string> = {
   subscribers: "Subscribers",
   launch: "Launch Mode",
   profit: "Profit",
+  rounds: "Rounds",
 };
 
 type AdminUser = {
@@ -79,7 +80,7 @@ export default function AdminPage() {
       </div>
 
       <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs w-fit flex-wrap">
-        {(["users", "config", "subscribers", "launch", ...(isOwner ? ["profit"] : [])] as Tab[]).map((t) => (
+        {(["users", "config", "subscribers", "launch", ...(isOwner ? ["rounds", "profit"] : [])] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn("h-8 px-5 rounded transition",
               tab === t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground")}>
@@ -92,6 +93,7 @@ export default function AdminPage() {
       {tab === "config" && <ConfigTab />}
       {tab === "subscribers" && <SubscribersTab />}
       {tab === "launch" && <LaunchTab />}
+      {tab === "rounds" && <RoundsTab />}
       {tab === "profit" && <ProfitTab />}
     </AdminShell>
   );
@@ -579,6 +581,66 @@ function ProfitTab() {
           </FireButton>
         )}
       </GlassCard>
+    </div>
+  );
+}
+
+function RoundsTab() {
+  const [round, setRound] = useState<Round | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    try {
+      const res = await api.currentRound();
+      setRound(res.success && res.data ? (res.data as Round) : null);
+    } catch { /* no active round */ }
+    setLoading(false);
+  }
+  useEffect(() => { load(); }, []);
+
+  async function createRound() {
+    setBusy(true);
+    try { await api.ownerCreateRound(); toast.success("Round created"); await load(); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    setBusy(false);
+  }
+
+  async function endRound() {
+    if (!round) return;
+    setBusy(true);
+    try { await api.ownerEndRound(round.id); toast.success("Round ended — winner selected"); await load(); }
+    catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
+    setBusy(false);
+  }
+
+  if (loading) {
+    return <GlassCard><div className="text-sm text-muted-foreground text-center py-8">Loading round…</div></GlassCard>;
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      {round ? (
+        <GlassCard>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <StatTile label="Round" value={`#${round.number}`} sub={round.status} accent="fire" />
+            <StatTile label="Prize Pool" value={fmtUsd(round.prizePool)} sub={`target ${fmtUsd(round.prizePoolTarget)}`} accent="gold" />
+            <StatTile label="Burns / min" value={fmtNum(round.burnsLast60s)} sub="last 60s" accent="ash" />
+          </div>
+          <p className="text-sm text-muted-foreground mt-4 mb-3 max-w-md">
+            Ending a round selects the #1 weight holder as the winner and pays out the prize pool.
+          </p>
+          <FireButton onClick={endRound} disabled={busy}>{busy ? "Ending…" : "End Round & Pick Winner"}</FireButton>
+        </GlassCard>
+      ) : (
+        <GlassCard>
+          <div className="font-display text-lg font-semibold">No active round</div>
+          <p className="text-sm text-muted-foreground mt-1 mb-4 max-w-md">
+            Create a round so users can burn and compete for the prize pool.
+          </p>
+          <FireButton onClick={createRound} disabled={busy}>{busy ? "Creating…" : "Create New Round"}</FireButton>
+        </GlassCard>
+      )}
     </div>
   );
 }
