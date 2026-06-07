@@ -74,6 +74,7 @@ app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/wallet", authLimiter);
 app.use("/api/auth/link-wallet", authLimiter);
 app.use("/api/auth/challenge", authLimiter);
+app.use("/api/auth/admin", authLimiter); // admin OTP request + login
 
 // Tight limit for the public on-chain balance proxy (RPC cost / DoS guard)
 const onchainLimiter = rateLimit({

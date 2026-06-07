@@ -176,6 +176,21 @@ export const api = {
     return { success: true };
   },
 
+  // Admin-scoped OTP: backend only emails a code to admin/owner accounts.
+  async adminRequestOtp(email: string) {
+    await post("/api/auth/admin/request-otp", { email }, false);
+    return { success: true };
+  },
+
+  // Admin-scoped login: backend issues tokens ONLY for admins/owners.
+  async adminOtpLogin(b: { email: string; otp: string }) {
+    const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
+      "/api/auth/admin/login", b, false,
+    );
+    if (data.accessToken) setTokens(data.accessToken, data.refreshToken);
+    return { success: true, data };
+  },
+
   async register(b: { email: string; username?: string; password?: string; otp?: string; referralCode?: string }) {
     const data = await post<{ accessToken: string; refreshToken: string; user: unknown }>(
       "/api/auth/register", b, false,

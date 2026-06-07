@@ -13,6 +13,7 @@ import {
   NotFoundError,
   AccountLockedError,
   BadRequestError,
+  ForbiddenError,
 } from "../utils/errors";
 
 export class AuthService {
@@ -238,6 +239,76 @@ export class AuthService {
         role: user.role,
       },
       remainingRecoveryCodes: remaining,
+      ...tokens,
+    };
+  }
+
+  /**
+   * Ensure a configured OWNER_EMAILS address has an account, creating a minimal
+   * one if it doesn't exist yet. Lets an owner sign in to the admin panel even if
+   * they never registered on the player site. Only ever touches owner emails.
+   */
+  static async ensureOwnerAccount(email: string): Promise<void> {
+    if (!config.ownerEmails.includes(email)) return;
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return;
+    const username = await AuthService.generateUniqueUsername(email.split("@")[0] || "owner");
+    await prisma.$transaction(async (tx: any) => {
+      const newUser = await tx.user.create({
+        data: {
+          id: crypto.randomUUID(),
+          email,
+          username,
+          referralCode: crypto.randomBytes(6).toString("hex"),
+        },
+      });
+      await tx.wallet.create({ data: { userId: newUser.id } });
+    });
+  }
+
+  /**
+   * Whether `email` is a registered admin/owner. Used to scope admin login so
+   * codes are NEVER sent to non-admins and tokens are never issued to them.
+   */
+  static async isAdminEmail(email: string): Promise<boolean> {
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { role: true, email: true },
+    });
+    if (!user) return false;
+    return user.role === "ADMIN" || config.ownerEmails.includes(user.email);
+  }
+
+  /**
+   * Admin sign-in (OTP already verified by the route). Issues tokens ONLY if the
+   * account is an admin/owner — everyone else is rejected before any token exists.
+   */
+  static async adminLoginByEmail(email: string) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) throw new UnauthorizedError("Invalid or expired code");
+
+    const isAdmin = user.role === "ADMIN" || config.ownerEmails.includes(user.email);
+    if (!isAdmin) throw new ForbiddenError("This account is not an administrator.");
+    if (user.isBanned) throw new ForbiddenError("Your account has been suspended.");
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null },
+    });
+
+    const tokens = AuthService.generateTokens(user.id, user.email);
+    await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
+
+    return {
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        isVip: user.isVip,
+        vipTier: user.vipTier,
+        referralCode: user.referralCode,
+        role: user.role,
+      },
       ...tokens,
     };
   }

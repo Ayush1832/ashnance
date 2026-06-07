@@ -23,9 +23,10 @@ export default function AdminLoginPage() {
     if (!email) { toast.error("Enter your admin email first"); return; }
     setLoading(true);
     try {
-      await api.sendOtp(email);
+      // Backend only sends a code if this is an admin/owner email (silent otherwise).
+      await api.adminRequestOtp(email);
       setSent(true);
-      toast.success("Code sent to your email");
+      toast.success("If that's an admin account, a code has been sent.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send code");
     }
@@ -36,19 +37,12 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      await api.login({ email, otp });
-      // Verify the account is actually an admin/owner before letting them in.
-      const res = await api.profile();
-      const mapped = mapProfile(res.data as Record<string, unknown>);
-      if (mapped.role === "ADMIN" || mapped.role === "OWNER") {
-        userStore.update(mapped);
-        toast.success("Welcome, admin");
-        nav.replace("/admin");
-        return;
-      }
-      await api.logout();
-      toast.error("This area is for administrators only.");
-      setLoading(false);
+      // Backend verifies the code AND that the account is an admin/owner; a
+      // non-admin is rejected server-side and never receives a token.
+      const res = await api.adminOtpLogin({ email, otp });
+      if (res.data.user) userStore.update(mapProfile(res.data.user as Record<string, unknown>));
+      toast.success("Welcome, admin");
+      nav.replace("/admin");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Sign in failed");
       setLoading(false);

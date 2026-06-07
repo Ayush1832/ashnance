@@ -311,6 +311,44 @@ router.post("/link-wallet", authenticate, async (req: AuthRequest, res: Response
 });
 
 // ============================================================
+// ADMIN AUTH (separate subdomain, OTP-only, role-gated)
+// ============================================================
+
+// POST /api/auth/admin/request-otp — sends a code ONLY to admin/owner emails.
+// For anyone else it returns the same generic success WITHOUT sending anything
+// (no account enumeration, and non-admins never receive an admin sign-in code).
+router.post("/admin/request-otp", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") throw new BadRequestError("Email required");
+    const normalized = email.toLowerCase().trim();
+    // Auto-create the account for a configured owner email so they can always
+    // sign in; this only affects OWNER_EMAILS addresses.
+    await AuthService.ensureOwnerAccount(normalized);
+    if (await AuthService.isAdminEmail(normalized)) {
+      await EmailService.sendOtp(normalized);
+    }
+    res.json({ success: true, message: "If that is an administrator account, a sign-in code has been sent." });
+  } catch (error) { next(error); }
+});
+
+// POST /api/auth/admin/login — verify the OTP and issue tokens ONLY for
+// admins/owners. A normal user (even with a valid code) is rejected here, so a
+// non-admin is never logged in.
+router.post("/admin/login", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) throw new BadRequestError("Email and code are required");
+    const normalized = (email as string).toLowerCase().trim();
+    const valid = await EmailService.verifyOtp(normalized, String(otp).trim());
+    if (!valid) throw new UnauthorizedError("Invalid or expired code");
+    const result = await AuthService.adminLoginByEmail(normalized);
+    setRefreshCookie(res, result.refreshToken);
+    res.json({ success: true, data: result });
+  } catch (error) { next(error); }
+});
+
+// ============================================================
 // GOOGLE OAUTH
 // ============================================================
 
