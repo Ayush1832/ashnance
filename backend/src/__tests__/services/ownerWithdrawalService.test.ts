@@ -36,12 +36,14 @@ jest.mock("../../services/blockchainService", () => ({
     sendUsdcTransfer: jest.fn(),
     getMasterWalletAddress: jest.fn().mockReturnValue("masterWallet"),
     getUsdcBalance: jest.fn().mockResolvedValue(10000),
+    getNetwork: jest.fn().mockReturnValue("devnet"),
   },
 }));
 
 jest.mock("../../services/emailService", () => ({
   EmailService: {
     sendCriticalAlert: jest.fn().mockResolvedValue(undefined),
+    sendOwnerWithdrawalReceipt: jest.fn().mockResolvedValue(undefined),
   },
 }));
 

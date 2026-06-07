@@ -205,6 +205,58 @@ export class EmailService {
   }
 
   /**
+   * Notify BOTH owners after a profit-pool withdrawal executes — full breakdown
+   * of who received how much, who initiated it, and who approved it (audit trail).
+   */
+  static async sendOwnerWithdrawalReceipt(d: {
+    total: number;
+    owner1Wallet: string; owner1Amount: number; txHash1: string;
+    owner2Wallet: string; owner2Amount: number; txHash2: string;
+    initiatorEmail: string; approverEmail: string;
+    cluster?: string;
+  }): Promise<void> {
+    const recipients = config.ownerEmails;
+    if (!config.email.user || !recipients.length) return;
+
+    const e = escHtml;
+    const q = d.cluster && d.cluster !== "mainnet-beta" ? `?cluster=${encodeURIComponent(d.cluster)}` : "";
+    const row = (label: string, wallet: string, amount: number, hash: string) => `
+      <div style="border:1px solid #2A1F10;border-radius:8px;padding:16px;margin-bottom:12px;">
+        <div style="color:#806050;font-size:11px;letter-spacing:1px;text-transform:uppercase;">${e(label)}</div>
+        <div style="color:#27AE60;font-size:22px;font-weight:700;margin:6px 0;">$${amount.toFixed(2)} USDC</div>
+        <div style="font-size:12px;color:#aaa;word-break:break-all;">Wallet: ${e(wallet)}</div>
+        <div style="font-size:12px;margin-top:4px;">Tx: <a href="https://solscan.io/tx/${e(hash)}${q}" style="color:#FF8A4C;">${e(hash)}</a></div>
+      </div>`;
+
+    try {
+      await EmailService.transporter.sendMail({
+        from: `"Ashnance 🔥" <${config.email.from}>`,
+        to: sanitizeHeader(recipients.join(",")),
+        subject: `Profit Withdrawal Executed — $${d.total.toFixed(2)} USDC`,
+        html: `
+          <div style="background:#080808;color:#F0E8DC;font-family:monospace;padding:40px;max-width:560px;margin:0 auto;border:1px solid #2A1F10;">
+            <h1 style="font-family:sans-serif;color:#FF4D00;letter-spacing:4px;margin-bottom:4px;">WITHDRAWAL EXECUTED</h1>
+            <p style="color:#806050;font-size:12px;letter-spacing:2px;margin-bottom:24px;">PROFIT POOL · TWO-OWNER PAYOUT</p>
+            <div style="color:#806050;font-size:11px;letter-spacing:1px;text-transform:uppercase;">Total withdrawn</div>
+            <div style="color:#FFB800;font-size:30px;font-weight:700;margin:6px 0 20px;">$${d.total.toFixed(2)} USDC</div>
+            ${row("Owner 1 (60%)", d.owner1Wallet, d.owner1Amount, d.txHash1)}
+            ${row("Owner 2 (40%)", d.owner2Wallet, d.owner2Amount, d.txHash2)}
+            <table style="margin-top:16px;font-size:12px;">
+              <tr><td style="padding:4px 16px 4px 0;color:#806050;">Initiated by:</td><td>${e(d.initiatorEmail)}</td></tr>
+              <tr><td style="padding:4px 16px 4px 0;color:#806050;">Approved by:</td><td>${e(d.approverEmail)}</td></tr>
+            </table>
+            <p style="font-size:11px;color:#806050;margin-top:24px;line-height:1.7;">
+              Automated audit notice sent to all owners. If you did not authorize this withdrawal, investigate immediately.
+            </p>
+          </div>
+        `,
+      });
+    } catch (err) {
+      console.error("[EmailService] Failed to send owner withdrawal receipt:", err);
+    }
+  }
+
+  /**
    * Send a low-balance warning to all owner emails.
    */
   static async sendLowBalanceAlert(asset: string, balance: number, threshold: number): Promise<void> {

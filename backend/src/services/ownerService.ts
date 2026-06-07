@@ -265,6 +265,20 @@ export class OwnerService {
       }),
     ]);
 
+    // Audit email to BOTH owners: who got how much, who initiated, who approved.
+    EmailService.sendOwnerWithdrawalReceipt({
+      total:          Number(request.amount),
+      owner1Wallet:   request.owner1Wallet,
+      owner1Amount:   Number(request.owner1Amount),
+      txHash1,
+      owner2Wallet:   request.owner2Wallet,
+      owner2Amount:   Number(request.owner2Amount),
+      txHash2,
+      initiatorEmail: request.initiatorEmail,
+      approverEmail,
+      cluster:        BlockchainService.getNetwork(),
+    }).catch(() => {});
+
     return updatedRequest;
   }
 
