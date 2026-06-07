@@ -57,6 +57,14 @@ router.post("/withdrawal/initiate", async (req: AuthRequest, res: Response, next
   } catch (err) { next(err); }
 });
 
+// POST /api/owner/withdrawal/now — single-owner withdrawal (no second approval)
+router.post("/withdrawal/now", async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await OwnerService.withdrawProfit(req.user!.email);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+});
+
 // POST /api/owner/withdrawal/approve/:id
 router.post("/withdrawal/approve/:id", async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

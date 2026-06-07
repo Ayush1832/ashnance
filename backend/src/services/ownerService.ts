@@ -173,8 +173,9 @@ export class OwnerService {
     return request;
   }
 
-  /** Second owner approves and executes the withdrawal */
-  static async approveWithdrawal(approverEmail: string, requestId: string) {
+  /** Approve and execute a pending withdrawal. allowSameOwner=true permits the
+   *  initiator to also execute it (used by the single-owner withdrawProfit). */
+  static async approveWithdrawal(approverEmail: string, requestId: string, allowSameOwner = false) {
     if (!OwnerService.isOwner(approverEmail)) {
       throw new UnauthorizedError("Owner access required");
     }
@@ -185,7 +186,7 @@ export class OwnerService {
 
     if (!request) throw new NotFoundError("Withdrawal request not found");
     if (request.status !== "PENDING") throw new BadRequestError("Request is not pending");
-    if (request.initiatorEmail === approverEmail) {
+    if (!allowSameOwner && request.initiatorEmail === approverEmail) {
       throw new UnauthorizedError("The same owner cannot both initiate and approve a withdrawal");
     }
 
@@ -280,6 +281,21 @@ export class OwnerService {
     }).catch(() => {});
 
     return updatedRequest;
+  }
+
+  /** Single-owner profit withdrawal — any one owner executes it alone (no second
+   *  signature). Clears any stale pending request from the old two-step flow first. */
+  static async withdrawProfit(callerEmail: string) {
+    if (!OwnerService.isOwner(callerEmail)) {
+      throw new UnauthorizedError("Owner access required");
+    }
+    // Drop any leftover PENDING request so it doesn't block this withdrawal.
+    await prisma.ownerWithdrawalRequest.updateMany({
+      where: { status: "PENDING" },
+      data: { status: "CANCELLED" },
+    });
+    const request = await OwnerService.initiateWithdrawal(callerEmail);
+    return OwnerService.approveWithdrawal(callerEmail, request.id, true);
   }
 
   /** Cancel a pending withdrawal request */

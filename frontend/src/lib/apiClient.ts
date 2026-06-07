@@ -530,6 +530,12 @@ export const api = {
     return { success: true, data };
   },
 
+  // Single-owner withdrawal — executes immediately, no second approval.
+  async ownerWithdrawProfit() {
+    const data = await post("/api/owner/withdrawal/now", {});
+    return { success: true, data };
+  },
+
   async ownerCreateRound() {
     const data = await post("/api/owner/round");
     return { success: true, data };

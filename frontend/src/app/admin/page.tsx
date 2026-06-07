@@ -483,59 +483,36 @@ function LaunchTab() {
 
 type ProfitPool = { balance: number; totalDeposited: number; totalWithdrawn: number };
 type Solvency = { onChainUsdc: number; total: number; ratio: number; solvent: boolean };
-type Pending = { id: string; amount: number; initiatedBy: string } | null;
 
 function ProfitTab() {
   const [pool, setPool] = useState<ProfitPool | null>(null);
   const [solvency, setSolvency] = useState<Solvency | null>(null);
-  const [pending, setPending] = useState<Pending>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   async function load() {
     try {
-      const [pp, sv, pw] = await Promise.all([
+      const [pp, sv] = await Promise.all([
         api.ownerProfitPool().catch(() => null),
         api.ownerSolvency().catch(() => null),
-        api.ownerPendingWithdrawal().catch(() => null),
       ]);
       if (pp?.success && pp.data) setPool(pp.data as ProfitPool);
       if (sv?.success && sv.data) setSolvency(sv.data as Solvency);
-      if (pw?.success) setPending((pw.data as Pending) ?? null);
     } catch { toast.error("Failed to load profit data"); }
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
 
-  async function initiate() {
+  async function withdraw() {
+    if (!pool || pool.balance <= 0) return;
+    if (!confirming) { setConfirming(true); return; } // click once to arm, again to execute
+    setConfirming(false);
     setBusy(true);
     try {
-      await api.ownerInitiateWithdrawal(0); // full pool; amount/wallets come from server env
-      toast.success("Withdrawal initiated — the other owner must approve.");
+      await api.ownerWithdrawProfit();
+      toast.success("Withdrawal executed — receipts emailed to both owners.");
       await load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
-    setBusy(false);
-  }
-
-  async function approve() {
-    if (!pending) return;
-    setBusy(true);
-    try {
-      await api.ownerApproveWithdrawal(pending.id);
-      toast.success("Withdrawal approved & executed — receipts emailed to both owners.");
-      setPending(null);
-      await load();
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
-    setBusy(false);
-  }
-
-  async function cancel() {
-    if (!pending) return;
-    setBusy(true);
-    try {
-      await api.ownerCancelWithdrawal(pending.id);
-      toast.success("Withdrawal cancelled");
-      setPending(null);
     } catch (err) { toast.error(err instanceof Error ? err.message : "Failed"); }
     setBusy(false);
   }
@@ -561,25 +538,21 @@ function ProfitTab() {
         <div className="font-display text-lg font-semibold">Withdraw Profit</div>
         <p className="text-sm text-muted-foreground mt-1 mb-4 max-w-md">
           Withdraws the full profit pool and splits it 60/40 between the two owner wallets.
-          Requires <strong>both owners</strong>: one initiates, the other approves (the same
-          owner can&apos;t do both). Both receive an email receipt with the breakdown.
+          Any owner can execute this directly — both owners get an email receipt with the breakdown.
         </p>
-
-        {pending ? (
-          <div className="glass rounded-lg px-4 py-3 border border-warning/30">
-            <div className="text-sm font-medium text-warning">Pending withdrawal: {fmtUsd(pending.amount)}</div>
-            <div className="text-xs text-muted-foreground mt-1">Initiated by {pending.initiatedBy}</div>
-            <div className="mt-3 flex gap-2">
-              <FireButton size="sm" onClick={approve} disabled={busy}>Approve &amp; Execute</FireButton>
-              <GhostButton size="sm" onClick={cancel} disabled={busy}>Cancel</GhostButton>
-            </div>
-          </div>
-        ) : (
-          <FireButton onClick={initiate} disabled={busy || !pool || pool.balance <= 0}>
+        <div className="flex items-center gap-3">
+          <FireButton onClick={withdraw} disabled={busy || !pool || pool.balance <= 0}>
             <Download className="h-4 w-4" />
-            {busy ? "Initiating…" : pool ? `Withdraw ${fmtUsd(pool.balance)}` : "Initiate Withdrawal"}
+            {busy
+              ? "Withdrawing…"
+              : confirming
+                ? `Confirm — withdraw ${pool ? fmtUsd(pool.balance) : ""}?`
+                : pool ? `Withdraw ${fmtUsd(pool.balance)}` : "Withdraw"}
           </FireButton>
-        )}
+          {confirming && !busy && (
+            <GhostButton size="sm" onClick={() => setConfirming(false)}>Cancel</GhostButton>
+          )}
+        </div>
       </GlassCard>
     </div>
   );
