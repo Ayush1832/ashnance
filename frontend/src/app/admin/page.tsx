@@ -5,7 +5,7 @@ import { Ban, UserCheck, Save, Download, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { Reveal } from "@/components/motion/Reveal";
-import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile } from "@/components/ashnance/primitives";
+import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile, FireProgress } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
 import { api } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/useAuth";
@@ -482,7 +482,7 @@ function LaunchTab() {
 }
 
 type ProfitPool = { balance: number; totalDeposited: number; totalWithdrawn: number };
-type Solvency = { onChainUsdc: number; total: number; ratio: number; solvent: boolean };
+type Solvency = { onChainUsdc: number; total: number; ratio: number; solvent: boolean; liabilities?: Record<string, number> };
 
 function ProfitTab() {
   const [pool, setPool] = useState<ProfitPool | null>(null);
@@ -533,6 +533,31 @@ function ProfitTab() {
           accent={solvency && !solvency.solvent ? "fire" : "ash"}
         />
       </div>
+
+      {solvency?.liabilities && (
+        <GlassCard>
+          <div className="text-sm font-semibold mb-4">Liabilities breakdown</div>
+          <div className="space-y-3">
+            {Object.entries(solvency.liabilities).map(([k, v]) => {
+              const label: Record<string, string> = {
+                userBalances: "User USDC balances",
+                rewardPool: "Reward pool",
+                profitPool: "Profit pool",
+                referralPool: "Referral pool",
+              };
+              return (
+                <div key={k}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-muted-foreground">{label[k] ?? k}</span>
+                    <span className="font-mono">{fmtUsd(v)}</span>
+                  </div>
+                  <FireProgress value={v} max={solvency.onChainUsdc || 1} />
+                </div>
+              );
+            })}
+          </div>
+        </GlassCard>
+      )}
 
       <GlassCard>
         <div className="font-display text-lg font-semibold">Withdraw Profit</div>
