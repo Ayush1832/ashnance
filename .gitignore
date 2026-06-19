@@ -37,3 +37,6 @@ backend/scripts/ash-token-mainnet.json
 # Design references (local only)
 design-refs/
 !design-refs/README.md
+
+# Graphify generated knowledge graph (large, regenerable via /graphify .)
+graphify-out/
