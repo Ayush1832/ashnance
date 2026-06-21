@@ -36,6 +36,8 @@ export const USDC_MINT_DEVNET = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 const RPC_URL =
   process.env.SOLANA_RPC_URL || clusterApiUrl("devnet");
 
+const RPC_BACKUP_URL = process.env.SOLANA_RPC_BACKUP_URL || "";
+
 // Prefer explicit env var; fall back to RPC URL to detect network
 const USDC_MINT =
   process.env.USDC_MINT ||
@@ -47,14 +49,26 @@ const ASH_MINT = process.env.ASH_MINT_ADDRESS || "";
 // ---- Active polling handles (address -> NodeJS.Timeout) ----
 const _monitorHandles = new Map<string, ReturnType<typeof setInterval>>();
 
-// ---- Connection singleton ----
+// ---- Connection singleton with automatic backup failover ----
 let _connection: Connection | null = null;
+let _activeUrl = RPC_URL;
 
 function getConnection(): Connection {
   if (!_connection) {
-    _connection = new Connection(RPC_URL, "confirmed");
+    _connection = new Connection(_activeUrl, "confirmed");
   }
   return _connection;
+}
+
+/**
+ * Call from any RPC catch block. If a backup URL is configured and the primary
+ * is currently active, silently switches to the backup so the next request uses it.
+ */
+function tryFailover(label: string): void {
+  if (!RPC_BACKUP_URL || _activeUrl === RPC_BACKUP_URL) return;
+  console.warn(`[BlockchainService] RPC failure in "${label}" — switching to backup RPC`);
+  _activeUrl = RPC_BACKUP_URL;
+  _connection = null;
 }
 
 /** Wraps any promise with a timeout. Rejects if it doesn't resolve within ms. */
@@ -285,6 +299,7 @@ export class BlockchainService {
 
       return null;
     } catch (err) {
+      tryFailover("verifyDepositTransaction");
       console.error("[BlockchainService] verifyDepositTransaction error:", err);
       return null;
     }
@@ -352,6 +367,7 @@ export class BlockchainService {
       // Skip signatures the RPC already flagged as errored.
       return signatures.filter((s) => !s.err).map((s) => s.signature);
     } catch (err) {
+      tryFailover("getRecentDepositSignatures");
       console.error("[BlockchainService] getRecentDepositSignatures error:", err);
       return [];
     }
@@ -449,6 +465,7 @@ export class BlockchainService {
       );
       return txHash;
     } catch (err) {
+      tryFailover("sweepDepositToMaster");
       // Sweep failure is non-fatal — the DB has already been credited
       console.error("[BlockchainService] sweepDepositToMaster error:", err);
       return null;
@@ -707,7 +724,8 @@ export class BlockchainService {
       if (confirmation === "finalized") return "finalized";
       if (confirmation === "confirmed") return "confirmed";
       return "pending";
-    } catch {
+    } catch (err) {
+      tryFailover("getTransactionStatus");
       return null;
     }
   }
@@ -752,6 +770,7 @@ export class BlockchainService {
         tokenAccounts.value[0].account.data.parsed?.info?.tokenAmount?.uiAmount ?? 0;
       return typeof uiAmount === "number" ? uiAmount : 0;
     } catch (err) {
+      tryFailover("getAshBalance");
       console.error("[BlockchainService] getAshBalance error:", err);
       return 0;
     }
