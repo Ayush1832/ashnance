@@ -260,7 +260,7 @@ export class AuthService {
           email,
           username,
           referralCode: crypto.randomBytes(6).toString("hex"),
-          role: "OWNER",
+          role: "ADMIN",
         },
       });
       await tx.wallet.create({ data: { userId: newUser.id } });
