@@ -260,6 +260,7 @@ export class AuthService {
           email,
           username,
           referralCode: crypto.randomBytes(6).toString("hex"),
+          role: "OWNER",
         },
       });
       await tx.wallet.create({ data: { userId: newUser.id } });
@@ -313,7 +314,7 @@ export class AuthService {
         isVip: user.isVip,
         vipTier: user.vipTier,
         referralCode: user.referralCode,
-        role: user.role,
+        role: config.ownerEmails.includes(user.email) ? "OWNER" : user.role,
       },
       accessToken,
     };
