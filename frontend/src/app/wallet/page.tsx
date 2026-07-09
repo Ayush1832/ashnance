@@ -1,18 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { AlertTriangle, ExternalLink, Clock, Plus, Minus } from "lucide-react";
+import { AlertTriangle, ExternalLink, Clock, Plus, Minus, Copy, Check as CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/ashnance/AppShell";
 import { Reveal } from "@/components/motion/Reveal";
 import { GlassCard, SectionHeader, FireButton, GhostButton, StatusBadge, StatTile } from "@/components/ashnance/primitives";
 import { useAuth } from "@/hooks/useAuth";
 import { fmtUsd, fmtNum, timeAgo, countdown } from "@/lib/format";
-import { api } from "@/lib/apiClient";
+import { api, mapProfile } from "@/lib/apiClient";
 import { userStore } from "@/lib/userStore";
-import { mapProfile } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
-import { walletOptions, connectWallet, disconnectWallet, sendUsdcTransfer, truncate, type WalletProvider } from "@/lib/solana";
 import type { Transaction, WhitelistAddress } from "@/lib/types";
 
 type Tab = "deposit" | "withdraw" | "history" | "whitelist";
@@ -56,183 +54,90 @@ export default function WalletPage() {
 }
 
 function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
-  const [amount, setAmount] = useState("");
-  // Always require an explicit connect in this tab: a wallet extension does not
-  // expose a live publicKey (needed to sign the transfer) until connect() is
-  // called this session, even if the user's address is known from a prior login.
-  const [connectedAddr, setConnectedAddr] = useState<string | null>(null);
-  const [connecting, setConnecting] = useState<WalletProvider | null>(null);
-  const [depositing, setDepositing] = useState(false);
-  const [recovering, setRecovering] = useState(false);
-  const [network, setNetwork] = useState<string | null>(null);
+  const [depositAddress, setDepositAddress] = useState<string>(user.depositAddress ?? "");
+  const [copied, setCopied] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [result, setResult] = useState<{ credited: boolean; amount: number } | null>(null);
 
-  // Surface the cluster the platform runs on so users know which network their
-  // wallet must be set to — a mismatched wallet makes the transfer revert.
   useEffect(() => {
-    api.walletPlatformInfo()
-      .then((res) => { if (res.success && res.data) setNetwork(res.data.network); })
-      .catch(() => {});
-  }, []);
-
-  async function connect(providerId: WalletProvider) {
-    setConnecting(providerId);
-    try {
-      const { address } = await connectWallet(providerId);
-      setConnectedAddr(address);
-      toast.success("Wallet connected");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to connect wallet");
+    if (!depositAddress) {
+      api.wallet().then((res) => {
+        if (res.success && res.data?.depositAddress) setDepositAddress(res.data.depositAddress as string);
+      }).catch(() => {});
     }
-    setConnecting(null);
+  }, [depositAddress]);
+
+  function copy() {
+    if (!depositAddress) return;
+    navigator.clipboard.writeText(depositAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
-  async function disconnect() {
-    await disconnectWallet();
-    setConnectedAddr(null);
-    toast.success("Wallet disconnected");
-  }
-
-  async function deposit() {
-    const a = parseFloat(amount);
-    if (!a || a < 1) { toast.error("Minimum deposit is $1.00"); return; }
-    if (!connectedAddr) { toast.error("Connect a wallet first"); return; }
-    setDepositing(true);
+  async function checkDeposit() {
+    setChecking(true);
+    setResult(null);
     try {
-      const info = await api.walletPlatformInfo();
-      if (!info.success || !info.data?.masterWallet) throw new Error("Could not load deposit details");
-      const txHash = await sendUsdcTransfer({
-        address: connectedAddr,
-        masterWallet: info.data.masterWallet,
-        usdcMint: info.data.usdcMint,
-        amount: a,
-        network: info.data.network,
-        memo: user.id,
-      });
-      await api.deposit({ txHash });
-      toast.success(`Deposited ${fmtUsd(a)}`);
-      setAmount("");
-      // Refresh balance in header
-      api.profile()
-        .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
-        .catch(() => {});
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : "";
-      const net = network === "mainnet-beta" ? "Mainnet" : network === "devnet" ? "Devnet" : null;
-      // Wallet/tx failures (incl. Phantom's vague "Unexpected error") almost
-      // always mean the wallet is on the wrong cluster — point the user at it.
-      const vague = !raw || /unexpected error|revert|simulat|failed to send|insufficient|blockhash/i.test(raw);
-      toast.error(
-        vague && net
-          ? `Deposit failed — set your wallet's network to ${net}${net === "Devnet" ? " and use Devnet USDC" : ""}, then try again.`
-          : raw || "Deposit failed",
-      );
-    }
-    setDepositing(false);
-  }
-
-  // Safety net: if a transfer was sent but never credited (e.g. the tab closed
-  // before the deposit was reported), scan recent transfers for this user's
-  // deposits and credit any that were missed.
-  async function recover() {
-    setRecovering(true);
-    try {
-      const res = await api.recoverDeposits();
-      const { recovered, totalAmount } = res.data;
-      if (recovered > 0) {
-        toast.success(`Recovered ${recovered} deposit${recovered === 1 ? "" : "s"} — ${fmtUsd(totalAmount)} credited`);
+      const res = await api.checkDeposit();
+      setResult({ credited: res.data.credited, amount: res.data.amount });
+      if (res.data.credited) {
+        toast.success(`${fmtUsd(res.data.amount)} credited to your balance`);
         api.profile()
           .then((r) => { if (r.success && r.data) userStore.update(mapProfile(r.data as Record<string, unknown>)); })
           .catch(() => {});
       } else {
-        toast("No missing deposits found", { description: "All your recent deposits are already credited." });
+        toast("No USDC found yet", { description: "Make sure you sent to the address above and the transaction is confirmed." });
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not check for missing deposits");
+      toast.error(err instanceof Error ? err.message : "Check failed");
     }
-    setRecovering(false);
+    setChecking(false);
   }
 
   return (
     <GlassCard>
       <div className="text-sm font-medium mb-4">Deposit USDC</div>
 
-      {network && network !== "mainnet-beta" && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-3 text-xs text-warning">
+      <div className="mb-5">
+        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">
+          Send <span className="text-foreground font-medium">USDC on Solana</span> from any wallet to your unique deposit address below. Any amount, any wallet — no connection required.
+        </p>
+
+        <label className="text-xs text-muted-foreground mb-1.5 block">Your deposit address</label>
+        <div className="flex items-center gap-2 glass rounded-lg px-4 py-3">
+          <span className="flex-1 font-mono text-xs break-all text-foreground leading-relaxed">
+            {depositAddress || "Loading…"}
+          </span>
+          <button
+            type="button"
+            onClick={copy}
+            disabled={!depositAddress}
+            className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
+          >
+            {copied ? <CheckIcon className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+        <p className="text-xs text-muted-foreground mt-1.5">Minimum deposit: <span className="font-mono text-foreground">$1.00 USDC</span></p>
+      </div>
+
+      <div className="mb-5 rounded-lg border border-border bg-muted/30 px-4 py-3 space-y-1.5 text-xs text-muted-foreground">
+        <div className="flex gap-2"><span className="text-foreground font-medium">1.</span> Copy your deposit address above</div>
+        <div className="flex gap-2"><span className="text-foreground font-medium">2.</span> Open any wallet (Phantom, Backpack, exchange, etc.)</div>
+        <div className="flex gap-2"><span className="text-foreground font-medium">3.</span> Send USDC on Solana to that address</div>
+        <div className="flex gap-2"><span className="text-foreground font-medium">4.</span> Click the button below once sent</div>
+      </div>
+
+      <FireButton onClick={checkDeposit} className="w-full" disabled={checking || !depositAddress}>
+        <Plus className="h-4 w-4" />
+        {checking ? "Checking…" : "I've sent USDC — check now"}
+      </FireButton>
+
+      {result && !result.credited && (
+        <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-warning/30 bg-warning/10 px-3.5 py-3 text-xs text-warning">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <div className="leading-relaxed">
-            <span className="font-semibold">This platform runs on Solana Devnet.</span>{" "}
-            Set your wallet&apos;s network to <strong>Devnet</strong> and use Devnet USDC before depositing — a wallet on Mainnet will fail with &ldquo;transaction reverted&rdquo;.
-          </div>
+          No USDC found at your deposit address yet. Wait for your transaction to confirm on Solana (usually &lt;30s) then try again.
         </div>
       )}
-      {network === "mainnet-beta" && (
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full glass px-3 py-1.5 text-[11px] text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-success" /> Solana Mainnet
-        </div>
-      )}
-
-      <div className="mb-4">
-        <label className="text-xs text-muted-foreground mb-1 block">Amount (USDC)</label>
-        <input
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.00"
-          min={1}
-          className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
-        />
-        <p className="text-xs text-muted-foreground mt-1">Minimum deposit: <span className="font-mono text-foreground">$1.00</span></p>
-      </div>
-
-      {connectedAddr ? (
-        <>
-          <div className="glass rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between gap-3 text-xs">
-            <span className="text-muted-foreground">Paying from</span>
-            <div className="flex items-center gap-2.5">
-              <span className="font-mono">{truncate(connectedAddr, 6)}</span>
-              <button
-                type="button"
-                onClick={disconnect}
-                className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-danger/40 hover:text-danger"
-              >
-                Disconnect
-              </button>
-            </div>
-          </div>
-          <FireButton onClick={deposit} className="w-full" disabled={depositing || !amount}>
-            <Plus className="h-4 w-4" />
-            {depositing ? "Approve in wallet, then confirming…" : `Deposit ${amount && parseFloat(amount) > 0 ? fmtUsd(parseFloat(amount)) : "USDC"}`}
-          </FireButton>
-        </>
-      ) : (
-        <div>
-          <div className="text-xs text-muted-foreground mb-2">Connect a wallet to deposit</div>
-          <div className="grid grid-cols-2 gap-2">
-            {walletOptions.map((w) => (
-              <GhostButton key={w.id} onClick={() => connect(w.id)} disabled={!!connecting} className="w-full">
-                <span className="mr-2">{w.icon}</span>{connecting === w.id ? "Connecting…" : w.name}
-              </GhostButton>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2 text-xs text-muted-foreground mt-4">
-        <p>You&apos;ll approve a <span className="text-foreground font-medium">USDC</span> transfer on <span className="text-foreground font-medium">Solana {network === "mainnet-beta" ? "Mainnet" : network === "devnet" ? "Devnet" : ""}</span> in your wallet.</p>
-        <p>Funds are credited to your balance once the transaction is confirmed (usually under 30 seconds).</p>
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-border flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">Sent USDC but it didn&apos;t show up?</p>
-        <button
-          type="button"
-          onClick={recover}
-          disabled={recovering}
-          className="text-xs font-medium text-fire hover:underline disabled:opacity-50 shrink-0"
-        >
-          {recovering ? "Checking…" : "Recover a deposit"}
-        </button>
-      </div>
     </GlassCard>
   );
 }

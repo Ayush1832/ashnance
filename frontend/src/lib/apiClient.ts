@@ -320,8 +320,15 @@ export const api = {
     return { success: true, data };
   },
 
-  async deposit(b: { txHash: string }) {
-    const data = await post("/api/wallet/deposit", b);
+  async wallet() {
+    const data = await get<{ usdcBalance: number; ashBalance: number; depositAddress: string }>("/api/wallet");
+    return { success: true, data };
+  },
+
+  async checkDeposit() {
+    const data = await post<{ credited: boolean; amount: number; newBalance?: number; depositAddress: string }>(
+      "/api/wallet/deposit/check",
+    );
     return { success: true, data };
   },
 

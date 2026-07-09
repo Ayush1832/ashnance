@@ -49,6 +49,17 @@ router.post("/deposit", authenticate, async (req: AuthRequest, res: Response, ne
   }
 });
 
+// POST /api/wallet/deposit/check — Check user's deposit address on-chain,
+// credit any USDC found, then sweep to master. Called after user sends funds.
+router.post("/deposit/check", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const result = await WalletService.checkAndCreditDeposit(req.user!.userId);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // POST /api/wallet/deposit/recover — Scan recent master-wallet transfers and
 // credit any of THIS user's deposits that were never reported by the client.
 router.post("/deposit/recover", authenticate, async (req: AuthRequest, res: Response, next: NextFunction) => {

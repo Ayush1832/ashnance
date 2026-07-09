@@ -17,8 +17,18 @@ export class WalletService {
    * Get wallet details for a user
    */
   static async getWallet(userId: string) {
-    const wallet = await prisma.wallet.findUnique({ where: { userId } });
+    let wallet = await prisma.wallet.findUnique({ where: { userId } });
     if (!wallet) throw new NotFoundError("Wallet not found");
+
+    // Auto-populate depositAddress on first access
+    if (!wallet.depositAddress) {
+      const kp = BlockchainService.getDepositKeypair(userId);
+      const addr = kp.publicKey.toBase58();
+      wallet = await prisma.wallet.update({
+        where: { userId },
+        data: { depositAddress: addr },
+      });
+    }
 
     return {
       usdcBalance:      wallet.usdcBalance,
@@ -26,6 +36,53 @@ export class WalletService {
       cumulativeWeight: wallet.cumulativeWeight,
       depositAddress:   wallet.depositAddress,
     };
+  }
+
+  /**
+   * Check the user's deposit address for incoming USDC, credit it, then sweep.
+   * Called when the user clicks "I've sent USDC" in the deposit UI.
+   */
+  static async checkAndCreditDeposit(userId: string) {
+    const wallet = await WalletService.getWallet(userId); // ensures depositAddress populated
+    const depositAddress = wallet.depositAddress as string;
+
+    const balance = await BlockchainService.getUsdcBalance(depositAddress);
+    if (balance < 1) {
+      return { credited: false, amount: 0, depositAddress };
+    }
+
+    // Atomic credit
+    let newBalance = 0;
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        const updated = await tx.wallet.update({
+          where: { userId },
+          data: { usdcBalance: { increment: balance } },
+        });
+        await tx.transaction.create({
+          data: {
+            userId,
+            type: "DEPOSIT",
+            amount: balance,
+            currency: "USDC",
+            status: "COMPLETED",
+            description: `Deposited ${balance.toFixed(2)} USDC`,
+          },
+        });
+        return updated;
+      });
+      newBalance = Number(result.usdcBalance);
+    } catch (err: any) {
+      if (err?.code === "P2002") throw new BadRequestError("Deposit already processed");
+      throw err;
+    }
+
+    // Sweep to master wallet (non-blocking, non-fatal)
+    BlockchainService.sweepDepositToMaster(userId, depositAddress).catch((e) => {
+      console.error("[WalletService] Sweep failed after credit:", e);
+    });
+
+    return { credited: true, amount: balance, newBalance, depositAddress };
   }
 
   /**
