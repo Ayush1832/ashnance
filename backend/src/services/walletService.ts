@@ -12,6 +12,11 @@ import speakeasy from "speakeasy";
 
 const WHITELIST_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+// Per-user lock for the deposit-check flow. Prevents a double-credit race where
+// two concurrent calls both see USDC at the deposit address before the async
+// sweep has had time to clear it. Held for 60s — long enough for a sweep to land.
+const _depositCheckLock = new Map<string, ReturnType<typeof setTimeout>>();
+
 export class WalletService {
   /**
    * Get wallet details for a user
@@ -43,11 +48,24 @@ export class WalletService {
    * Called when the user clicks "I've sent USDC" in the deposit UI.
    */
   static async checkAndCreditDeposit(userId: string) {
+    if (_depositCheckLock.has(userId)) {
+      throw new BadRequestError("A deposit check is already in progress. Please wait a moment and try again.");
+    }
+
+    // Acquire the lock immediately — before any async balance check. Two concurrent
+    // calls would otherwise both pass the balance check and credit twice.
+    // Released after 60s (sweep window) or immediately if no funds found.
+    const lockTimer = setTimeout(() => _depositCheckLock.delete(userId), 60_000);
+    _depositCheckLock.set(userId, lockTimer);
+
     const wallet = await WalletService.getWallet(userId); // ensures depositAddress populated
     const depositAddress = wallet.depositAddress as string;
 
     const balance = await BlockchainService.getUsdcBalance(depositAddress);
     if (balance < 1) {
+      // No funds — release lock right away so the user can check again freely.
+      clearTimeout(lockTimer);
+      _depositCheckLock.delete(userId);
       return { credited: false, amount: 0, depositAddress };
     }
 
@@ -73,14 +91,23 @@ export class WalletService {
       });
       newBalance = Number(result.usdcBalance);
     } catch (err: any) {
+      // DB failure — release lock so the user can retry.
+      clearTimeout(lockTimer);
+      _depositCheckLock.delete(userId);
       if (err?.code === "P2002") throw new BadRequestError("Deposit already processed");
       throw err;
     }
 
-    // Sweep to master wallet (non-blocking, non-fatal)
-    BlockchainService.sweepDepositToMaster(userId, depositAddress).catch((e) => {
-      console.error("[WalletService] Sweep failed after credit:", e);
-    });
+    // Sweep to master wallet (non-blocking, non-fatal).
+    // Lock is released once sweep resolves (or after 60s safety timeout above).
+    BlockchainService.sweepDepositToMaster(userId, depositAddress)
+      .catch((e) => {
+        console.error("[WalletService] Sweep failed after credit:", e);
+      })
+      .finally(() => {
+        clearTimeout(lockTimer);
+        _depositCheckLock.delete(userId);
+      });
 
     return { credited: true, amount: balance, newBalance, depositAddress };
   }

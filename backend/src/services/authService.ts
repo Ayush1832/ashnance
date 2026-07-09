@@ -85,9 +85,8 @@ export class AuthService {
       return newUser;
     });
 
-    // Deposits are made by connecting a wallet and sending USDC directly to the
-    // master wallet (verified via POST /api/wallet/deposit) — no per-user
-    // deposit address is generated or monitored.
+    // Deposit addresses are derived on-demand (getDepositKeypair) when the user
+    // first opens the wallet page — no pre-generation needed at registration.
 
     const tokens = AuthService.generateTokens(user.id, user.email);
     await AuthService.saveRefreshToken(user.id, tokens.refreshToken);
