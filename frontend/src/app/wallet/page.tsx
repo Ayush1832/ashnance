@@ -151,7 +151,7 @@ function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const a = parseFloat(amount);
-    if (!a || a < 1 || a > user.usdcBalance) return;
+    if (!a || a < 10 || a > user.usdcBalance) return;
     setLoading(true);
     try {
       await api.withdraw({ amount: a, address, twoFaCode });
@@ -179,12 +179,12 @@ function WithdrawTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            min={1}
+            min={10}
             max={user.usdcBalance}
             className="w-full h-11 px-3 rounded-md bg-muted border border-border text-sm"
           />
           <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>Min: $1.00</span>
+            <span>Min: $10.00</span>
             <button type="button" onClick={() => setAmount(String(user.usdcBalance))}
               className="hover:text-foreground">Max: {fmtUsd(user.usdcBalance)}</button>
           </div>

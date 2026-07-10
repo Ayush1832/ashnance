@@ -16,7 +16,7 @@ async function checkMasterWalletBalance(): Promise<void> {
     const masterAddress = BlockchainService.getMasterWalletAddress();
     if (!masterAddress) return;
 
-    const rpcUrl = config.solana.rpcUrl;
+    const rpcUrl = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
     const connection = new Connection(rpcUrl, "confirmed");
 
     // Check SOL balance

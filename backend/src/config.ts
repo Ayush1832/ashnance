@@ -9,6 +9,7 @@ if (process.env.NODE_ENV === "production") {
     "DATABASE_URL",
     "FRONTEND_URL",
     "BACKEND_URL",
+    "MASTER_KEYPAIR_SECRET",
   ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length > 0) {
@@ -51,7 +52,6 @@ export const config = {
 
   // Solana
   solana: {
-    rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
     ashMintAddress: process.env.ASH_MINT_ADDRESS || "",
   },
 
@@ -76,20 +76,6 @@ export const config = {
   // corsOrigins = all allowed origins for CORS (comma-separated)
   corsOrigins: (process.env.FRONTEND_URL || "http://localhost:3000").split(",").map(o => o.trim()).filter(Boolean),
   backendUrl:  process.env.BACKEND_URL  || "http://localhost:4000",
-
-  // Game constants (defaults — also stored in PlatformConfig DB table)
-  game: {
-    minBurnAmount: 5.0,      // entry fee per round-based spec
-    baseUnit: 4.99,          // weight reference unit — never changes
-    constantFactor: 100,
-    rewardPoolSplit: 0.5,    // 50% to reward/round pool
-    profitPoolSplit: 0.5,    // 50% to profit pool
-    referralCommission: 0.1, // 10%
-    vipPrice: 24.99,
-    boostCostAsh: 1000,
-    boostDurationMs: 3600000, // 1 hour
-    prizePoolTarget: 500,     // default round target
-  },
 
   // Owner admin panel
   ownerEmails: (process.env.OWNER_EMAILS || "").split(",").map((e) => e.trim()).filter(Boolean),

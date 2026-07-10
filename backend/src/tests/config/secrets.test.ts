@@ -20,17 +20,14 @@ function requireConfig() {
   return require("../../config");
 }
 
+const PROD_KEYS = ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL", "FRONTEND_URL", "BACKEND_URL", "MASTER_KEYPAIR_SECRET"];
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
-  // Snapshot current env
-  ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL", "FRONTEND_URL", "BACKEND_URL"].forEach((k) => {
-    savedEnv[k] = process.env[k];
-  });
+  PROD_KEYS.forEach((k) => { savedEnv[k] = process.env[k]; });
 });
 
 afterEach(() => {
-  // Restore
   Object.entries(savedEnv).forEach(([k, v]) => {
     if (v === undefined) delete process.env[k];
     else process.env[k] = v;
@@ -57,6 +54,7 @@ describe("Config — production startup secret validation", () => {
     process.env.DATABASE_URL = "postgres://prod/db";
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
@@ -69,11 +67,12 @@ describe("Config — production startup secret validation", () => {
     process.env.DATABASE_URL = "postgres://prod/db";
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
 
-  // ---- Test 4: All strong secrets → succeeds ---------------------------------
+  // ---- Test 4: All required vars set → does not throw -----------------------
   test("4. NODE_ENV=production with all secrets set to strong values → does not throw", () => {
     process.env.NODE_ENV = "production";
     process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
@@ -81,6 +80,7 @@ describe("Config — production startup secret validation", () => {
     process.env.DATABASE_URL = "postgres://prod/db";
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
 
     expect(() => requireConfig()).not.toThrow();
   });

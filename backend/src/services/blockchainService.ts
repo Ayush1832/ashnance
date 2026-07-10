@@ -2,13 +2,11 @@
 // Ashnance Backend — Blockchain Service
 // ============================================================
 // Handles all Solana blockchain interactions:
-//   - Generating unique deposit addresses (deterministic, recoverable)
-//   - Monitoring deposit addresses for incoming USDC (SPL token)
-//   - Sweeping deposited USDC to master wallet
-//   - Processing confirmed deposits
+//   - HD deposit addresses (deterministic per-user, recoverable)
+//   - USDC balance checks and sweeps to master wallet
+//   - USDC / ASH on-chain transfers (prizes, withdrawals, claims)
 //   - Validating Solana addresses
 //   - VRF simulation for fair randomness
-//   - Sending USDC transfers for prizes/withdrawals
 
 import {
   Connection,
@@ -494,7 +492,7 @@ export class BlockchainService {
     if (solBalance < MIN_SOL_LAMPORTS) {
       throw new Error(
         `[BlockchainService] Master wallet has insufficient SOL for fees: ${solBalance} lamports. ` +
-        `Need at least ${MIN_SOL_LAMPORTS} lamports. Use devnet-airdrop or fund the master wallet.`
+        `Need at least ${MIN_SOL_LAMPORTS} lamports. Fund the master wallet with SOL.`
       );
     }
 
@@ -674,7 +672,7 @@ export class BlockchainService {
     if (solBalance < MIN_SOL_LAMPORTS) {
       throw new Error(
         `[BlockchainService] Master wallet has insufficient SOL for fees: ${solBalance} lamports. ` +
-        `Need at least ${MIN_SOL_LAMPORTS} lamports. Use devnet-airdrop or fund the master wallet.`
+        `Need at least ${MIN_SOL_LAMPORTS} lamports. Fund the master wallet with SOL.`
       );
     }
 

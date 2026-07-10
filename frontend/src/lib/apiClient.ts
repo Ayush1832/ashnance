@@ -573,8 +573,4 @@ export const api = {
     return { success: true };
   },
 
-  async ownerDevnetAirdrop() {
-    const data = await post("/api/owner/devnet-airdrop");
-    return { success: true, data };
-  },
 };
