@@ -407,7 +407,8 @@ export class BlockchainService {
 
       const instructions = [];
 
-      // Create master ATA if it doesn't exist yet
+      // Create master ATA if it doesn't exist yet.
+      // Master pays rent — deposit addresses hold only USDC (no SOL for rent).
       const toAtaInfo = await withTimeout(
         connection.getAccountInfo(toAta),
         RPC_TIMEOUT_MS,
@@ -416,7 +417,7 @@ export class BlockchainService {
       if (!toAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(
-            depositKeypair.publicKey,
+            master.publicKey,
             toAta,
             master.publicKey,
             mint

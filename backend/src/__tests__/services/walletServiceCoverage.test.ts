@@ -27,7 +27,11 @@ jest.mock("../../services/blockchainService", () => ({
     sendUsdcTransfer: jest.fn(),
     sendAshTransfer: jest.fn(),
     validateSolanaAddress: jest.fn().mockReturnValue(true),
-    generateDepositAddress: jest.fn().mockResolvedValue("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"),
+    getDepositKeypair: jest.fn().mockReturnValue({
+      publicKey: { toBase58: () => "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM" },
+    }),
+    getUsdcBalance: jest.fn().mockResolvedValue(0),
+    sweepDepositToMaster: jest.fn().mockResolvedValue("sweep-tx-hash"),
     getNetwork: jest.fn().mockReturnValue("devnet"),
   },
 }));
@@ -107,21 +111,27 @@ describe("WalletService.getWallet", () => {
     await expect(WalletService.getWallet("user-404")).rejects.toThrow(NotFoundError);
   });
 
-  test("does NOT generate a deposit address when missing (on-demand deposit model)", async () => {
-    // Deposits are now made by connecting a wallet and sending USDC directly to
-    // the master wallet — no per-user deposit address is generated or monitored.
+  test("lazily derives and persists deposit address on first access (HD model)", async () => {
     (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValue({
       usdcBalance: "0",
       ashBalance: "0",
       cumulativeWeight: "0",
       depositAddress: null,
     });
+    (mockPrisma.wallet.update as jest.Mock).mockResolvedValue({
+      usdcBalance: "0",
+      ashBalance: "0",
+      cumulativeWeight: "0",
+      depositAddress: ADDRESS,
+    });
 
     const result = await WalletService.getWallet("user-1");
 
-    expect(mockBlockchain.generateDepositAddress).not.toHaveBeenCalled();
-    expect(mockPrisma.wallet.update).not.toHaveBeenCalled();
-    expect(result.depositAddress).toBeNull();
+    expect(mockBlockchain.getDepositKeypair).toHaveBeenCalledWith("user-1");
+    expect(mockPrisma.wallet.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ depositAddress: ADDRESS }) })
+    );
+    expect(result.depositAddress).toBe(ADDRESS);
   });
 });
 
