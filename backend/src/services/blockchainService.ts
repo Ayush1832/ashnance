@@ -27,27 +27,17 @@ import * as crypto from "crypto";
 
 // ---- Constants ----
 
-/** USDC SPL token mint on Solana mainnet */
+/** USDC SPL token mint on Solana mainnet — the token identifier, not a minting capability */
 export const USDC_MINT_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-/** USDC SPL token mint on Solana devnet */
-export const USDC_MINT_DEVNET = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
-
-const RPC_URL =
-  process.env.SOLANA_RPC_URL || clusterApiUrl("devnet");
+const RPC_URL = process.env.SOLANA_RPC_URL || clusterApiUrl("devnet");
 
 const RPC_BACKUP_URL = process.env.SOLANA_RPC_BACKUP_URL || "";
 
-// Prefer explicit env var; fall back to RPC URL to detect network
-const USDC_MINT =
-  process.env.USDC_MINT ||
-  (RPC_URL.includes("mainnet") ? USDC_MINT_MAINNET : USDC_MINT_DEVNET);
+const USDC_MINT = process.env.USDC_MINT || USDC_MINT_MAINNET;
 
 /** ASH token mint address — set after running scripts/deployAshToken.ts */
 const ASH_MINT = process.env.ASH_MINT_ADDRESS || "";
-
-// ---- Active polling handles (address -> NodeJS.Timeout) ----
-const _monitorHandles = new Map<string, ReturnType<typeof setInterval>>();
 
 // ---- Connection singleton with automatic backup failover ----
 let _connection: Connection | null = null;
@@ -476,130 +466,6 @@ export class BlockchainService {
   // ----------------------------------------------------------
   // monitorDeposit
   // ----------------------------------------------------------
-  /**
-   * Polls `address` every 15 seconds for new USDC token transfers.
-   * When a new incoming transfer is detected the `callback` is invoked
-   * with (amount, txHash).
-   */
-  static monitorDeposit(
-    address: string,
-    callback: (amount: number, txHash: string) => void
-  ): void {
-    if (!BlockchainService.validateSolanaAddress(address)) {
-      console.error("[BlockchainService] monitorDeposit — invalid address:", address);
-      return;
-    }
-
-    BlockchainService.stopMonitor(address);
-
-    const connection = getConnection();
-    const owner = new PublicKey(address);
-    const mint = new PublicKey(USDC_MINT);
-
-    const seenSignatures = new Set<string>();
-    let firstPoll = true;
-
-    const poll = async () => {
-      try {
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-          owner,
-          { mint }
-        );
-
-        if (tokenAccounts.value.length === 0) {
-          firstPoll = false;
-          return;
-        }
-
-        const tokenAccountPubkey = tokenAccounts.value[0].pubkey;
-
-        const signatures = await connection.getSignaturesForAddress(
-          tokenAccountPubkey,
-          { limit: 10 }
-        );
-
-        if (firstPoll) {
-          for (const sig of signatures) {
-            seenSignatures.add(sig.signature);
-          }
-          firstPoll = false;
-          return;
-        }
-
-        for (const sigInfo of signatures) {
-          if (seenSignatures.has(sigInfo.signature)) continue;
-          seenSignatures.add(sigInfo.signature);
-
-          const tx = await connection.getParsedTransaction(sigInfo.signature, {
-            maxSupportedTransactionVersion: 0,
-          });
-
-          if (!tx || !tx.meta) continue;
-
-          const postBalances = tx.meta.postTokenBalances ?? [];
-          const preBalances  = tx.meta.preTokenBalances  ?? [];
-
-          for (const post of postBalances) {
-            if (post.owner !== address || post.mint !== USDC_MINT) continue;
-
-            const pre = preBalances.find(
-              (p) => p.accountIndex === post.accountIndex
-            );
-
-            const postAmount = post.uiTokenAmount.uiAmount ?? 0;
-            const preAmount  = pre?.uiTokenAmount.uiAmount ?? 0;
-            const delta = postAmount - preAmount;
-
-            if (delta > 0) {
-              console.log(
-                `[BlockchainService] Deposit detected — address: ${address}, amount: ${delta} USDC, tx: ${sigInfo.signature}`
-              );
-              callback(delta, sigInfo.signature);
-            }
-          }
-        }
-      } catch (err: any) {
-        // Silently skip benign / repeated errors to avoid flooding logs:
-        //  - "Token mint could not be unpacked" → USDC_MINT not deployed on this RPC network
-        //  - 429 Too Many Requests → public RPC rate limit
-        //  - 401 Unauthorized → wrong RPC URL (e.g. Infura without Solana access)
-        const msg = err?.message ?? String(err);
-        if (msg.includes("Token mint could not be unpacked")) return;
-        if (msg.includes("429") || msg.includes("Too Many Requests")) return;
-        if (msg.includes("401") || msg.includes("Unauthorized")) return;
-        console.error("[BlockchainService] monitorDeposit poll error:", err);
-      }
-    };
-
-    // Poll every 60s (was 15s) to reduce RPC pressure on the free devnet endpoint.
-    // 30 deposit addresses × 4 polls/min = 120 calls/min — well under typical limits.
-    const handle = setInterval(poll, 60_000);
-    _monitorHandles.set(address, handle);
-    poll();
-
-    console.log(`[BlockchainService] Started monitoring deposit address: ${address}`);
-  }
-
-  // ----------------------------------------------------------
-  // stopMonitor / stopAllMonitors
-  // ----------------------------------------------------------
-  static stopMonitor(address: string): void {
-    const handle = _monitorHandles.get(address);
-    if (handle !== undefined) {
-      clearInterval(handle);
-      _monitorHandles.delete(address);
-    }
-  }
-
-  static stopAllMonitors(): void {
-    for (const [address, handle] of _monitorHandles.entries()) {
-      clearInterval(handle);
-      console.log(`[BlockchainService] Stopped monitoring: ${address}`);
-    }
-    _monitorHandles.clear();
-  }
-
-  // ----------------------------------------------------------
   // sendUsdcTransfer
   // ----------------------------------------------------------
   /**
@@ -964,27 +830,6 @@ export class BlockchainService {
     return txHash;
   }
 
-  // ----------------------------------------------------------
-  // requestDevnetAirdrop  (devnet only — for setup/testing)
-  // ----------------------------------------------------------
-  /**
-   * Requests a SOL airdrop for the master wallet on devnet.
-   * Required so the master wallet can pay transaction fees.
-   */
-  static async requestDevnetAirdrop(lamports: number = 2_000_000_000): Promise<string | null> {
-    if (!(process.env.SOLANA_RPC_URL || "").includes("devnet")) return null;
-    try {
-      const connection = getConnection();
-      const master = getMasterKeypair();
-      const sig = await connection.requestAirdrop(master.publicKey, lamports);
-      await connection.confirmTransaction(sig, "confirmed");
-      console.log(`[BlockchainService] Airdropped ${lamports / 1e9} SOL to master wallet`);
-      return sig;
-    } catch (err) {
-      console.error("[BlockchainService] Airdrop failed:", err);
-      return null;
-    }
-  }
 }
 
 export default BlockchainService;

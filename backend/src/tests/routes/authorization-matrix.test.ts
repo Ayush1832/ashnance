@@ -82,9 +82,6 @@ jest.mock("../../services/roundService", () => ({
   },
 }));
 
-jest.mock("../../services/depositMonitorService", () => ({
-  watchDepositAddress: jest.fn(),
-}));
 
 jest.mock("../../services/emailService", () => ({
   EmailService: { sendCriticalAlert: jest.fn().mockResolvedValue(undefined) },

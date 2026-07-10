@@ -33,9 +33,6 @@ jest.mock("../../services/emailService", () => ({
   },
 }));
 
-jest.mock("../../services/depositMonitorService", () => ({
-  watchDepositAddress: jest.fn(),
-}));
 
 import speakeasy from "speakeasy";
 import { prisma } from "../../utils/prisma";
