@@ -72,9 +72,9 @@ function isTokenExpiringSoon(token: string): boolean {
 // Prevents concurrent refreshes
 let refreshPromise: Promise<void> | null = null;
 
-async function maybeRefresh(): Promise<void> {
+async function maybeRefresh(force = false): Promise<void> {
   const access = getAccessToken();
-  if (access && !isTokenExpiringSoon(access)) return;
+  if (!force && access && !isTokenExpiringSoon(access)) return;
 
   // The refresh token is in an HttpOnly cookie (not readable here). A legacy token
   // may still sit in localStorage from before the cookie migration — send it as a
@@ -122,6 +122,7 @@ async function request<T = unknown>(
   path: string,
   body?: unknown,
   requiresAuth = true,
+  _isRetry = false,
 ): Promise<T> {
   if (requiresAuth) await maybeRefresh();
 
@@ -134,6 +135,21 @@ async function request<T = unknown>(
     credentials: "include", // send the HttpOnly refresh cookie to /api/auth/* + store Set-Cookie on login
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  // A stale/invalid access token slips past the proactive exp check above when the
+  // token itself has been revoked or the refresh cookie never migrated correctly.
+  // Without this, an authenticated page is stuck retrying the same request forever
+  // with no way to recover short of manually clearing localStorage.
+  if (res.status === 401 && requiresAuth && !_isRetry) {
+    await maybeRefresh(true);
+    if (getAccessToken()) {
+      return request<T>(method, path, body, requiresAuth, true);
+    }
+    clearTokens();
+    userStore.clear();
+    if (typeof window !== "undefined") window.location.href = "/login";
+    throw new Error("Session expired — please sign in again");
+  }
 
   const json = await res.json();
 

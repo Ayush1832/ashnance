@@ -23,7 +23,21 @@ export class WalletService {
    */
   static async getWallet(userId: string) {
     let wallet = await prisma.wallet.findUnique({ where: { userId } });
-    if (!wallet) throw new NotFoundError("Wallet not found");
+    if (!wallet) {
+      // Every user-creation path creates a wallet in the same transaction, but
+      // older accounts (or ones created before that guarantee existed) can end
+      // up without one. Self-heal instead of leaving the user permanently stuck.
+      try {
+        wallet = await prisma.wallet.create({ data: { userId } });
+      } catch (err: any) {
+        if (err?.code === "P2002") {
+          wallet = await prisma.wallet.findUnique({ where: { userId } });
+        } else {
+          throw err;
+        }
+      }
+      if (!wallet) throw new NotFoundError("Wallet not found");
+    }
 
     // Auto-populate depositAddress on first access
     if (!wallet.depositAddress) {
