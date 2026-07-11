@@ -15,10 +15,12 @@ import { cn } from "@/lib/utils";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 const OAUTH_ERRORS: Record<string, string> = {
-  google_not_configured: "Google login is not configured on this server.",
-  google_auth_failed:    "Google sign-in failed. Please try again.",
-  google_cancelled:      "Google sign-in was cancelled.",
-  oauth_state_mismatch:  "Security check failed. Please try signing in again.",
+  google_not_configured:  "Google login is not configured on this server.",
+  google_auth_failed:     "Google sign-in failed. Please try again.",
+  google_cancelled:       "Google sign-in was cancelled.",
+  google_unverified:      "Your Google email isn't verified. Please verify it with Google first.",
+  google_account_conflict:"An account with this email already exists. Please sign in with your password.",
+  oauth_state_mismatch:   "Security check failed. Please try signing in again.",
 };
 
 function GoogleIcon() {

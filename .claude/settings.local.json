@@ -47,7 +47,9 @@
       "Bash(npm run *)",
       "Bash(disown)",
       "Bash(curl -s -o /tmp/burnpage.html -w \"%{http_code}\\\\n\" http://localhost:3000/burn)",
-      "Bash(curl -s http://localhost:3000/burn -o /tmp/burnpage.html)"
+      "Bash(curl -s http://localhost:3000/burn -o /tmp/burnpage.html)",
+      "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")",
+      "Bash(git stash *)"
     ],
     "additionalDirectories": [
       "C:\\Users\\LENOVO\\Desktop\\ashnance\\.claude\\skills"

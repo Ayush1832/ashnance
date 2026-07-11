@@ -547,6 +547,7 @@ export class AuthService {
             username,
             avatarUrl:    data.avatarUrl,
             authProvider: "GOOGLE",
+            oauthId:      data.googleId,
             referralCode: crypto.randomBytes(6).toString("hex"),
           },
         });

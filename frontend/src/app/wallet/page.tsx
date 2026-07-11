@@ -55,17 +55,28 @@ export default function WalletPage() {
 
 function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [depositAddress, setDepositAddress] = useState<string>(user.depositAddress ?? "");
+  const [addressError, setAddressError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ credited: boolean; amount: number } | null>(null);
 
   useEffect(() => {
-    if (!depositAddress) {
-      api.wallet().then((res) => {
-        if (res.success && res.data?.depositAddress) setDepositAddress(res.data.depositAddress as string);
-      }).catch(() => {});
-    }
-  }, [depositAddress]);
+    if (depositAddress) return;
+    let cancelled = false;
+    setAddressError(false);
+    api.wallet().then((res) => {
+      if (cancelled) return;
+      if (res.success && res.data?.depositAddress) {
+        setDepositAddress(res.data.depositAddress as string);
+      } else {
+        setAddressError(true);
+      }
+    }).catch(() => {
+      if (!cancelled) setAddressError(true);
+    });
+    return () => { cancelled = true; };
+  }, [depositAddress, retryKey]);
 
   function copy() {
     if (!depositAddress) return;
@@ -106,16 +117,26 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
         <label className="text-xs text-muted-foreground mb-1.5 block">Your deposit address</label>
         <div className="flex items-center gap-2 glass rounded-lg px-4 py-3">
           <span className="flex-1 font-mono text-xs break-all text-foreground leading-relaxed">
-            {depositAddress || "Loading…"}
+            {depositAddress || (addressError ? "Couldn't load your deposit address." : "Loading…")}
           </span>
-          <button
-            type="button"
-            onClick={copy}
-            disabled={!depositAddress}
-            className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
-          >
-            {copied ? <CheckIcon className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
-          </button>
+          {addressError ? (
+            <button
+              type="button"
+              onClick={() => setRetryKey((k) => k + 1)}
+              className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+            >
+              Retry
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={copy}
+              disabled={!depositAddress}
+              className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
+            >
+              {copied ? <CheckIcon className="h-3.5 w-3.5 text-success" /> : <Copy className="h-3.5 w-3.5" />}
+            </button>
+          )}
         </div>
         <p className="text-xs text-muted-foreground mt-1.5">Minimum deposit: <span className="font-mono text-foreground">$1.00 USDC</span></p>
       </div>

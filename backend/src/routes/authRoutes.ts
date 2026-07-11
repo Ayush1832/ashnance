@@ -2,7 +2,7 @@ import { Request, Response, NextFunction, Router } from "express";
 import { AuthService } from "../services/authService";
 import { registerSchema, loginSchema, updateProfileSchema } from "../utils/validators";
 import { authenticate, AuthRequest } from "../middleware/auth";
-import { BadRequestError, UnauthorizedError, NotFoundError } from "../utils/errors";
+import { BadRequestError, UnauthorizedError, NotFoundError, ConflictError } from "../utils/errors";
 import { EmailService } from "../services/emailService";
 import { config } from "../config";
 import { prisma } from "../utils/prisma";
@@ -457,7 +457,10 @@ router.get("/google/callback", async (req: Request, res: Response, next: NextFun
     });
     res.redirect(`${config.frontendUrl}/auth/callback#${fragment.toString()}`);
   } catch (error: any) {
-    console.error("[Google OAuth callback error]", error?.message ?? error);
+    console.error("[Google OAuth callback error]", error?.stack ?? error?.message ?? error);
+    if (error instanceof ConflictError) {
+      return res.redirect(`${config.frontendUrl}/login?error=google_account_conflict`);
+    }
     res.redirect(`${config.frontendUrl}/login?error=google_auth_failed`);
   }
 });
