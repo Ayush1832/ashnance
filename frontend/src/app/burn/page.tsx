@@ -18,13 +18,13 @@ import type { Round } from "@/lib/types";
 
 const PRESETS = [5, 10, 25, 50, 100, 250];
 
-// Default config values (used until real config loads)
+// Default config values (used until real config loads) — must match BURN_CONFIG_DEFAULTS in ownerService.ts
 const DEFAULT_CONFIG = {
   min_burn_amount: 5,
   max_burn_amount: 10000,
-  reward_pool_split: 0.5,
-  profit_pool_split: 0.5,
-  referral_pool_split: 0,
+  reward_pool_split: 0.40,
+  profit_pool_split: 0.40,
+  referral_pool_split: 0.20,
   anti_snipe_seconds: 10,
 };
 
@@ -82,7 +82,7 @@ export default function BurnPage() {
     api.currentRound()
       .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
       .catch(() => {/* no active round */});
-    api.ownerBurnConfig()
+    api.burnConfig()
       .then((res) => {
         if (res.success && res.data) {
           const d = res.data as Record<string, number>;
@@ -129,7 +129,13 @@ export default function BurnPage() {
     const unEnded = socket.on("round:ended", () => {
       setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);
     });
-    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); };
+    const unCreated = socket.on("round:created", () => {
+      // New round started — re-fetch so the page activates immediately
+      api.currentRound()
+        .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+        .catch(() => {});
+    });
+    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); unCreated(); };
   }, []);
 
   const effective = useCustom ? (parseFloat(custom) || 0) : amount;

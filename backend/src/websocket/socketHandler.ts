@@ -127,6 +127,21 @@ export function broadcastRoundEndEvent(data: {
   io.to("leaderboard").emit("round:ended", payload);
 }
 
+/**
+ * Broadcast a round-created event so all connected clients know a new round started.
+ */
+export function broadcastRoundCreatedEvent(roundNumber: number, prizePoolTarget: number) {
+  if (!io) return;
+  const payload = {
+    roundNumber,
+    prizePoolTarget,
+    timestamp: new Date().toISOString(),
+  };
+  io.to("ticker").emit("round:created", payload);
+  io.to("round").emit("round:created", payload);
+  io.to("leaderboard").emit("round:created", payload);
+}
+
 export function broadcastDepositEvent(userId: string, amount: number) {
   if (!io) return;
   io.to(`user:${userId}`).emit("deposit:confirmed", { amount });

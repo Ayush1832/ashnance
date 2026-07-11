@@ -1,6 +1,7 @@
 import { prisma } from "../utils/prisma";
 import { BadRequestError, NotFoundError } from "../utils/errors";
 import { OwnerService } from "./ownerService";
+import { broadcastRoundCreatedEvent } from "../websocket/socketHandler";
 
 
 export interface RoundLeaderboardEntry {
@@ -341,10 +342,12 @@ export class RoundService {
           Number(round.prizePoolTarget),
           round.timeLimitHours ?? undefined
         );
+        const nextNumber = round.roundNumber + 1;
         console.log(
-          `[ROUND] Auto-created round #${round.roundNumber + 1} ` +
+          `[ROUND] Auto-created round #${nextNumber} ` +
           `(target: $${round.prizePoolTarget}, limit: ${round.timeLimitHours ?? "none"}h)`
         );
+        try { broadcastRoundCreatedEvent(nextNumber, Number(round.prizePoolTarget)); } catch {}
       }
     } catch (err: any) {
       // Non-fatal: an active round may already exist (race), or config missing.

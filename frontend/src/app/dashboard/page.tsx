@@ -47,7 +47,12 @@ export default function Dashboard() {
     const unEnded = socket.on("round:ended", () => {
       setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);
     });
-    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); };
+    const unCreated = socket.on("round:created", () => {
+      api.currentRound()
+        .then((res) => { if (res.success && res.data) setRound(res.data as Round); })
+        .catch(() => {});
+    });
+    return () => { unProgress(); unBurn(); unLeaderboard(); unEnded(); unCreated(); };
   }, []);
 
   const me = round?.leaderboard?.find((r) => r.isYou);

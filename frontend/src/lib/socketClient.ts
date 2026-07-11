@@ -7,6 +7,7 @@ type EventName =
   | "leaderboard:update"
   | "round:progress"
   | "round:ended"
+  | "round:created"
   | "deposit:confirmed"
   | "referral:earned";
 
@@ -50,6 +51,7 @@ class AppSocket {
       "leaderboard:update",
       "round:progress",
       "round:ended",
+      "round:created",
       "deposit:confirmed",
       "referral:earned",
     ];

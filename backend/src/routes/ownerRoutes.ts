@@ -5,6 +5,7 @@ import { OwnerService } from "../services/ownerService";
 import { RoundService } from "../services/roundService";
 import { BadRequestError } from "../utils/errors";
 import { AuthRequest } from "../middleware/auth";
+import { broadcastRoundCreatedEvent } from "../websocket/socketHandler";
 
 const router = Router();
 
@@ -139,7 +140,9 @@ router.post("/round", async (req: AuthRequest, res: Response, next: NextFunction
     if (isNaN(timeLimitHours) || timeLimitHours <= 0) {
       return next(new BadRequestError("timeLimitHours must be a positive number"));
     }
-    const round = await RoundService.createRound(prizePoolTarget, timeLimitHours);
+    const round = await RoundService.createRound(prizePoolTarget, timeLimitHours) as { roundNumber: number; prizePoolTarget: number };
+    // Notify all connected clients so dashboard/burn pages update in real-time
+    try { broadcastRoundCreatedEvent(round.roundNumber, Number(round.prizePoolTarget)); } catch {}
     res.json({ success: true, data: round });
   } catch (err) { next(err); }
 });

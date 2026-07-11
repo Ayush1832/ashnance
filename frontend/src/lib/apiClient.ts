@@ -283,6 +283,11 @@ export const api = {
     return { success: true, data };
   },
 
+  async burnConfig() {
+    const data = await get("/api/round/config", false);
+    return { success: true, data };
+  },
+
   async roundHistory() {
     const data = await get("/api/round/history", false);
     return { success: true, data };

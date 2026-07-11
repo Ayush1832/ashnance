@@ -1,6 +1,7 @@
 import { Router, Response, NextFunction } from "express";
 import { authenticate, AuthRequest } from "../middleware/auth";
 import { RoundService } from "../services/roundService";
+import { OwnerService } from "../services/ownerService";
 
 const router = Router();
 
@@ -68,6 +69,16 @@ router.get("/leaderboard", authenticate, async (req: AuthRequest, res: Response,
       userWeight:          status.userWeight,
       userDistanceToFirst: status.userDistanceToFirst,
     }});
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/round/config — public read of burn config (no auth needed)
+router.get("/config", async (_req, res: Response, next: NextFunction) => {
+  try {
+    const cfg = await OwnerService.getBurnConfig();
+    res.json({ success: true, data: cfg });
   } catch (err) {
     next(err);
   }
