@@ -54,9 +54,13 @@ app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 app.use(cookieParser());
 
 // Rate limiting
+// 100/15min was tripping on ordinary single-user traffic — this app polls live
+// round/leaderboard state and every authenticated request preflights, so normal
+// usage (a few tabs, a couple of retries) burns through it fast. 600/15min still
+// blocks abuse while giving real usage headroom.
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
+  max: 600,
   message: { success: false, error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,

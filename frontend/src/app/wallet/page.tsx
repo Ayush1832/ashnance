@@ -55,8 +55,9 @@ export default function WalletPage() {
 
 function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   const [depositAddress, setDepositAddress] = useState<string>(user.depositAddress ?? "");
-  const [addressError, setAddressError] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+  const [retryCooldown, setRetryCooldown] = useState(0);
   const [copied, setCopied] = useState(false);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<{ credited: boolean; amount: number } | null>(null);
@@ -64,19 +65,34 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
   useEffect(() => {
     if (depositAddress) return;
     let cancelled = false;
-    setAddressError(false);
+    setAddressError(null);
     api.wallet().then((res) => {
       if (cancelled) return;
       if (res.success && res.data?.depositAddress) {
         setDepositAddress(res.data.depositAddress as string);
       } else {
-        setAddressError(true);
+        setAddressError("Couldn't load your deposit address.");
       }
-    }).catch(() => {
-      if (!cancelled) setAddressError(true);
+    }).catch((err) => {
+      if (cancelled) return;
+      const msg = err instanceof Error ? err.message : "";
+      // Surface rate-limit / auth failures distinctly instead of a generic dead-end —
+      // spamming Retry during a rate limit just re-triggers the same 429 and extends it.
+      if (/too many requests/i.test(msg)) {
+        setAddressError("Too many requests — please wait a moment before retrying.");
+        setRetryCooldown(30);
+      } else {
+        setAddressError(msg || "Couldn't load your deposit address.");
+      }
     });
     return () => { cancelled = true; };
   }, [depositAddress, retryKey]);
+
+  useEffect(() => {
+    if (retryCooldown <= 0) return;
+    const t = setTimeout(() => setRetryCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [retryCooldown]);
 
   function copy() {
     if (!depositAddress) return;
@@ -117,15 +133,16 @@ function DepositTab({ user }: { user: ReturnType<typeof useAuth>["user"] }) {
         <label className="text-xs text-muted-foreground mb-1.5 block">Your deposit address</label>
         <div className="flex items-center gap-2 glass rounded-lg px-4 py-3">
           <span className="flex-1 font-mono text-xs break-all text-foreground leading-relaxed">
-            {depositAddress || (addressError ? "Couldn't load your deposit address." : "Loading…")}
+            {depositAddress || addressError || "Loading…"}
           </span>
           {addressError ? (
             <button
               type="button"
               onClick={() => setRetryKey((k) => k + 1)}
-              className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+              disabled={retryCooldown > 0}
+              className="shrink-0 rounded-md border border-border px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground disabled:opacity-40"
             >
-              Retry
+              {retryCooldown > 0 ? `Retry (${retryCooldown}s)` : "Retry"}
             </button>
           ) : (
             <button
