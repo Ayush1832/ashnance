@@ -31,6 +31,8 @@ type AdminUser = {
   vip: string | null;
   banned: boolean;
   createdAt: string;
+  usdcBalance: number;
+  ashBalance: number;
 };
 
 export default function AdminPage() {
@@ -148,7 +150,7 @@ function UsersTab() {
   // Shared responsive column template so header labels line up with row cells.
   // Mobile drops the Email column (no room for it); sm+ shows all 5.
   const gridCls =
-    "grid gap-3 grid-cols-[minmax(0,1fr)_44px_88px_44px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_56px_96px_56px]";
+    "grid gap-3 grid-cols-[minmax(0,1fr)_44px_88px_44px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_84px_56px_96px_56px]";
 
   return (
     <div className="space-y-4">
@@ -161,7 +163,7 @@ function UsersTab() {
       />
       <GlassCard className="p-0 overflow-hidden">
         <div className={cn(gridCls, "text-xs uppercase tracking-wider text-muted-foreground px-5 py-2.5 border-b border-border")}>
-          <span>User</span><span className="hidden sm:block">Email</span><span className="text-center">VIP</span>
+          <span>User</span><span className="hidden sm:block">Email</span><span className="hidden sm:block text-right">Balance</span><span className="text-center">VIP</span>
           <span className="text-center">Role</span><span className="text-center">Actions</span>
         </div>
         <div className="divide-y divide-border">
@@ -177,6 +179,10 @@ function UsersTab() {
                 <div className="text-xs text-muted-foreground">{timeAgo(u.createdAt)}</div>
               </div>
               <div className="hidden sm:block text-xs text-muted-foreground truncate">{u.email}</div>
+              <div className="hidden sm:block text-right text-xs font-mono">
+                <div>{fmtUsd(u.usdcBalance)}</div>
+                <div className="text-ash">{fmtNum(u.ashBalance)} ASH</div>
+              </div>
               <div className="text-center">
                 {u.vip ? <span className="text-gold text-xs">VIP</span> : <span className="text-muted-foreground text-xs">—</span>}
               </div>

@@ -131,6 +131,7 @@ router.get("/users", async (req: AuthRequest, res: Response, next: NextFunction)
           isBanned: true,
           createdAt: true,
           _count: { select: { burns: true } },
+          wallet: { select: { usdcBalance: true, ashBalance: true } },
         },
       }),
       prisma.user.count(),
@@ -138,14 +139,16 @@ router.get("/users", async (req: AuthRequest, res: Response, next: NextFunction)
 
     // Map to frontend-expected shape: rename isBanned → banned, isVip+vipTier → vip
     const users = rawUsers.map((u) => ({
-      id:        u.id,
-      email:     u.email,
-      username:  u.username,
-      role:      u.role,
-      vip:       u.isVip ? u.vipTier : null,
-      banned:    u.isBanned,
-      createdAt: u.createdAt,
-      burns:     u._count.burns,
+      id:          u.id,
+      email:       u.email,
+      username:    u.username,
+      role:        u.role,
+      vip:         u.isVip ? u.vipTier : null,
+      banned:      u.isBanned,
+      createdAt:   u.createdAt,
+      burns:       u._count.burns,
+      usdcBalance: u.wallet ? Number(u.wallet.usdcBalance) : 0,
+      ashBalance:  u.wallet ? Number(u.wallet.ashBalance) : 0,
     }));
 
     res.json({ success: true, data: { users, pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
