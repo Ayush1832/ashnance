@@ -10,6 +10,7 @@ if (process.env.NODE_ENV === "production") {
     "FRONTEND_URL",
     "BACKEND_URL",
     "MASTER_KEYPAIR_SECRET",
+    "SOLANA_RPC_URL",
   ];
   const missing = required.filter((k) => !process.env[k]);
   if (missing.length > 0) {
@@ -22,6 +23,25 @@ if (process.env.NODE_ENV === "production") {
   }
   if ((process.env.JWT_SECRET ?? "").length < 32 || (process.env.JWT_REFRESH_SECRET ?? "").length < 32) {
     throw new Error("[Config] JWT secrets must be at least 32 characters in production.");
+  }
+  // A devnet RPC URL in production means every deposit balance check silently
+  // queries the wrong chain — deposits would never be detected, with no error
+  // anywhere. Refuse to start rather than run mainnet money against devnet state.
+  if (/devnet/i.test(process.env.SOLANA_RPC_URL ?? "")) {
+    throw new Error(
+      "[Config] SOLANA_RPC_URL points at devnet in production. This must be a mainnet RPC endpoint."
+    );
+  }
+  // If USDC_MINT is overridden to anything other than the real mainnet USDC mint,
+  // every deposit balance check silently queries a different token — deposits sent
+  // as real USDC would never be detected, with no error anywhere. Whoever sets this
+  // env var must do so deliberately, not by an unnoticed leftover/copy-paste value.
+  const REAL_USDC_MINT_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  if (process.env.USDC_MINT && process.env.USDC_MINT !== REAL_USDC_MINT_MAINNET) {
+    throw new Error(
+      `[Config] USDC_MINT is set to "${process.env.USDC_MINT}", which is not the real mainnet USDC mint ` +
+      `(${REAL_USDC_MINT_MAINNET}). Unset USDC_MINT to use the correct default, or fix the value.`
+    );
   }
   // Warn (don't crash) on missing-but-non-fatal config
   const warnings: string[] = [];
