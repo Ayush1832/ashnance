@@ -8,14 +8,50 @@
       "WebFetch(domain:api.github.com)",
       "Skill(update-config)",
       "Skill(update-config:*)",
-      "Bash(cd \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\ashnance\" && mkdir -p .claude/skills && echo \"skills dir ready\")"
+      "Bash(cd \"C:\\\\Users\\\\LENOVO\\\\Desktop\\\\ashnance\" && mkdir -p .claude/skills && echo \"skills dir ready\")",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -s -X POST https://mainnet.helius-rpc.com/?api-key=dcfd0e4a-df85-4a04-b4f8-12430e3b25e8 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getBalance\",\"params\":[\"4gQt8CYsbGaenaBLujE2wfZLUKzE8EaTFBVotGsHR3wz\"]}')",
+      "Bash(curl -s -X POST https://mainnet.helius-rpc.com/?api-key=dcfd0e4a-df85-4a04-b4f8-12430e3b25e8 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTokenAccountsByOwner\",\"params\":[\"4gQt8CYsbGaenaBLujE2wfZLUKzE8EaTFBVotGsHR3wz\",{\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\"},{\"encoding\":\"jsonParsed\"}]}')",
+      "Bash(curl -s -X POST https://mainnet.helius-rpc.com/?api-key=dcfd0e4a-df85-4a04-b4f8-12430e3b25e8 -H 'Content-Type: application/json' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"getTokenAccountsByOwner\",\"params\":[\"4gQt8CYsbGaenaBLujE2wfZLUKzE8EaTFBVotGsHR3wz\",{\"programId\":\"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\"},{\"encoding\":\"jsonParsed\"}]}')",
+      "Bash(git reset *)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "WebFetch(domain:claude.ai)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s -m 5 http://localhost:4000/api/health)",
+      "Bash(curl -s -m 5 http://localhost:4000/)",
+      "Bash(curl -s -m 8 https://api.ashnance.com/api/health)",
+      "Bash(pkill -f \"tsx watch\")",
+      "Bash(node -e \"console.log\\(require\\('/tmp/qa_register.json'\\) \\)\")",
+      "Bash(node -pe \"JSON.parse\\(require\\('fs'\\).readFileSync\\('/tmp/qa_register.json','utf8'\\)\\).data.accessToken\")",
+      "Bash(curl -s -m 15 https://api.ashnance.com/api/auth/profile -H 'Authorization: Bearer __TRACKED_VAR__')",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/2fa/generate -H 'Authorization: Bearer __CMDSUB_OUTPUT__')",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/2fa/enable -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -H 'Content-Type: application/json' -d '{\"token\":\"__TRACKED_VAR__\"}')",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"__CMDSUB_OUTPUT__\",\"password\":\"__TRACKED_VAR__\"}')",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"__CMDSUB_OUTPUT__\",\"password\":\"__TRACKED_VAR__\",\"twoFaCode\":\"__TRACKED_VAR__\"}')",
+      "Bash(curl -s -m 15 https://api.ashnance.com/api/round/current/public)",
+      "Bash(node -pe 'JSON.parse\\(require\\('\\\\''fs'\\\\''\\).readFileSync\\('\\\\''C:/Users/LENOVO/AppData/Local/Temp/claude/d--PROJECTS-ashnance/f77a6645-0c43-4852-87d4-cdf4b6ce3e63/scratchpad/qa_login_2fa.json'\\\\'','\\\\''utf8'\\\\''\\)\\).data.accessToken')",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/burn -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -H 'Content-Type: application/json' -d '{\"amount\":1}')",
+      "Bash(curl -s -m 15 -X POST https://api.ashnance.com/api/burn -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -H 'Content-Type: application/json' -d '{\"amount\":50}')",
+      "Bash(curl -s -m 8 \"https://api.github.com/repos/Ayush1832/ashnance\")",
+      "Bash(curl -s -m 8 -o /dev/null -w \"api.ashnance.com http_status=%{http_code} time=%{time_total}s\\\\n\" https://api.ashnance.com/api/health)",
+      "Bash(timeout 8 bash -c 'cat < /dev/null > /dev/tcp/api.ashnance.com/22')",
+      "Bash(gh run *)",
+      "PowerShell(gh run list --repo Ayush1832/ashnance --workflow=deploy.yml --limit 3 2>&1)",
+      "Bash(git commit --allow-empty -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(npm run *)",
+      "Bash(disown)",
+      "Bash(curl -s -o /tmp/burnpage.html -w \"%{http_code}\\\\n\" http://localhost:3000/burn)",
+      "Bash(curl -s http://localhost:3000/burn -o /tmp/burnpage.html)"
     ],
     "additionalDirectories": [
       "C:\\Users\\LENOVO\\Desktop\\ashnance\\.claude\\skills"
     ]
   },
-  "enableAllProjectMcpServers": true,
-  "enabledMcpjsonServers": [
-    "code-review-graph"
-  ]
+  "enableAllProjectMcpServers": true
 }

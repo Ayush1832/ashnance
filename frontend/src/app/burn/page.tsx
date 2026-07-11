@@ -238,6 +238,27 @@ export default function BurnPage() {
             </div>
           </GlassCard>
 
+          {/* Burn button */}
+          <div className="space-y-2">
+            {round?.status !== "ACTIVE" && (
+              <div className="glass rounded-lg px-4 py-3 text-sm text-warning border border-warning/30">
+                No active round — burns are currently paused.
+              </div>
+            )}
+            {effective > user.usdcBalance && (
+              <div className="glass rounded-lg px-4 py-3 text-sm text-danger border border-danger/30">
+                Insufficient USDC balance.
+              </div>
+            )}
+            <FireButton size="xl" className="w-full" onClick={handleBurn} disabled={!canBurn || burning}>
+              <Flame className="h-5 w-5" />
+              {burning ? "Burning…" : `BURN ${effective > 0 ? fmtUsd(effective) : "—"}`}
+            </FireButton>
+            <div className="text-center text-xs text-muted-foreground">
+              Anti-snipe: {config.anti_snipe_seconds}s cooldown applies in the last 60s of a round
+            </div>
+          </div>
+
           {/* Weight breakdown */}
           <GlassCard>
             <div className="text-sm font-medium mb-4">Weight preview</div>
@@ -284,26 +305,6 @@ export default function BurnPage() {
             )}
           </GlassCard>
 
-          {/* Burn button */}
-          <div className="space-y-2">
-            {round?.status !== "ACTIVE" && (
-              <div className="glass rounded-lg px-4 py-3 text-sm text-warning border border-warning/30">
-                No active round — burns are currently paused.
-              </div>
-            )}
-            {effective > user.usdcBalance && (
-              <div className="glass rounded-lg px-4 py-3 text-sm text-danger border border-danger/30">
-                Insufficient USDC balance.
-              </div>
-            )}
-            <FireButton size="xl" className="w-full" onClick={handleBurn} disabled={!canBurn || burning}>
-              <Flame className="h-5 w-5" />
-              {burning ? "Burning…" : `BURN ${effective > 0 ? fmtUsd(effective) : "—"}`}
-            </FireButton>
-            <div className="text-center text-xs text-muted-foreground">
-              Anti-snipe: {config.anti_snipe_seconds}s cooldown applies in the last 60s of a round
-            </div>
-          </div>
         </div>
 
         {/* Right column */}
