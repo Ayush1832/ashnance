@@ -145,10 +145,6 @@ export default function BurnPage() {
   const w = calcWeight(effective, { vip: isVip, boost: hasBoost, activeReferrals });
   const ash = calcAsh(effective, isVip);
 
-  const poolReward   = effective * config.reward_pool_split;
-  const poolProfit   = effective * config.profit_pool_split;
-  const poolReferral = effective * config.referral_pool_split;
-
   const canBurn =
     effective >= config.min_burn_amount &&
     effective <= config.max_burn_amount &&
@@ -256,28 +252,6 @@ export default function BurnPage() {
               <div className="border-t border-border pt-2 mt-2 flex justify-between items-center">
                 <span className="text-sm font-semibold">Final weight</span>
                 <span className="font-mono text-xl font-bold text-fire">{w.final.toFixed(2)}</span>
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* Pool split */}
-          <GlassCard>
-            <div className="text-sm font-medium mb-3">Pool split</div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Reward Pool</div>
-                <div className="font-mono text-lg font-bold text-fire mt-1">{fmtUsd(poolReward)}</div>
-                <div className="text-xs text-muted-foreground">{Math.round(config.reward_pool_split * 100)}%</div>
-              </div>
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Profit Pool</div>
-                <div className="font-mono text-lg font-bold text-[oklch(0.7_0.13_245)] mt-1">{fmtUsd(poolProfit)}</div>
-                <div className="text-xs text-muted-foreground">{Math.round(config.profit_pool_split * 100)}%</div>
-              </div>
-              <div className="glass rounded-lg p-3 text-center">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Referral Pool</div>
-                <div className="font-mono text-lg font-bold text-ash mt-1">{fmtUsd(poolReferral)}</div>
-                <div className="text-xs text-muted-foreground">{Math.round(config.referral_pool_split * 100)}%</div>
               </div>
             </div>
           </GlassCard>
