@@ -2,17 +2,18 @@
  * Tests for WalletService.checkAndCreditDeposit — the HD deposit address flow.
  *
  * Flow:
- *  1. Acquire per-user in-memory lock
+ *  1. Acquire a Postgres advisory lock for the userId, scoped to the transaction
+ *     (serializes concurrent calls across ALL processes, not just this one)
  *  2. Get wallet (lazily populates deposit address via getDepositKeypair)
  *  3. Check on-chain USDC balance at deposit address
- *  4. If balance >= 1: atomic DB credit + async non-blocking sweep
- *  5. If balance < 1: release lock immediately, return credited: false
+ *  4. If balance >= 1: atomic DB credit + sweep, all before the transaction commits
+ *  5. If balance < 1: return credited: false (transaction commits immediately, lock released)
  */
 
 jest.mock("../../utils/prisma", () => ({
   prisma: {
     $transaction: jest.fn(),
-    wallet: { findUnique: jest.fn(), update: jest.fn() },
+    wallet: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     transaction: { create: jest.fn() },
   },
 }));
@@ -59,36 +60,41 @@ function mockWalletExists(depositAddress: string | null = DEPOSIT_ADDR) {
   }
 }
 
+// Builds the `tx` object handed to the $transaction callback. Every test needs
+// $executeRaw (the advisory lock acquisition) to resolve, regardless of whether
+// it also needs to exercise the credit-write path.
+function makeTx(overrides: { walletUpdate?: any; txCreate?: any } = {}) {
+  return {
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
+    wallet: {
+      update: overrides.walletUpdate ?? jest.fn().mockResolvedValue({ usdcBalance: "150" }),
+    },
+    transaction: {
+      create: overrides.txCreate ?? jest.fn().mockResolvedValue({ id: "tx-deposit-1" }),
+    },
+  };
+}
+
 function mockCreditTransaction(newBalance = 150) {
   (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
-    const tx = {
-      wallet: {
-        update: jest.fn().mockResolvedValue({ usdcBalance: String(newBalance) }),
-      },
-      transaction: {
-        create: jest.fn().mockResolvedValue({ id: "tx-deposit-1" }),
-      },
-    };
+    const tx = makeTx({ walletUpdate: jest.fn().mockResolvedValue({ usdcBalance: String(newBalance) }) });
     return fn(tx);
   });
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.useFakeTimers();
-  // Default: sweep resolves quickly (non-blocking)
+  // Default: any $transaction call just runs the callback against a working tx —
+  // this covers the "no funds found" path, which now also runs inside the
+  // transaction (for the advisory lock), even though it never touches wallet/tx writes.
+  (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => fn(makeTx()));
   mockBlockchain.sweepDepositToMaster.mockResolvedValue("sweep-sig-abc");
-});
-
-afterEach(() => {
-  jest.runAllTimers();
-  jest.useRealTimers();
 });
 
 // ---- No funds at deposit address ----
 
 describe("checkAndCreditDeposit — no USDC at deposit address", () => {
-  test("returns credited:false and releases lock when balance is 0", async () => {
+  test("returns credited:false when balance is 0", async () => {
     mockWalletExists();
     mockBlockchain.getUsdcBalance.mockResolvedValue(0);
 
@@ -97,7 +103,6 @@ describe("checkAndCreditDeposit — no USDC at deposit address", () => {
     expect(result.credited).toBe(false);
     expect(result.amount).toBe(0);
     expect(result.depositAddress).toBe(DEPOSIT_ADDR);
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     expect(mockBlockchain.sweepDepositToMaster).not.toHaveBeenCalled();
   });
 
@@ -108,17 +113,14 @@ describe("checkAndCreditDeposit — no USDC at deposit address", () => {
     const result = await WalletService.checkAndCreditDeposit("user-2");
 
     expect(result.credited).toBe(false);
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
-  test("allows re-check after no-funds response (lock released immediately)", async () => {
+  test("allows re-check after no-funds response", async () => {
     mockWalletExists();
     mockBlockchain.getUsdcBalance.mockResolvedValue(0);
 
-    // First check — no funds
     await WalletService.checkAndCreditDeposit("user-recheck");
 
-    // Second check should NOT throw "already in progress"
     mockBlockchain.getUsdcBalance.mockResolvedValue(0);
     const result = await WalletService.checkAndCreditDeposit("user-recheck");
     expect(result.credited).toBe(false);
@@ -128,7 +130,7 @@ describe("checkAndCreditDeposit — no USDC at deposit address", () => {
 // ---- USDC found — credit + sweep ----
 
 describe("checkAndCreditDeposit — USDC found", () => {
-  test("credits balance atomically and triggers sweep when USDC found", async () => {
+  test("credits balance atomically and awaits the sweep when USDC found", async () => {
     mockWalletExists();
     mockBlockchain.getUsdcBalance.mockResolvedValue(50);
     mockCreditTransaction(150);
@@ -148,7 +150,7 @@ describe("checkAndCreditDeposit — USDC found", () => {
 
     await WalletService.checkAndCreditDeposit("user-sweep");
 
-    // sweep is called synchronously (fire-and-forget) before the return statement
+    // Sweep is awaited before the credit result and the lock are released.
     expect(mockBlockchain.sweepDepositToMaster).toHaveBeenCalledWith("user-sweep", DEPOSIT_ADDR);
   });
 
@@ -160,20 +162,16 @@ describe("checkAndCreditDeposit — USDC found", () => {
     let txCreateArg: any;
 
     (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
-      const tx = {
-        wallet: {
-          update: jest.fn().mockImplementation((args: any) => {
-            walletIncrementArg = args.data.usdcBalance;
-            return { usdcBalance: "200" };
-          }),
-        },
-        transaction: {
-          create: jest.fn().mockImplementation((args: any) => {
-            txCreateArg = args.data;
-            return { id: "tx-1" };
-          }),
-        },
-      };
+      const tx = makeTx({
+        walletUpdate: jest.fn().mockImplementation((args: any) => {
+          walletIncrementArg = args.data.usdcBalance;
+          return { usdcBalance: "200" };
+        }),
+        txCreate: jest.fn().mockImplementation((args: any) => {
+          txCreateArg = args.data;
+          return { id: "tx-1" };
+        }),
+      });
       return fn(tx);
     });
 
@@ -201,32 +199,25 @@ describe("checkAndCreditDeposit — USDC found", () => {
   });
 });
 
-// ---- Concurrent request lock ----
+// ---- Concurrency: advisory lock ----
 
-describe("checkAndCreditDeposit — per-user in-memory lock", () => {
-  test("rejects a second concurrent call for the same user", async () => {
+describe("checkAndCreditDeposit — advisory lock", () => {
+  test("acquires a Postgres advisory lock scoped to the userId inside the transaction", async () => {
     mockWalletExists();
-    // First call blocks — getUsdcBalance hangs until we resolve it
-    let resolveBalance!: (v: number) => void;
-    const balancePromise = new Promise<number>((res) => { resolveBalance = res; });
-    mockBlockchain.getUsdcBalance.mockReturnValueOnce(balancePromise);
+    mockBlockchain.getUsdcBalance.mockResolvedValue(0);
 
-    const first = WalletService.checkAndCreditDeposit("user-lock");
+    let capturedTx: any;
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
+      capturedTx = makeTx();
+      return fn(capturedTx);
+    });
 
-    // Second call fires while first is still awaiting balance
-    const second = WalletService.checkAndCreditDeposit("user-lock");
+    await WalletService.checkAndCreditDeposit("user-lock");
 
-    // Second must reject immediately with lock error
-    await expect(second).rejects.toThrow(/already in progress/i);
-
-    // Resolve first so it can clean up
-    resolveBalance(0);
-    const r1 = await first;
-    expect(r1.credited).toBe(false);
+    expect(capturedTx.$executeRaw).toHaveBeenCalled();
   });
 
-  test("lock is per-user — different users can check concurrently", async () => {
-    // Both users have their wallets
+  test("a second call for a different user runs independently", async () => {
     (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValue({
       usdcBalance: "0",
       ashBalance: "0",
@@ -235,7 +226,6 @@ describe("checkAndCreditDeposit — per-user in-memory lock", () => {
     });
     mockBlockchain.getUsdcBalance.mockResolvedValue(0);
 
-    // user-a and user-b can both check concurrently without conflict
     const [r1, r2] = await Promise.all([
       WalletService.checkAndCreditDeposit("user-a"),
       WalletService.checkAndCreditDeposit("user-b"),
@@ -252,11 +242,15 @@ describe("checkAndCreditDeposit — DB error handling", () => {
   test("throws BadRequestError on P2002 (duplicate credit prevented by constraint)", async () => {
     mockWalletExists();
     mockBlockchain.getUsdcBalance.mockResolvedValue(50);
-    (mockPrisma.$transaction as jest.Mock).mockRejectedValue({ code: "P2002" });
+    // Simulate the conflict coming from inside the transaction (a real write
+    // failure), not the outer $transaction call itself — the try/catch that
+    // converts P2002 → BadRequestError lives inside the callback.
+    (mockPrisma.$transaction as jest.Mock).mockImplementation(async (fn: any) => {
+      const tx = makeTx({ walletUpdate: jest.fn().mockRejectedValue({ code: "P2002" }) });
+      return fn(tx);
+    });
 
     await expect(WalletService.checkAndCreditDeposit("user-p2002")).rejects.toThrow(BadRequestError);
-    await expect(WalletService.checkAndCreditDeposit("user-p2002")).rejects.toThrow(BadRequestError);
-    // Both throw — but the second one didn't throw "already in progress", confirming lock was released
   });
 
   test("rethrows non-P2002 DB errors", async () => {
@@ -267,15 +261,13 @@ describe("checkAndCreditDeposit — DB error handling", () => {
     await expect(WalletService.checkAndCreditDeposit("user-dberr")).rejects.toThrow("DB timeout");
   });
 
-  test("lock is released after DB error so user can retry", async () => {
+  test("a later call succeeds normally after an earlier DB error", async () => {
     mockWalletExists();
     mockBlockchain.getUsdcBalance.mockResolvedValue(50);
 
-    // First call: DB fails
     (mockPrisma.$transaction as jest.Mock).mockRejectedValueOnce(new Error("DB timeout"));
     await expect(WalletService.checkAndCreditDeposit("user-retry")).rejects.toThrow("DB timeout");
 
-    // Second call: succeeds — lock was released
     mockBlockchain.getUsdcBalance.mockResolvedValue(50);
     mockCreditTransaction(150);
     const result = await WalletService.checkAndCreditDeposit("user-retry");
@@ -292,22 +284,37 @@ describe("checkAndCreditDeposit — DB error handling", () => {
 
     const result = await WalletService.checkAndCreditDeposit("user-sweeperr");
 
-    // Credit is returned before sweep settles
     expect(result.credited).toBe(true);
     expect(result.amount).toBe(30);
-    // Sweep was kicked off (fire-and-forget)
     expect(mockBlockchain.sweepDepositToMaster).toHaveBeenCalled();
 
     consoleSpy.mockRestore();
   });
 });
 
-// ---- Wallet not found ----
+// ---- Wallet not found / self-heal ----
 
-describe("checkAndCreditDeposit — wallet not found", () => {
-  test("propagates NotFoundError when user has no wallet", async () => {
+describe("checkAndCreditDeposit — wallet self-heal", () => {
+  test("self-heals by creating a wallet when none exists yet", async () => {
+    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (mockPrisma.wallet.create as jest.Mock).mockResolvedValue({
+      usdcBalance: "0", ashBalance: "0", cumulativeWeight: "0", depositAddress: null,
+    });
+    (mockPrisma.wallet.update as jest.Mock).mockResolvedValue({
+      usdcBalance: "0", ashBalance: "0", cumulativeWeight: "0", depositAddress: DEPOSIT_ADDR,
+    });
+    mockBlockchain.getUsdcBalance.mockResolvedValue(0);
+
+    const result = await WalletService.checkAndCreditDeposit("user-nowallet");
+
+    expect(mockPrisma.wallet.create).toHaveBeenCalledWith({ data: { userId: "user-nowallet" } });
+    expect(result.depositAddress).toBe(DEPOSIT_ADDR);
+  });
+
+  test("rethrows if wallet creation fails for a non-P2002 reason", async () => {
     (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValue(null);
+    (mockPrisma.wallet.create as jest.Mock).mockRejectedValue(new Error("DB down"));
 
-    await expect(WalletService.checkAndCreditDeposit("user-nowallet")).rejects.toThrow(NotFoundError);
+    await expect(WalletService.checkAndCreditDeposit("user-createerr")).rejects.toThrow("DB down");
   });
 });

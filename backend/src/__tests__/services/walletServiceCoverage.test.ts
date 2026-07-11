@@ -14,7 +14,7 @@
 jest.mock("../../utils/prisma", () => ({
   prisma: {
     $transaction: jest.fn(),
-    wallet: { findUnique: jest.fn(), update: jest.fn() },
+    wallet: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     transaction: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), findMany: jest.fn(), count: jest.fn() },
     user: { findUnique: jest.fn(), update: jest.fn() },
     whitelistedAddress: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), delete: jest.fn() },
@@ -103,9 +103,37 @@ describe("WalletService.getWallet", () => {
     expect(result.depositAddress).toBe(ADDRESS);
   });
 
-  test("throws NotFoundError when wallet not found", async () => {
-    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValue(null);
-    await expect(WalletService.getWallet("user-404")).rejects.toThrow(NotFoundError);
+  test("self-heals by creating a wallet when none exists, then populates deposit address", async () => {
+    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (mockPrisma.wallet.create as jest.Mock).mockResolvedValue({
+      usdcBalance: "0", ashBalance: "0", cumulativeWeight: "0", depositAddress: null,
+    });
+    (mockPrisma.wallet.update as jest.Mock).mockResolvedValue({
+      usdcBalance: "0", ashBalance: "0", cumulativeWeight: "0", depositAddress: ADDRESS,
+    });
+
+    const result = await WalletService.getWallet("user-404");
+
+    expect(mockPrisma.wallet.create).toHaveBeenCalledWith({ data: { userId: "user-404" } });
+    expect(result.depositAddress).toBe(ADDRESS);
+  });
+
+  test("wallet.create race (P2002) falls back to re-reading the row another request just created", async () => {
+    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (mockPrisma.wallet.create as jest.Mock).mockRejectedValue({ code: "P2002" });
+    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValueOnce({
+      usdcBalance: "0", ashBalance: "0", cumulativeWeight: "0", depositAddress: ADDRESS,
+    });
+
+    const result = await WalletService.getWallet("user-race");
+    expect(result.depositAddress).toBe(ADDRESS);
+  });
+
+  test("rethrows non-P2002 errors from wallet.create", async () => {
+    (mockPrisma.wallet.findUnique as jest.Mock).mockResolvedValueOnce(null);
+    (mockPrisma.wallet.create as jest.Mock).mockRejectedValue(new Error("DB down"));
+
+    await expect(WalletService.getWallet("user-dberr")).rejects.toThrow("DB down");
   });
 
   test("lazily derives and persists deposit address on first access (HD model)", async () => {

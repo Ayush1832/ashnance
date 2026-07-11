@@ -20,7 +20,7 @@ function requireConfig() {
   return require("../../config");
 }
 
-const PROD_KEYS = ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL", "FRONTEND_URL", "BACKEND_URL", "MASTER_KEYPAIR_SECRET"];
+const PROD_KEYS = ["NODE_ENV", "JWT_SECRET", "JWT_REFRESH_SECRET", "DATABASE_URL", "FRONTEND_URL", "BACKEND_URL", "MASTER_KEYPAIR_SECRET", "SOLANA_RPC_URL", "USDC_MINT"];
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -55,6 +55,7 @@ describe("Config — production startup secret validation", () => {
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
     process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=test";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
@@ -68,6 +69,7 @@ describe("Config — production startup secret validation", () => {
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
     process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=test";
 
     expect(() => requireConfig()).toThrow(/Dev JWT secrets must not be used/i);
   });
@@ -81,6 +83,65 @@ describe("Config — production startup secret validation", () => {
     process.env.FRONTEND_URL = "https://www.ashnance.com";
     process.env.BACKEND_URL = "https://api.ashnance.com";
     process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=test";
+
+    expect(() => requireConfig()).not.toThrow();
+  });
+
+  // ---- Test 4b: SOLANA_RPC_URL missing → throws ------------------------------
+  test("4b. NODE_ENV=production with SOLANA_RPC_URL unset → throws 'Missing required environment variables'", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+    process.env.JWT_REFRESH_SECRET = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5";
+    process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    delete process.env.SOLANA_RPC_URL;
+
+    expect(() => requireConfig()).toThrow(/Missing required environment variables/i);
+  });
+
+  // ---- Test 4c: SOLANA_RPC_URL pointing at devnet → throws -------------------
+  test("4c. NODE_ENV=production with SOLANA_RPC_URL pointing at devnet → throws", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+    process.env.JWT_REFRESH_SECRET = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5";
+    process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://api.devnet.solana.com";
+
+    expect(() => requireConfig()).toThrow(/devnet/i);
+  });
+
+  // ---- Test 4d: USDC_MINT set to the wrong mint → throws ---------------------
+  test("4d. NODE_ENV=production with USDC_MINT set to a non-mainnet-USDC mint → throws", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+    process.env.JWT_REFRESH_SECRET = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5";
+    process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=test";
+    process.env.USDC_MINT = "SomeOtherTokenMintAddressNotRealUSDC11111111";
+
+    expect(() => requireConfig()).toThrow(/USDC_MINT/);
+  });
+
+  // ---- Test 4e: USDC_MINT set to the real mainnet mint → does not throw -----
+  test("4e. NODE_ENV=production with USDC_MINT set to the real mainnet USDC mint → does not throw", () => {
+    process.env.NODE_ENV = "production";
+    process.env.JWT_SECRET = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4";
+    process.env.JWT_REFRESH_SECRET = "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5";
+    process.env.DATABASE_URL = "postgres://prod/db";
+    process.env.FRONTEND_URL = "https://www.ashnance.com";
+    process.env.BACKEND_URL = "https://api.ashnance.com";
+    process.env.MASTER_KEYPAIR_SECRET = "[1,2,3]";
+    process.env.SOLANA_RPC_URL = "https://mainnet.helius-rpc.com/?api-key=test";
+    process.env.USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
     expect(() => requireConfig()).not.toThrow();
   });
