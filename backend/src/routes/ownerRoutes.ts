@@ -132,12 +132,13 @@ router.post("/round", async (req: AuthRequest, res: Response, next: NextFunction
     if (isNaN(prizePoolTarget) || prizePoolTarget <= 0) {
       return next(new BadRequestError("prizePoolTarget must be a positive number"));
     }
-    // req #6 — time limit: use provided value, fall back to config default, fall back to 24h
+    // req #6 — time limit: use provided value, fall back to config default. No limit if neither is set.
     const rawLimit = req.body.timeLimitHours;
+    const configLimit = burnCfg.round_time_limit_hours;
     const timeLimitHours = rawLimit !== undefined
       ? Number(rawLimit)
-      : (burnCfg.round_time_limit_hours ?? 24);
-    if (isNaN(timeLimitHours) || timeLimitHours <= 0) {
+      : (configLimit ? Number(configLimit) : undefined);
+    if (timeLimitHours !== undefined && (isNaN(timeLimitHours) || timeLimitHours <= 0)) {
       return next(new BadRequestError("timeLimitHours must be a positive number"));
     }
     const round = await RoundService.createRound(prizePoolTarget, timeLimitHours) as { roundNumber: number; prizePoolTarget: number };

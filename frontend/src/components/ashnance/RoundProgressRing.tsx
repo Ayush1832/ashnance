@@ -57,7 +57,11 @@ export function RoundProgressRing({ size = 240, round }: Props) {
         </div>
         <div className="font-mono text-3xl font-bold mt-1">{fmtUsd(pool)}</div>
         <div className="text-xs text-muted-foreground mt-0.5">of {fmtUsd(targetPool)}</div>
-        <div className="text-[10px] uppercase mt-3 text-primary tracking-widest">{pct.toFixed(1)}% filled</div>
+        {pct >= 100 ? (
+          <div className="text-[10px] uppercase mt-3 text-gold tracking-widest font-bold">Target hit — winner takes all</div>
+        ) : (
+          <div className="text-[10px] uppercase mt-3 text-primary tracking-widest">{pct.toFixed(1)}% filled</div>
+        )}
       </div>
     </div>
   );

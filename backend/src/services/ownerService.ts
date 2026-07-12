@@ -47,7 +47,7 @@ const BURN_CONFIG_DEFAULTS: Record<string, number> = {
   weight_cap: 300,
   referral_weight_cap_pct: 0.40,
   prize_safety_pct: 0.70,
-  round_time_limit_hours: 24,
+  round_time_limit_hours: 0,     // 0 = no time limit; round ends only when pool target is hit
   anti_snipe_seconds: 10,
   emission_halving_threshold: 100_000_000, // 100M ASH per halving interval
   total_ash_emitted: 0,                    // updated on each burn

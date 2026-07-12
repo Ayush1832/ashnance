@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const unRoundEnded = socket.on("round:ended", (payload) => {
       const p = payload as { winner?: string; prize?: number };
       setNotifications((prev) => [
-        { id: String(Date.now()), text: `🏆 Round ended — winner: ${p.winner ?? "unknown"} ($${p.prize?.toFixed(0) ?? 0})`, at: Date.now() },
+        { id: String(Date.now()), text: `🏆 We hit the target! ${p.winner ?? "The winner"} takes the entire prize pool — $${p.prize?.toFixed(0) ?? 0}`, at: Date.now() },
         ...prev.slice(0, 19),
       ]);
       setRound((prev) => prev ? { ...prev, status: "ENDED" } : prev);

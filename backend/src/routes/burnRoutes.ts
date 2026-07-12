@@ -53,6 +53,8 @@ router.post("/", authenticate, async (req: AuthRequest, res: Response, next: Nex
       newPoolTarget:   result.roundTargetPool,
       progressPercent: result.roundProgressPercent,
       roundEnded:      result.roundEnded,
+      roundWinner:     result.roundWinner,
+      roundPrize:      result.roundPrize,
     } });
   } catch (error: any) {
     if (error.name === "ZodError") {

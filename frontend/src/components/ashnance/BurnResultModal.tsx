@@ -12,6 +12,9 @@ export interface BurnResult {
   newRank: number;
   prizePool: number;
   prizePoolTarget: number;
+  roundEnded?: boolean;
+  roundWinner?: string;
+  roundPrize?: number;
 }
 
 function FireParticles() {
@@ -52,7 +55,7 @@ function FireParticles() {
   );
 }
 
-export function BurnResultModal({ result, onClose }: { result: BurnResult; onClose: () => void }) {
+export function BurnResultModal({ result, onClose, currentUsername }: { result: BurnResult; onClose: () => void; currentUsername?: string }) {
   // "burning" → coin is on fire | "dissolving" → coin shrinks away | "done" → show results
   const [phase, setPhase] = useState<"burning" | "dissolving" | "done">("burning");
   const poolPct = Math.min(100, (result.prizePool / result.prizePoolTarget) * 100);
@@ -187,18 +190,31 @@ export function BurnResultModal({ result, onClose }: { result: BurnResult; onClo
               </div>
             </div>
 
-            {/* Rank callout */}
-            {result.newRank === 1 && (
-              <div className="glass rounded-xl p-3 mb-4 border border-gold/50 flex items-center gap-2 justify-center text-gold">
+            {/* Round-ended callout — target hit, winner takes the entire prize pool */}
+            {result.roundEnded ? (
+              <div className="glass rounded-xl p-3 mb-4 border border-gold/50 flex items-center gap-2 justify-center text-gold text-center">
                 <Trophy className="h-5 w-5 shrink-0" />
-                <span className="font-display font-bold">RANK #1 — THE POOL IS YOURS!</span>
+                <span className="font-display font-bold">
+                  {result.roundWinner && result.roundWinner === currentUsername
+                    ? `YOU HIT THE TARGET — YOU TAKE THE ENTIRE PRIZE POOL: ${fmtUsd(result.roundPrize ?? result.prizePool)}!`
+                    : `We hit the target! ${result.roundWinner ?? "The winner"} takes the entire prize pool — ${fmtUsd(result.roundPrize ?? result.prizePool)}`}
+                </span>
               </div>
-            )}
-            {result.newRank <= 3 && result.newRank > 1 && (
-              <div className="glass rounded-xl p-3 mb-4 border border-primary/30 flex items-center gap-2 justify-center text-fire">
-                <TrendingUp className="h-5 w-5 shrink-0" />
-                <span className="font-semibold">Top 3! Keep burning to claim #1</span>
-              </div>
+            ) : (
+              <>
+                {result.newRank === 1 && (
+                  <div className="glass rounded-xl p-3 mb-4 border border-gold/50 flex items-center gap-2 justify-center text-gold">
+                    <Trophy className="h-5 w-5 shrink-0" />
+                    <span className="font-display font-bold">RANK #1 — THE POOL IS YOURS!</span>
+                  </div>
+                )}
+                {result.newRank <= 3 && result.newRank > 1 && (
+                  <div className="glass rounded-xl p-3 mb-4 border border-primary/30 flex items-center gap-2 justify-center text-fire">
+                    <TrendingUp className="h-5 w-5 shrink-0" />
+                    <span className="font-semibold">Top 3! Keep burning to claim #1</span>
+                  </div>
+                )}
+              </>
             )}
 
             <button

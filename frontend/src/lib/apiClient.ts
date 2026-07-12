@@ -322,7 +322,10 @@ export const api = {
   // ── Burn ──────────────────────────────────────────────────────────────────
 
   async burn(amount: number) {
-    const data = await post<{ weight: number; ash: number; rank: number; newPool: number }>(
+    const data = await post<{
+      weight: number; ash: number; rank: number; newPool: number;
+      roundEnded?: boolean; roundWinner?: string; roundPrize?: number;
+    }>(
       "/api/burn", { amount },
     );
     // Refresh full user profile so header balances update immediately

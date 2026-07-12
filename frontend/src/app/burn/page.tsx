@@ -168,6 +168,9 @@ export default function BurnPage() {
         newRank: res.data.rank,
         prizePool: res.data.newPool,
         prizePoolTarget: round?.prizePoolTarget ?? 500,
+        roundEnded: res.data.roundEnded,
+        roundWinner: res.data.roundWinner,
+        roundPrize: res.data.roundPrize,
       });
       // Also refresh full round state from API to get updated leaderboard
       api.currentRound()
@@ -317,7 +320,11 @@ export default function BurnPage() {
             {round && (
               <>
                 <div className="mt-3 font-mono text-2xl font-bold text-fire">{fmtUsd(round.prizePool)}</div>
-                <div className="text-xs text-muted-foreground">of {fmtUsd(round.prizePoolTarget)} prize pool</div>
+                {round.prizePool >= round.prizePoolTarget ? (
+                  <div className="text-xs font-semibold text-gold">We hit the target — the winner takes the entire prize pool</div>
+                ) : (
+                  <div className="text-xs text-muted-foreground">of {fmtUsd(round.prizePoolTarget)} prize pool</div>
+                )}
                 {round.endsAt && (
                   <div className="mt-2 text-xs text-muted-foreground">Ends in <span className="font-mono text-foreground">{countdown(round.endsAt)}</span></div>
                 )}
@@ -354,7 +361,7 @@ export default function BurnPage() {
       </div>
       </Reveal>
 
-      {burnResult && <BurnResultModal result={burnResult} onClose={() => setBurnResult(null)} />}
+      {burnResult && <BurnResultModal result={burnResult} onClose={() => setBurnResult(null)} currentUsername={user.username} />}
     </AppShell>
   );
 }
