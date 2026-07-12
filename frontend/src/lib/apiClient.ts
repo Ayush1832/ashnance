@@ -78,9 +78,11 @@ async function maybeRefresh(force = false): Promise<void> {
 
   // The refresh token is in an HttpOnly cookie (not readable here). A legacy token
   // may still sit in localStorage from before the cookie migration — send it as a
-  // body fallback so those sessions transparently move onto the cookie.
+  // body fallback so those sessions transparently move onto the cookie. We can't
+  // tell from JS whether the cookie exists, so even with no local token at all we
+  // still attempt the call — that's what lets a session survive a closed browser
+  // (the access token in localStorage is gone/expired, but the 7-day cookie isn't).
   const legacyRefresh = getRefreshToken();
-  if (!access && !legacyRefresh) return; // not logged in — nothing to refresh
 
   if (refreshPromise) return refreshPromise;
 
@@ -242,6 +244,14 @@ export const api = {
   async profile() {
     const data = await get<Record<string, unknown>>("/api/auth/profile");
     return { success: true, data };
+  },
+
+  // Silently attempts to turn a 7-day refresh cookie into a fresh access token,
+  // without going through request()'s 401 handler (which hard-redirects to
+  // /login) — anonymous visitors have no cookie, so this must fail quietly.
+  async restoreSession(): Promise<boolean> {
+    await maybeRefresh();
+    return !!getAccessToken();
   },
 
   async updateProfile(patch: { username?: string; privacyMode?: boolean; avatarUrl?: string }) {
