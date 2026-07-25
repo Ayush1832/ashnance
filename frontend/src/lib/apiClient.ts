@@ -149,7 +149,11 @@ async function request<T = unknown>(
     }
     clearTokens();
     userStore.clear();
-    if (typeof window !== "undefined") window.location.href = "/login";
+    if (typeof window !== "undefined") {
+      const isAdminHost = window.location.hostname.startsWith("admin.");
+      const target = isAdminHost ? "/admin/login" : "/login";
+      if (window.location.pathname !== target) window.location.href = target;
+    }
     throw new Error("Session expired — please sign in again");
   }
 
