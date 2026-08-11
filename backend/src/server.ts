@@ -19,6 +19,10 @@ import stakingRoutes from "./routes/stakingRoutes";
 import ownerRoutes from "./routes/ownerRoutes";
 import roundRoutes from "./routes/roundRoutes";
 import referralsRoutes from "./routes/referralsRoutes";
+import creatorRoutes from "./routes/creatorRoutes";
+import publicPoolRoutes from "./routes/publicPoolRoutes";
+import battleRoutes from "./routes/battleRoutes";
+import adminCreatorRoutes from "./routes/adminCreatorRoutes";
 
 // ============================================================
 // Express App
@@ -96,6 +100,23 @@ const subscribeLimiter = rateLimit({
 });
 app.use("/api/subscribe", subscribeLimiter);
 
+// Creator pool contributions — anti-spam guard on the money-moving endpoint
+const poolContributeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { success: false, error: "Too many contribution attempts, please slow down" },
+});
+app.use("/api/pools/:creatorSlug/:poolSlug/contribute", poolContributeLimiter);
+
+// Battle actions — the service already enforces a 30s per-actor cooldown, this is
+// a coarser IP-level anti-bot backstop on top of that.
+const battleActionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { success: false, error: "Too many battle actions, please slow down" },
+});
+app.use("/api/battle/:poolId/action", battleActionLimiter);
+
 // OTP endpoint — strict limit: 5 requests per 10 minutes per IP
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -127,6 +148,10 @@ app.use("/api/staking", stakingRoutes);
 app.use("/api/owner", ownerRoutes);
 app.use("/api/round", roundRoutes);
 app.use("/api/referrals", referralsRoutes);
+app.use("/api/creator", creatorRoutes);
+app.use("/api/pools", publicPoolRoutes);
+app.use("/api/battle", battleRoutes);
+app.use("/api/admin/creator", adminCreatorRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler);

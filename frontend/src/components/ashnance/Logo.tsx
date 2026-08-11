@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Flame } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 // Premium product mark: a molten rounded-square badge (à la Linear/Raycast)
@@ -16,7 +16,7 @@ export function Logo({
   showText?: boolean;
 }) {
   const mark = { sm: "size-6", md: "size-8", lg: "size-10" }[size];
-  const icon = { sm: "size-3.5", md: "size-[18px]", lg: "size-6" }[size];
+  const markPx = { sm: 24, md: 32, lg: 40 }[size];
   const text = { sm: "text-sm", md: "text-lg", lg: "text-2xl" }[size];
 
   return (
@@ -27,13 +27,18 @@ export function Logo({
     >
       <span
         className={cn(
-          "relative grid shrink-0 place-items-center rounded-[32%] bg-fire text-background",
-          "shadow-[0_4px_18px_-3px_rgba(255,69,0,0.6)] transition-transform duration-500 ease-out group-hover:scale-105",
+          "relative grid shrink-0 place-items-center transition-transform duration-500 ease-out group-hover:scale-105",
           mark,
         )}
       >
-        <Flame className={cn(icon, "drop-shadow-sm")} strokeWidth={2.4} fill="currentColor" fillOpacity={0.22} />
-        <span className="pointer-events-none absolute inset-0 rounded-[32%] ring-1 ring-inset ring-white/25" />
+        <Image
+          src="/logo-symbol.png"
+          alt=""
+          width={markPx}
+          height={markPx}
+          className="size-full object-contain drop-shadow-[0_4px_14px_rgba(255,69,0,0.45)]"
+          priority
+        />
       </span>
       {showText && <span className={cn(text, "leading-none")}>Ashnance</span>}
     </Link>

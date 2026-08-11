@@ -146,6 +146,113 @@ Socket payloads:
 - `deposit:confirmed`: `{ amount }` — user-specific room
 - `referral:earned`: `{ amount, from }` — user-specific room
 
+## Creator Prize Pools (implemented)
+
+A second, fully isolated core feature: verified creators/influencers launch their own branded
+prize pools; their followers contribute USDC into that pool only; the creator earns a
+configurable revenue % automatically on every contribution; one (or more) winner is decided by
+a **Weight** system per pool — same philosophy as the Global Pool, but evolved into a strategic
+**Battle System**. Global Pool code (`Round`, `Burn`, `Wallet.cumulativeWeight`, `RewardPool`)
+is a tightly-coupled singleton (one ACTIVE round platform-wide) and is NOT touched or reused —
+Creator Pools are entirely separate models, services, and routes so the two systems never
+interfere with each other. All schema changes were applied additively (`prisma db push`,
+diff-checked before every apply — this project doesn't use `prisma migrate`, schema sync has
+always been push-based) and re-verified end-to-end against production with a throwaway test
+account, then cleaned up.
+
+### Isolation strategy
+- No shared `Round`/`Burn` rows. Creator Pools are their own Prisma models (`Creator`,
+  `CreatorPool`, `CreatorPoolContribution`, `CreatorPoolParticipant`, `CreatorPoolWinner`,
+  `CreatorWallet`, `CreatorWithdrawalRequest`, `CreatorFollower`, `BattleEvent`).
+- Each `CreatorPool` is one self-contained campaign instance (like a `Round`) with its own
+  lifecycle: `DRAFT → ACTIVE ⇄ PAUSED → ENDED → ARCHIVED` (+ `FROZEN` for admin intervention).
+  "Duplicate previous pool" clones config into a fresh `DRAFT`/`ACTIVE`, it does not reopen the
+  old one. `endPool` (creator- or effectively admin-triggered via freeze/unfreeze) pays out the
+  full `currentPoolValue` to the top `numberOfWinners` participants by weight, proportional to
+  their weight share, in one transaction — logged as `POOL_PRIZE` transactions.
+- Platform-fee cut of every contribution routes into the **existing** `ProfitPool` table —
+  reuses the owner dual-approval withdrawal tooling (`ownerService.ts`,
+  `OwnerWithdrawalRequest`) instead of building a second payout pipeline. Creator revenue cut
+  goes to `CreatorWallet.usdcBalance`; creators request withdrawals
+  (`CreatorWithdrawalRequest`, own status machine `PENDING → PROCESSING → COMPLETED/FAILED`,
+  or `REJECTED`) which an admin approves — execution reuses
+  `BlockchainService.sendUsdcTransfer` with the same reserve-before-send, never-auto-refund-an-
+  unconfirmed-tx safety pattern as `WalletService.processWithdrawal`.
+- New pools are **auto-live** once a creator is verified (no per-pool admin approval) — admin
+  verifies the creator once via `/api/admin/creator/:id/verify` (which also flips any pending
+  `DRAFT` pools to `ACTIVE`), then that creator can be frozen/unfrozen after the fact via
+  `requireAdmin`.
+- Public pages live at `/pool/[creatorSlug]/[poolSlug]` (not `/@handle` — collides with existing
+  root routes like `/dashboard`, `/wallet`).
+- Creator referral links (`Creator.referralCode`) associate a visiting user with a creator via
+  `CreatorFollower` (`joinedVia: "direct" | "referral"`) — a separate graph from the platform-wide
+  `User.referralCode` used by the Global Pool's referral system; the two never interact.
+
+### Weight & Battle System (core gameplay difference from Global Pool)
+- `CreatorPoolParticipant.weight` starts from contributions (`weight += prizeAllocation` per
+  contribution), but is **mutable mid-round** through ASH-funded strategic actions — the
+  "Battle System," implemented in `battleService.ts`.
+- Action types (`BattleActionType` enum): `ATTACK`, `SHIELD`, `COUNTER`, `BOOST`, `RECOVERY` —
+  every action consumes ASH from the actor's existing `Wallet.ashBalance` (no new currency).
+  Fixed ASH costs (`ATTACK` 10–200 variable, `SHIELD` 8, `COUNTER` 12, `BOOST` 15, `RECOVERY`
+  10) live as constants at the top of `battleService.ts`.
+- Every action writes an immutable `BattleEvent` row (actor, target?, type, ashSpent,
+  weightDelta, resultMeta json) — full audit trail, exposed read-only via
+  `GET /api/battle/:poolId/log`.
+- Fairness constraints, enforced server-side in `battleService.ts`:
+  - `calculateAttackEffect()` is the single pure function for attack math — raw loss is capped
+    at 5% of the defender's current weight (`MAX_ATTACK_PCT_OF_DEFENDER_WEIGHT`), scales with
+    `sqrt(ashSpent)` (diminishing returns on overspending, same shape as `BurnService`'s weight
+    cap), and repeat-targeting the same defender within 24h halves the effect each time
+    (floored at 10%).
+  - `SHIELD` absorbs 50% of realized incoming attack damage for 1h; a shielded target's
+    realized loss is always ≤ the raw attack roll.
+  - `COUNTER` (5 min window after being attacked) reflects 50% of the last attack's damage back
+    onto the attacker and heals the defender 50% of it — reads the actual last `BattleEvent`
+    for magnitude, not an estimate.
+  - `RECOVERY` restores 50% of `weightLostSinceRecovery` (an accumulator that only decreases as
+    it's spent, never a full reset, so repeated recovery has diminishing value).
+  - Rate limits: a 30s cooldown between *any* two actions by the same actor in a pool
+    (`lastActionAt`), plus a separate 1h cooldown just for `BOOST` (`lastBoostAt`), plus an
+    IP-level `express-rate-limit` backstop (20/min) on the route itself.
+- This is additive utility for ASH — it does not touch `BurnService`'s ASH emission/reward math
+  for the Global Pool.
+
+### Backend surface
+- Routes: `creatorRoutes.ts` (`/api/creator/*` — profile, pool CRUD/lifecycle/end,
+  withdrawals, referral stats, pool analytics), `publicPoolRoutes.ts` (`/api/pools/*` — public
+  pool page, contribute, follow-via-referral), `battleRoutes.ts` (`/api/battle/*` — perform
+  action, read battle log), `adminCreatorRoutes.ts` (`/api/admin/creator/*` — verify/unverify,
+  freeze/unfreeze pools, approve/reject withdrawals, contribution audit feed).
+- Middleware: `creatorAuth.ts` exports `requireCreator` (auth + must own a `Creator` row,
+  attaches `req.creator`) and `assertPoolOwnership` — a distinct tier from
+  `requireAdmin`/`requireOwner`, not a reuse of either.
+- Services: `creatorService`, `creatorPoolService` (CRUD/lifecycle/`endPool` payout),
+  `creatorContributionService` (transactional split: prize / creator revenue / platform fee,
+  mirrors `BurnService`'s split pattern but pool-scoped), `creatorAnalyticsService` (pool
+  stats — deliberately has **no** conversion-rate field since there's no page-visit tracking to
+  compute one from; everything else is real, not fabricated), `creatorReferralService`,
+  `creatorWithdrawalService`, `battleService` (kept isolated so gameplay tuning doesn't risk
+  the money-moving services).
+- Socket events (additive to the closed `EventName` union in `socketClient.ts`): scoped to a
+  `pool:{poolId}` room, joined via `socket.joinPool(id)`/`leavePool(id)` —
+  `creatorPool:contribution`, `creatorPool:progress`, `creatorPool:battle`,
+  `creatorPool:started`, `creatorPool:ended`, `creatorPool:winner`. Never reuses the Global
+  Pool's `round`/`ticker`/`leaderboard` rooms or event names.
+
+### Frontend surface
+- `frontend/src/app/creator/dashboard/page.tsx` — profile claim, pool CRUD/lifecycle
+  (pause/resume/archive/duplicate/end), inline per-pool analytics toggle, withdrawal
+  request panel, referral link + stats panel.
+- `frontend/src/app/pool/[creatorSlug]/[poolSlug]/page.tsx` — public campaign page:
+  contribution form, live leaderboard (by weight), Battle System action panel (attack target
+  picker + 5 action buttons), live battle log, winner history. Captures `?ref=` into a
+  creator-follow call on first load for a signed-in visitor.
+- `frontend/src/app/admin/page.tsx` — new "Creator Pools" tab: verify/unverify creators,
+  approve/reject pending withdrawals.
+- No new primitives were needed — battle/analytics/withdrawal UI reuses
+  `components/ashnance/primitives.tsx` (`GlassCard`, `GhostButton`, `StatusBadge`, etc.).
+
 ## Workflow
 
 - TypeScript strict mode is enabled on both sides — `npx tsc --noEmit` must pass before commit

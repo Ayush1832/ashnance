@@ -86,3 +86,73 @@ export const updatePlatformConfigSchema = z.object({
 export const subscribeSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address").max(254),
 });
+
+// ---- CREATOR PRIZE POOLS ----
+export const createCreatorProfileSchema = z.object({
+  slug: z
+    .string()
+    .min(3, "Slug must be at least 3 characters")
+    .max(32, "Slug must be at most 32 characters")
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
+  displayName: z.string().min(2).max(60),
+  bio: z.string().max(500).optional(),
+  avatarUrl: z.string().url().optional(),
+  coverImageUrl: z.string().url().optional(),
+});
+
+export const updateCreatorProfileSchema = z.object({
+  displayName: z.string().min(2).max(60).optional(),
+  bio: z.string().max(500).optional(),
+  avatarUrl: z.string().url().optional(),
+  coverImageUrl: z.string().url().optional(),
+});
+
+export const createCreatorPoolSchema = z.object({
+  slug: z
+    .string()
+    .min(3)
+    .max(48)
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
+  name: z.string().min(2).max(80),
+  description: z.string().max(2000).optional(),
+  coverImageUrl: z.string().url().optional(),
+  logoUrl: z.string().url().optional(),
+  minContribution: z.number().positive().min(0.5, "Minimum contribution must be at least $0.50"),
+  maxContribution: z.number().positive().optional(),
+  creatorRevenuePercent: z.number().min(0).max(0.5, "Creator revenue cannot exceed 50%"),
+  rolloverUnusedFunds: z.boolean().optional(),
+  numberOfWinners: z.number().int().min(1).max(10).optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+});
+
+export const updateCreatorPoolSchema = z.object({
+  name: z.string().min(2).max(80).optional(),
+  description: z.string().max(2000).optional(),
+  coverImageUrl: z.string().url().optional(),
+  logoUrl: z.string().url().optional(),
+  minContribution: z.number().positive().optional(),
+  maxContribution: z.number().positive().optional(),
+  creatorRevenuePercent: z.number().min(0).max(0.5).optional(),
+  rolloverUnusedFunds: z.boolean().optional(),
+  endDate: z.string().datetime().optional(),
+});
+
+export const contributeToPoolSchema = z.object({
+  amount: z.number().positive("Amount must be positive"),
+});
+
+export const battleActionSchema = z.object({
+  actionType: z.enum(["ATTACK", "SHIELD", "COUNTER", "BOOST", "RECOVERY"]),
+  targetUserId: z.string().uuid().optional(),
+  ashAmount: z.number().positive().optional(),
+});
+
+export const requestCreatorWithdrawalSchema = z.object({
+  amount: z.number().positive().min(5, "Minimum withdrawal is $5 USDC"),
+  address: z.string().min(32, "Invalid Solana address"),
+});
+
+export const followCreatorSchema = z.object({
+  referralCode: z.string().optional(),
+});

@@ -9,7 +9,13 @@ type EventName =
   | "round:ended"
   | "round:created"
   | "deposit:confirmed"
-  | "referral:earned";
+  | "referral:earned"
+  | "creatorPool:contribution"
+  | "creatorPool:progress"
+  | "creatorPool:battle"
+  | "creatorPool:started"
+  | "creatorPool:ended"
+  | "creatorPool:winner";
 
 type Handler = (payload: unknown) => void;
 
@@ -54,6 +60,12 @@ class AppSocket {
       "round:created",
       "deposit:confirmed",
       "referral:earned",
+      "creatorPool:contribution",
+      "creatorPool:progress",
+      "creatorPool:battle",
+      "creatorPool:started",
+      "creatorPool:ended",
+      "creatorPool:winner",
     ];
     for (const evt of events) {
       this._socket.on(evt, (payload: unknown) => {
@@ -73,6 +85,16 @@ class AppSocket {
 
   off(event: EventName, h: Handler) {
     this._handlers.get(event)?.delete(h);
+  }
+
+  // Creator Pools — join/leave the isolated per-pool room. Never touches the
+  // Global Pool's ticker/round/leaderboard rooms.
+  joinPool(poolId: string) {
+    this.getSocket()?.emit("join:pool", poolId);
+  }
+
+  leavePool(poolId: string) {
+    this.getSocket()?.emit("leave:pool", poolId);
   }
 
   emit(event: EventName, payload: unknown) {

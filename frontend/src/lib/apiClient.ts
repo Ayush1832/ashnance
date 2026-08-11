@@ -611,4 +611,173 @@ export const api = {
     return { success: true };
   },
 
+  // ── Creator Prize Pools ───────────────────────────────────────────────────
+
+  async creatorCreateProfile(b: { slug: string; displayName: string; bio?: string; avatarUrl?: string; coverImageUrl?: string }) {
+    const data = await post("/api/creator/profile", b);
+    return { success: true, data };
+  },
+
+  async creatorProfile() {
+    const data = await get("/api/creator/profile");
+    return { success: true, data };
+  },
+
+  async creatorUpdateProfile(b: { displayName?: string; bio?: string; avatarUrl?: string; coverImageUrl?: string }) {
+    const data = await put("/api/creator/profile", b);
+    return { success: true, data };
+  },
+
+  async creatorListPools() {
+    const data = await get("/api/creator/pools");
+    return { success: true, data };
+  },
+
+  async creatorCreatePool(b: {
+    slug: string; name: string; description?: string; coverImageUrl?: string; logoUrl?: string;
+    minContribution: number; maxContribution?: number; creatorRevenuePercent: number;
+    rolloverUnusedFunds?: boolean; numberOfWinners?: number; startDate?: string; endDate?: string;
+  }) {
+    const data = await post("/api/creator/pools", b);
+    return { success: true, data };
+  },
+
+  async creatorUpdatePool(id: string, b: Record<string, unknown>) {
+    const data = await put(`/api/creator/pools/${id}`, b);
+    return { success: true, data };
+  },
+
+  async creatorPausePool(id: string) {
+    const data = await post(`/api/creator/pools/${id}/pause`);
+    return { success: true, data };
+  },
+
+  async creatorResumePool(id: string) {
+    const data = await post(`/api/creator/pools/${id}/resume`);
+    return { success: true, data };
+  },
+
+  async creatorArchivePool(id: string) {
+    const data = await post(`/api/creator/pools/${id}/archive`);
+    return { success: true, data };
+  },
+
+  async creatorDuplicatePool(id: string, slug: string) {
+    const data = await post(`/api/creator/pools/${id}/duplicate`, { slug });
+    return { success: true, data };
+  },
+
+  // ── Public pool pages ─────────────────────────────────────────────────────
+
+  async publicPool(creatorSlug: string, poolSlug: string) {
+    const data = await get(`/api/pools/${creatorSlug}/${poolSlug}`, false);
+    return { success: true, data };
+  },
+
+  async contributeToPool(creatorSlug: string, poolSlug: string, amount: number) {
+    const data = await post(`/api/pools/${creatorSlug}/${poolSlug}/contribute`, { amount });
+    // Refresh full user profile so wallet balance updates immediately
+    get<Record<string, unknown>>("/api/auth/profile")
+      .then((profileData) => userStore.update(mapProfile(profileData)))
+      .catch(() => {});
+    return { success: true, data };
+  },
+
+  async followCreator(creatorSlug: string, referralCode?: string) {
+    const data = await post(`/api/pools/${creatorSlug}/follow`, { referralCode });
+    return { success: true, data };
+  },
+
+  async creatorEndPool(id: string) {
+    const data = await post(`/api/creator/pools/${id}/end`);
+    return { success: true, data };
+  },
+
+  // ── Battle System ─────────────────────────────────────────────────────────
+
+  async battleAction(poolId: string, b: { actionType: string; targetUserId?: string; ashAmount?: number }) {
+    const data = await post(`/api/battle/${poolId}/action`, b);
+    // ASH balance changed — refresh profile
+    get<Record<string, unknown>>("/api/auth/profile")
+      .then((profileData) => userStore.update(mapProfile(profileData)))
+      .catch(() => {});
+    return { success: true, data };
+  },
+
+  async battleLog(poolId: string) {
+    const data = await get(`/api/battle/${poolId}/log`, false);
+    return { success: true, data };
+  },
+
+  // ── Creator withdrawals ──────────────────────────────────────────────────
+
+  async creatorWithdrawals() {
+    const data = await get("/api/creator/withdrawals");
+    return { success: true, data };
+  },
+
+  async creatorRequestWithdrawal(b: { amount: number; address: string }) {
+    const data = await post("/api/creator/withdrawals", b);
+    return { success: true, data };
+  },
+
+  // ── Creator referrals + analytics ────────────────────────────────────────
+
+  async creatorReferralStats() {
+    const data = await get("/api/creator/referrals");
+    return { success: true, data };
+  },
+
+  async creatorPoolAnalytics(poolId: string) {
+    const data = await get(`/api/creator/pools/${poolId}/analytics`);
+    return { success: true, data };
+  },
+
+  // ── Admin: creator management ────────────────────────────────────────────
+
+  async adminCreatorList() {
+    const data = await get("/api/admin/creator/list");
+    return { success: true, data };
+  },
+
+  async adminVerifyCreator(id: string) {
+    const data = await post(`/api/admin/creator/${id}/verify`);
+    return { success: true, data };
+  },
+
+  async adminUnverifyCreator(id: string) {
+    const data = await post(`/api/admin/creator/${id}/unverify`);
+    return { success: true, data };
+  },
+
+  async adminFreezePool(id: string) {
+    const data = await post(`/api/admin/creator/pools/${id}/freeze`);
+    return { success: true, data };
+  },
+
+  async adminUnfreezePool(id: string) {
+    const data = await post(`/api/admin/creator/pools/${id}/unfreeze`);
+    return { success: true, data };
+  },
+
+  async adminPendingCreatorWithdrawals() {
+    const data = await get("/api/admin/creator/withdrawals/pending");
+    return { success: true, data };
+  },
+
+  async adminApproveCreatorWithdrawal(id: string) {
+    const data = await post(`/api/admin/creator/withdrawals/${id}/approve`);
+    return { success: true, data };
+  },
+
+  async adminRejectCreatorWithdrawal(id: string) {
+    const data = await post(`/api/admin/creator/withdrawals/${id}/reject`);
+    return { success: true, data };
+  },
+
+  async adminCreatorContributions() {
+    const data = await get("/api/admin/creator/contributions");
+    return { success: true, data };
+  },
+
 };

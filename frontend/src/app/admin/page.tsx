@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Ban, UserCheck, Save, Download, Trash2 } from "lucide-react";
+import { Ban, UserCheck, Save, Download, Trash2, BadgeCheck, Snowflake, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { AdminShell } from "@/components/admin/AdminShell";
 import { Reveal } from "@/components/motion/Reveal";
-import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile, FireProgress } from "@/components/ashnance/primitives";
+import { GlassCard, SectionHeader, FireButton, GhostButton, StatTile, FireProgress, StatusBadge } from "@/components/ashnance/primitives";
 import { fmtUsd, fmtNum, timeAgo } from "@/lib/format";
 import { api } from "@/lib/apiClient";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
-import type { BurnConfig, Round } from "@/lib/types";
+import type { BurnConfig, Round, CreatorWithdrawalRequest } from "@/lib/types";
 
-type Tab = "users" | "config" | "subscribers" | "launch" | "profit" | "rounds";
+type Tab = "users" | "config" | "subscribers" | "launch" | "profit" | "rounds" | "creators";
 
 const TAB_LABELS: Record<Tab, string> = {
   users: "Users",
@@ -21,6 +21,7 @@ const TAB_LABELS: Record<Tab, string> = {
   launch: "Launch Mode",
   profit: "Profit",
   rounds: "Rounds",
+  creators: "Creator Pools",
 };
 
 type AdminUser = {
@@ -82,7 +83,7 @@ export default function AdminPage() {
       </div>
 
       <div className="flex gap-1 p-1 rounded-lg bg-muted mb-5 text-xs w-fit flex-wrap">
-        {(["users", "config", "subscribers", "launch", ...(isOwner ? ["rounds", "profit"] : [])] as Tab[]).map((t) => (
+        {(["users", "config", "subscribers", "launch", "creators", ...(isOwner ? ["rounds", "profit"] : [])] as Tab[]).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={cn("h-8 px-5 rounded transition",
               tab === t ? "bg-fire text-background font-semibold" : "text-muted-foreground hover:text-foreground")}>
@@ -97,7 +98,134 @@ export default function AdminPage() {
       {tab === "launch" && <LaunchTab />}
       {tab === "rounds" && <RoundsTab />}
       {tab === "profit" && <ProfitTab />}
+      {tab === "creators" && <CreatorsTab />}
     </AdminShell>
+  );
+}
+
+type AdminCreator = {
+  id: string;
+  slug: string;
+  displayName: string;
+  verified: boolean;
+  createdAt: string;
+  _count: { pools: number };
+  wallet: { usdcBalance: number; totalEarned: number } | null;
+};
+
+function CreatorsTab() {
+  const { user } = useAuth();
+  const isOwner = user?.role === "OWNER"; // withdrawal approval is owner-only, same tier as profit withdrawals
+  const [creators, setCreators] = useState<AdminCreator[]>([]);
+  const [withdrawals, setWithdrawals] = useState<CreatorWithdrawalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function loadAll() {
+    setLoading(true);
+    try {
+      const [creatorsRes, withdrawalsRes] = await Promise.all([
+        api.adminCreatorList(),
+        api.adminPendingCreatorWithdrawals(),
+      ]);
+      setCreators((creatorsRes.data as AdminCreator[]) ?? []);
+      setWithdrawals((withdrawalsRes.data as CreatorWithdrawalRequest[]) ?? []);
+    } catch {
+      toast.error("Failed to load creator data");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function toggleVerify(c: AdminCreator) {
+    try {
+      if (c.verified) await api.adminUnverifyCreator(c.id);
+      else await api.adminVerifyCreator(c.id);
+      toast.success(c.verified ? "Creator unverified" : "Creator verified — their pools go live");
+      loadAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
+    }
+  }
+
+  async function approveWithdrawal(id: string) {
+    try {
+      await api.adminApproveCreatorWithdrawal(id);
+      toast.success("Withdrawal approved and sent on-chain");
+      loadAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Approval failed");
+    }
+  }
+
+  async function rejectWithdrawal(id: string) {
+    try {
+      await api.adminRejectCreatorWithdrawal(id);
+      toast.success("Withdrawal rejected");
+      loadAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Rejection failed");
+    }
+  }
+
+  if (loading) return <div className="text-center py-8 text-muted-foreground text-sm">Loading…</div>;
+
+  return (
+    <div className="space-y-5">
+      <GlassCard>
+        <div className="text-sm font-semibold mb-4">Creators ({creators.length})</div>
+        {creators.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-sm">No creators yet</div>
+        ) : (
+          <div className="space-y-2">
+            {creators.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
+                <span className="text-sm flex-1 truncate">{c.displayName} <span className="text-muted-foreground">/pool/{c.slug}</span></span>
+                <span className="text-xs text-muted-foreground">{c._count.pools} pools</span>
+                <span className="font-mono text-xs text-usdc">{fmtUsd(c.wallet?.usdcBalance ?? 0)}</span>
+                <button
+                  onClick={() => toggleVerify(c)}
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2 h-6 rounded text-[10px] font-semibold uppercase tracking-wider border transition",
+                    c.verified ? "bg-success/15 text-success border-success/30" : "bg-muted text-muted-foreground border-border hover:text-foreground",
+                  )}
+                >
+                  {c.verified ? <BadgeCheck className="h-3 w-3" /> : <Snowflake className="h-3 w-3" />}
+                  {c.verified ? "Verified" : "Unverified"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassCard>
+
+      <GlassCard>
+        <div className="text-sm font-semibold mb-4">Pending withdrawals ({withdrawals.length})</div>
+        {withdrawals.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground text-sm">Nothing pending</div>
+        ) : (
+          <div className="space-y-2">
+            {withdrawals.map((w) => (
+              <div key={w.id} className="flex items-center gap-3 glass rounded-lg px-4 py-3">
+                <span className="text-sm flex-1 truncate">{w.creator?.displayName ?? "—"}</span>
+                <StatusBadge status={w.status} />
+                <span className="font-mono text-sm">{fmtUsd(w.amount)}</span>
+                <span className="text-xs text-muted-foreground">{timeAgo(w.requestedAt)}</span>
+                {isOwner ? (
+                  <>
+                    <GhostButton size="sm" onClick={() => approveWithdrawal(w.id)}><Check className="h-3.5 w-3.5" /></GhostButton>
+                    <GhostButton size="sm" onClick={() => rejectWithdrawal(w.id)}><X className="h-3.5 w-3.5" /></GhostButton>
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Owner approval required</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </GlassCard>
+    </div>
   );
 }
 

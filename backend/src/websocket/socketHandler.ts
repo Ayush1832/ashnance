@@ -50,6 +50,19 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
       socket.join("round");
     });
 
+    // Creator Pools — scoped per-pool room, additive to the rooms above.
+    // Never joins/emits into ticker/leaderboard/round (Global Pool rooms).
+    socket.on("join:pool", (poolId: string) => {
+      if (typeof poolId === "string" && poolId.length > 0) {
+        socket.join(`pool:${poolId}`);
+      }
+    });
+    socket.on("leave:pool", (poolId: string) => {
+      if (typeof poolId === "string" && poolId.length > 0) {
+        socket.leave(`pool:${poolId}`);
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log(`[WS] Client disconnected: ${socket.id}`);
     });
@@ -156,5 +169,68 @@ export function broadcastReferralEvent(
   io.to(`user:${referrerId}`).emit("referral:earned", {
     amount,
     from: refereeUsername,
+  });
+}
+
+// ---- Creator Pools broadcasters (isolated `pool:{poolId}` room) ----
+
+export function broadcastCreatorPoolContribution(
+  poolId: string,
+  data: { username: string; amount: number; poolCurrentValue: number }
+) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:contribution", {
+    user: data.username,
+    amount: data.amount,
+    poolCurrentValue: data.poolCurrentValue,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function broadcastCreatorPoolProgress(
+  poolId: string,
+  data: { poolCurrentValue: number; participantCount: number }
+) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:progress", {
+    poolCurrentValue: data.poolCurrentValue,
+    participantCount: data.participantCount,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function broadcastCreatorPoolBattle(
+  poolId: string,
+  data: { actor: string; actionType: string; targetUserId?: string; weightDelta: number }
+) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:battle", {
+    actor: data.actor,
+    actionType: data.actionType,
+    targetUserId: data.targetUserId,
+    weightDelta: data.weightDelta,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export function broadcastCreatorPoolStarted(poolId: string, poolName: string) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:started", { poolName, timestamp: new Date().toISOString() });
+}
+
+export function broadcastCreatorPoolEnded(poolId: string, poolName: string) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:ended", { poolName, timestamp: new Date().toISOString() });
+}
+
+export function broadcastCreatorPoolWinner(
+  poolId: string,
+  data: { winnerUsername: string; prizeAmount: number }
+) {
+  if (!io) return;
+  io.to(`pool:${poolId}`).emit("creatorPool:winner", {
+    winner: data.winnerUsername,
+    prize: data.prizeAmount,
+    timestamp: new Date().toISOString(),
   });
 }

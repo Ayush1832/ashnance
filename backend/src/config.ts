@@ -108,4 +108,15 @@ export const config = {
     referralBonusPer5: 0.20,
     ashBoostBonus: 0.50,
   },
+
+  // Creator Prize Pools (separate module — platform fee default, admin-tunable later)
+  creatorPools: {
+    defaultPlatformFeePercent: 0.05,
+    maxCreatorRevenuePercent: 0.50,
+    maxPlatformFeePercent: 0.20,
+    // Flat one-time USDC fee charged to the creator's own Wallet.usdcBalance
+    // when they open a new pool (createPool or duplicatePool) — routes into
+    // ProfitPool alongside the per-contribution platform fee.
+    poolCreationFeeUsdc: Number(process.env.CREATOR_POOL_CREATION_FEE_USDC) || 25,
+  },
 };

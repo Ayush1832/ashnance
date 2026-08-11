@@ -110,6 +110,104 @@ export interface LeaderboardRow {
   isYou?: boolean;
 }
 
+// ---- Creator Prize Pools (separate module) ----
+
+export interface Creator {
+  id: string;
+  slug: string;
+  displayName: string;
+  bio?: string | null;
+  avatarUrl?: string | null;
+  coverImageUrl?: string | null;
+  verified: boolean;
+  referralCode: string;
+  wallet?: { usdcBalance: number; totalEarned: number } | null;
+}
+
+export type CreatorPoolStatus = "DRAFT" | "ACTIVE" | "PAUSED" | "ENDED" | "ARCHIVED" | "FROZEN";
+
+export interface CreatorPool {
+  id: string;
+  creatorId: string;
+  slug: string;
+  name: string;
+  description?: string | null;
+  coverImageUrl?: string | null;
+  logoUrl?: string | null;
+  status: CreatorPoolStatus;
+  prizeCurrency: string;
+  minContribution: number;
+  maxContribution?: number | null;
+  creatorRevenuePercent: number;
+  platformFeePercent: number;
+  rolloverUnusedFunds: boolean;
+  numberOfWinners: number;
+  currentPoolValue: number;
+  startDate: string;
+  endDate?: string | null;
+  createdAt: string;
+}
+
+export interface CreatorPoolParticipant {
+  id: string;
+  userId: string;
+  weight: number;
+  totalContributed: number;
+  contributionCount: number;
+  user: { username: string; avatarUrl?: string | null };
+}
+
+export interface CreatorPoolWinner {
+  id: string;
+  userId: string;
+  prizeAmount: number;
+  selectedAt: string;
+  user: { username: string };
+}
+
+export type BattleActionType = "ATTACK" | "SHIELD" | "COUNTER" | "BOOST" | "RECOVERY";
+
+export interface BattleEvent {
+  id: string;
+  actionType: BattleActionType;
+  ashSpent: number;
+  weightDelta: number;
+  createdAt: string;
+  actor: { username: string };
+  target?: { username: string } | null;
+}
+
+export interface CreatorWithdrawalRequest {
+  id: string;
+  amount: number;
+  address?: string | null;
+  status: "PENDING" | "APPROVED" | "PROCESSING" | "REJECTED" | "COMPLETED" | "FAILED";
+  txHash?: string | null;
+  requestedAt: string;
+  processedAt?: string | null;
+  creator?: { displayName: string; slug: string };
+}
+
+export interface CreatorReferralStats {
+  totalFollowers: number;
+  viaReferral: number;
+  viaDirect: number;
+  recentFollowers: { username: string; joinedVia: string; joinedAt: string }[];
+}
+
+export interface CreatorPoolAnalytics {
+  totalContributions: number;
+  totalRaised: number;
+  revenueEarned: number;
+  currentPoolValue: number;
+  activeParticipants: number;
+  newParticipants: number;
+  returningParticipants: number;
+  dailyGrowth: { day: string; count: number; amount: number }[];
+  topContributors: { username: string; totalContributed: number; contributionCount: number }[];
+  geoDistribution: { country: string; count: number }[];
+}
+
 export interface BurnConfig {
   ash_reward_percent: number;
   reward_pool_split: number;

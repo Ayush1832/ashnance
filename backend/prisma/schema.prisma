@@ -13,60 +13,69 @@ datasource db {
 
 // ---- USER ----
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  username        String    @unique
-  passwordHash    String?   // null for OAuth/wallet-only users
-  avatarUrl       String?
-  country         String?
-  role            UserRole  @default(USER)
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String? // null for OAuth/wallet-only users
+  avatarUrl    String?
+  country      String?
+  role         UserRole @default(USER)
 
   // Auth
-  authProvider    AuthProvider @default(EMAIL)
-  oauthId         String?   // Google/X/Telegram external ID
-  solanaAddress   String?   @unique
+  authProvider  AuthProvider @default(EMAIL)
+  oauthId       String? // Google/X/Telegram external ID
+  solanaAddress String?      @unique
 
   // VIP
-  isVip           Boolean   @default(false)
-  vipTier         VipTier?
-  vipExpiresAt    DateTime?
+  isVip        Boolean   @default(false)
+  vipTier      VipTier?
+  vipExpiresAt DateTime?
 
   // Referral
-  referralCode    String    @unique @default(uuid())
-  referredById    String?
-  referredBy      User?     @relation("Referrals", fields: [referredById], references: [id])
-  referrals       User[]    @relation("Referrals")
+  referralCode String  @unique @default(uuid())
+  referredById String?
+  referredBy   User?   @relation("Referrals", fields: [referredById], references: [id])
+  referrals    User[]  @relation("Referrals")
 
   // Security
-  twoFaEnabled    Boolean   @default(false)
-  twoFaSecret     String?
-  failedAttempts  Int       @default(0)
-  lockedUntil     DateTime?
-  privacyMode     Boolean   @default(false)
-  isBanned        Boolean   @default(false)
+  twoFaEnabled   Boolean   @default(false)
+  twoFaSecret    String?
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  privacyMode    Boolean   @default(false)
+  isBanned       Boolean   @default(false)
 
   // OTP (email verification)
-  pendingOtp      String?
-  otpExpiresAt    DateTime?
-  otpAttempts     Int       @default(0)
+  pendingOtp   String?
+  otpExpiresAt DateTime?
+  otpAttempts  Int       @default(0)
 
   // Anti-domination cooldown: stores ID of the last round this user won
-  lastWonRoundId  String?
+  lastWonRoundId String?
 
   // Relations
-  wallet          Wallet?
-  burns           Burn[]
-  transactions    Transaction[]
-  referralsMade   Referral[]   @relation("ReferrerReferrals")
-  referralsFrom   Referral[]   @relation("RefereeReferrals")
-  refreshTokens   RefreshToken[]
-  whitelistAddrs  WhitelistedAddress[]
+  wallet           Wallet?
+  burns            Burn[]
+  transactions     Transaction[]
+  referralsMade    Referral[]           @relation("ReferrerReferrals")
+  referralsFrom    Referral[]           @relation("RefereeReferrals")
+  refreshTokens    RefreshToken[]
+  whitelistAddrs   WhitelistedAddress[]
   stakingPositions StakingPosition[]
-  roundsWon       Round[]
-  recoveryCodes   RecoveryCode[]
+  roundsWon        Round[]
+  recoveryCodes    RecoveryCode[]
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  // Creator Prize Pools (separate module)
+  creatorProfile            Creator?
+  creatorPoolContributions  CreatorPoolContribution[]
+  creatorPoolParticipations CreatorPoolParticipant[]
+  creatorPoolWins           CreatorPoolWinner[]
+  creatorFollowing          CreatorFollower[]
+  battleActionsPerformed    BattleEvent[]             @relation("BattleActor")
+  battleActionsReceived     BattleEvent[]             @relation("BattleTarget")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("users")
 }
@@ -92,48 +101,48 @@ enum UserRole {
 
 // ---- WALLET ----
 model Wallet {
-  id                String   @id @default(uuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  usdcBalance       Decimal   @default(0) @db.Decimal(18, 6)
-  ashBalance        Decimal   @default(0) @db.Decimal(18, 2)
-  cumulativeWeight  Decimal   @default(0) @db.Decimal(18, 4) // persistent weight across all rounds
-  depositAddress    String?   @unique
-  boostExpiresAt    DateTime? // null = no active boost; set to now()+1hr when boost activated
+  usdcBalance      Decimal   @default(0) @db.Decimal(18, 6)
+  ashBalance       Decimal   @default(0) @db.Decimal(18, 2)
+  cumulativeWeight Decimal   @default(0) @db.Decimal(18, 4) // persistent weight across all rounds
+  depositAddress   String?   @unique
+  boostExpiresAt   DateTime? // null = no active boost; set to now()+1hr when boost activated
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("wallets")
 }
 
 // ---- BURN ----
 model Burn {
-  id            String     @id @default(uuid())
-  userId        String
-  user          User       @relation(fields: [userId], references: [id])
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  amountUsdc    Decimal    @db.Decimal(18, 6)
-  weight        Decimal    @db.Decimal(10, 4)
-  finalWeight   Decimal    @db.Decimal(10, 4)
+  amountUsdc  Decimal @db.Decimal(18, 6)
+  weight      Decimal @db.Decimal(10, 4)
+  finalWeight Decimal @db.Decimal(10, 4)
 
   // Result — in round-based system all burns earn ASH; isWinner/prizeTier reserved for round winners
-  isWinner      Boolean    @default(false)
-  prizeTier     PrizeTier?
-  prizeAmount   Decimal?   @db.Decimal(18, 6)
-  ashReward     Int?       // ASH tokens earned on burn
+  isWinner    Boolean    @default(false)
+  prizeTier   PrizeTier?
+  prizeAmount Decimal?   @db.Decimal(18, 6)
+  ashReward   Int? // ASH tokens earned on burn
 
   // Round association
-  roundId       String?
-  round         Round?     @relation(fields: [roundId], references: [id])
+  roundId String?
+  round   Round?  @relation(fields: [roundId], references: [id])
 
   // On-chain
-  txHash        String?
-  vrfSeed       String?
-  vrfResult     String?
+  txHash    String?
+  vrfSeed   String?
+  vrfResult String?
 
-  createdAt     DateTime   @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
   @@index([roundId])
@@ -149,21 +158,21 @@ enum PrizeTier {
 
 // ---- TRANSACTION ----
 model Transaction {
-  id            String          @id @default(uuid())
-  userId        String
-  user          User            @relation(fields: [userId], references: [id])
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  type          TransactionType
-  amount        Decimal         @db.Decimal(18, 6)
-  currency      Currency        @default(USDC)
-  status        TxStatus        @default(PENDING)
+  type     TransactionType
+  amount   Decimal         @db.Decimal(18, 6)
+  currency Currency        @default(USDC)
+  status   TxStatus        @default(PENDING)
 
-  txHash        String?
-  description   String?
-  metadata      Json?
+  txHash      String?
+  description String?
+  metadata    Json?
 
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([txHash, type])
   @@index([userId, type, createdAt])
@@ -184,6 +193,10 @@ enum TransactionType {
   BOOST
   ASH_CLAIM
   STAKE
+  POOL_CONTRIBUTION
+  POOL_PRIZE
+  POOL_WITHDRAWAL
+  POOL_CREATION_FEE
 }
 
 enum Currency {
@@ -202,18 +215,18 @@ enum TxStatus {
 
 // ---- REFERRAL ----
 model Referral {
-  id            String   @id @default(uuid())
-  referrerId    String
-  referrer      User     @relation("ReferrerReferrals", fields: [referrerId], references: [id])
-  refereeId     String
-  referee       User     @relation("RefereeReferrals", fields: [refereeId], references: [id])
+  id         String @id @default(uuid())
+  referrerId String
+  referrer   User   @relation("ReferrerReferrals", fields: [referrerId], references: [id])
+  refereeId  String
+  referee    User   @relation("RefereeReferrals", fields: [refereeId], references: [id])
 
-  totalBurns    Int      @default(0)
-  totalEarned   Decimal  @default(0) @db.Decimal(18, 6)
-  isActive      Boolean  @default(true)
+  totalBurns  Int     @default(0)
+  totalEarned Decimal @default(0) @db.Decimal(18, 6)
+  isActive    Boolean @default(true)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([referrerId, refereeId])
   @@map("referrals")
@@ -221,16 +234,16 @@ model Referral {
 
 // ---- WHITELISTED WITHDRAWAL ADDRESSES ----
 model WhitelistedAddress {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
 
-  address       String
-  label         String?
-  isVerified    Boolean  @default(false)
-  activatesAt   DateTime? // null = immediately active (devnet); set to now+24h on mainnet
+  address     String
+  label       String?
+  isVerified  Boolean   @default(false)
+  activatesAt DateTime? // null = immediately active (devnet); set to now+24h on mainnet
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([userId, address])
   @@map("whitelisted_addresses")
@@ -238,14 +251,14 @@ model WhitelistedAddress {
 
 // ---- 2FA RECOVERY CODES ----
 model RecoveryCode {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  codeHash      String   // bcrypt hash of the plaintext code
-  usedAt        DateTime? // null = unused
+  codeHash String // bcrypt hash of the plaintext code
+  usedAt   DateTime? // null = unused
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@map("recovery_codes")
@@ -253,15 +266,15 @@ model RecoveryCode {
 
 // ---- REFRESH TOKENS ----
 model RefreshToken {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  token         String   @unique
-  expiresAt     DateTime
-  isRevoked     Boolean  @default(false)
+  token     String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@map("refresh_tokens")
@@ -269,26 +282,26 @@ model RefreshToken {
 
 // ---- PRIZE CONFIGURATION ----
 model PrizeConfig {
-  id            String    @id @default(uuid())
-  tier          PrizeTier @unique
-  value         Decimal   @db.Decimal(18, 6) // Fixed USDC value
-  poolPercent   Decimal   @db.Decimal(5, 4) // % of reward pool
-  probability   Decimal   @db.Decimal(5, 4) // Win probability within winners
-  isActive      Boolean   @default(true)
+  id          String    @id @default(uuid())
+  tier        PrizeTier @unique
+  value       Decimal   @db.Decimal(18, 6) // Fixed USDC value
+  poolPercent Decimal   @db.Decimal(5, 4) // % of reward pool
+  probability Decimal   @db.Decimal(5, 4) // Win probability within winners
+  isActive    Boolean   @default(true)
 
-  updatedAt     DateTime  @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("prize_configs")
 }
 
 // ---- PLATFORM CONFIG ----
 model PlatformConfig {
-  id            String   @id @default(uuid())
-  key           String   @unique
-  value         String
-  description   String?
+  id          String  @id @default(uuid())
+  key         String  @unique
+  value       String
+  description String?
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("platform_configs")
 }
@@ -309,50 +322,50 @@ model Subscriber {
 
 // ---- REWARD POOL ----
 model RewardPool {
-  id            String   @id @default(uuid())
-  totalBalance  Decimal  @default(0) @db.Decimal(18, 6)
-  totalPaidOut  Decimal  @default(0) @db.Decimal(18, 6)
+  id           String  @id @default(uuid())
+  totalBalance Decimal @default(0) @db.Decimal(18, 6)
+  totalPaidOut Decimal @default(0) @db.Decimal(18, 6)
 
-  updatedAt     DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@map("reward_pool")
 }
 
 // ---- STAKING ----
 model StakingPool {
-  id            String    @id @default(uuid())
-  name          String    @unique
-  apy           Decimal   @db.Decimal(5, 2)   // e.g. 12.50 = 12.5% APY
-  lockDays      Int                            // lock period in days
-  minStake      Decimal   @db.Decimal(18, 2)  // min ASH to stake
-  isActive      Boolean   @default(true)
-  description   String?
+  id          String  @id @default(uuid())
+  name        String  @unique
+  apy         Decimal @db.Decimal(5, 2) // e.g. 12.50 = 12.5% APY
+  lockDays    Int // lock period in days
+  minStake    Decimal @db.Decimal(18, 2) // min ASH to stake
+  isActive    Boolean @default(true)
+  description String?
 
-  positions     StakingPosition[]
+  positions StakingPosition[]
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("staking_pools")
 }
 
 model StakingPosition {
-  id            String      @id @default(uuid())
-  userId        String
-  user          User        @relation(fields: [userId], references: [id])
-  poolId        String
-  pool          StakingPool @relation(fields: [poolId], references: [id])
+  id     String      @id @default(uuid())
+  userId String
+  user   User        @relation(fields: [userId], references: [id])
+  poolId String
+  pool   StakingPool @relation(fields: [poolId], references: [id])
 
-  amount        Decimal     @db.Decimal(18, 2)   // ASH staked
-  rewardsEarned Decimal     @default(0) @db.Decimal(18, 2)
-  rewardsClaimed Decimal    @default(0) @db.Decimal(18, 2)
+  amount         Decimal @db.Decimal(18, 2) // ASH staked
+  rewardsEarned  Decimal @default(0) @db.Decimal(18, 2)
+  rewardsClaimed Decimal @default(0) @db.Decimal(18, 2)
 
-  status        StakeStatus @default(ACTIVE)
-  lockedUntil   DateTime
-  lastRewardAt  DateTime    @default(now())
+  status       StakeStatus @default(ACTIVE)
+  lockedUntil  DateTime
+  lastRewardAt DateTime    @default(now())
 
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId, status])
   @@map("staking_positions")
@@ -371,6 +384,7 @@ model ProfitPool {
   totalDeposited Decimal  @default(0) @db.Decimal(18, 6)
   totalWithdrawn Decimal  @default(0) @db.Decimal(18, 6)
   updatedAt      DateTime @updatedAt
+
   @@map("profit_pool")
 }
 
@@ -381,6 +395,7 @@ model ReferralPool {
   totalDeposited Decimal  @default(0) @db.Decimal(18, 6)
   totalPaidOut   Decimal  @default(0) @db.Decimal(18, 6)
   updatedAt      DateTime @updatedAt
+
   @@map("referral_pool")
 }
 
@@ -400,20 +415,21 @@ model OwnerWithdrawalRequest {
   createdAt      DateTime              @default(now())
   approvedAt     DateTime?
   executedAt     DateTime?
+
   @@map("owner_withdrawal_requests")
 }
 
 // ---- AUDIT LOG ----
 model AuditLog {
-  id            String   @id @default(uuid())
-  userId        String?
-  action        String
-  entity        String?
-  entityId      String?
-  details       Json?
-  ipAddress     String?
+  id        String  @id @default(uuid())
+  userId    String?
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
+  ipAddress String?
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
   @@map("audit_logs")
@@ -421,34 +437,34 @@ model AuditLog {
 
 enum OwnerWithdrawalStatus {
   PENDING
-  PARTIAL   // owner1 paid on-chain, owner2 transfer failed — needs manual fix
+  PARTIAL // owner1 paid on-chain, owner2 transfer failed — needs manual fix
   EXECUTED
   CANCELLED
 }
 
 // ---- ROUND (competitive prize round) ----
 model Round {
-  id               String       @id @default(uuid())
-  roundNumber      Int          @unique
-  status           RoundStatus  @default(ACTIVE)
-  prizePoolTarget  Decimal      @db.Decimal(18, 6) // target pool amount to trigger winner selection
-  currentPool      Decimal      @default(0) @db.Decimal(18, 6) // accumulated reward-pool share from burns in this round
-  winnerId         String?      // userId of winner (set when round ends)
-  winner           User?        @relation(fields: [winnerId], references: [id])
-  prizeAmount      Decimal?     @db.Decimal(18, 6) // actual prize paid out
+  id              String      @id @default(uuid())
+  roundNumber     Int         @unique
+  status          RoundStatus @default(ACTIVE)
+  prizePoolTarget Decimal     @db.Decimal(18, 6) // target pool amount to trigger winner selection
+  currentPool     Decimal     @default(0) @db.Decimal(18, 6) // accumulated reward-pool share from burns in this round
+  winnerId        String? // userId of winner (set when round ends)
+  winner          User?       @relation(fields: [winnerId], references: [id])
+  prizeAmount     Decimal?    @db.Decimal(18, 6) // actual prize paid out
 
   // Time limit (req #6)
-  timeLimitHours   Float?       // max round duration in hours; null = no time limit
-  endsAt           DateTime?    // computed deadline = startedAt + timeLimitHours*3600s
+  timeLimitHours Float? // max round duration in hours; null = no time limit
+  endsAt         DateTime? // computed deadline = startedAt + timeLimitHours*3600s
 
   // Anti-snipe tracking (req #8): who is rank #1 and since when
-  rank1HolderId    String?      // userId of current rank #1 holder
-  rank1SinceAt     DateTime?    // timestamp when rank #1 was achieved
+  rank1HolderId String? // userId of current rank #1 holder
+  rank1SinceAt  DateTime? // timestamp when rank #1 was achieved
 
-  burns            Burn[]       // all burns that happened during this round
+  burns Burn[] // all burns that happened during this round
 
-  startedAt        DateTime     @default(now())
-  endedAt          DateTime?
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
 
   @@index([status])
   @@index([status, endsAt])
@@ -459,4 +475,248 @@ enum RoundStatus {
   ACTIVE
   COMPLETED
   CANCELLED
+}
+
+// ============================================================
+// CREATOR PRIZE POOLS (separate module — must never interact
+// with Round/Burn/Wallet.cumulativeWeight/RewardPool above)
+// ============================================================
+
+// ---- CREATOR ----
+model Creator {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  slug          String  @unique
+  displayName   String
+  bio           String?
+  avatarUrl     String?
+  coverImageUrl String?
+  verified      Boolean @default(false)
+  referralCode  String  @unique @default(uuid())
+
+  wallet      CreatorWallet?
+  pools       CreatorPool[]
+  followers   CreatorFollower[]
+  withdrawals CreatorWithdrawalRequest[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("creators")
+}
+
+// ---- CREATOR WALLET (revenue balance, separate from platform Wallet) ----
+model CreatorWallet {
+  id        String  @id @default(uuid())
+  creatorId String  @unique
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  usdcBalance Decimal @default(0) @db.Decimal(18, 6)
+  totalEarned Decimal @default(0) @db.Decimal(18, 6)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("creator_wallets")
+}
+
+enum CreatorPoolStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ENDED
+  ARCHIVED
+  FROZEN
+}
+
+// ---- CREATOR POOL (one self-contained campaign instance) ----
+model CreatorPool {
+  id        String  @id @default(uuid())
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  slug          String
+  name          String
+  description   String?
+  coverImageUrl String?
+  logoUrl       String?
+  status        CreatorPoolStatus @default(DRAFT)
+
+  prizeCurrency   String   @default("USDC")
+  minContribution Decimal  @db.Decimal(18, 6)
+  maxContribution Decimal? @db.Decimal(18, 6)
+
+  // Snapshot at creation time — later admin/creator config changes never
+  // retroactively alter a live pool's accounting.
+  creatorRevenuePercent Decimal @db.Decimal(5, 4)
+  platformFeePercent    Decimal @db.Decimal(5, 4)
+
+  rolloverUnusedFunds Boolean @default(false)
+  numberOfWinners     Int     @default(1)
+
+  currentPoolValue Decimal @default(0) @db.Decimal(18, 6)
+
+  startDate DateTime  @default(now())
+  endDate   DateTime?
+
+  contributions CreatorPoolContribution[]
+  participants  CreatorPoolParticipant[]
+  winners       CreatorPoolWinner[]
+
+  battleEvents BattleEvent[]
+
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
+  endedAt    DateTime?
+
+  @@unique([creatorId, slug])
+  @@index([creatorId, status])
+  @@map("creator_pools")
+}
+
+// ---- CREATOR POOL CONTRIBUTION ----
+model CreatorPoolContribution {
+  id     String      @id @default(uuid())
+  poolId String
+  pool   CreatorPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  userId String
+  user   User        @relation(fields: [userId], references: [id])
+
+  amountUsdc      Decimal @db.Decimal(18, 6)
+  prizeAllocation Decimal @db.Decimal(18, 6)
+  creatorRevenue  Decimal @db.Decimal(18, 6)
+  platformFee     Decimal @db.Decimal(18, 6)
+
+  txHash String?
+
+  createdAt DateTime @default(now())
+
+  @@index([poolId, createdAt])
+  @@index([userId])
+  @@map("creator_pool_contributions")
+}
+
+// ---- CREATOR POOL PARTICIPANT (per-pool weight/aggregate) ----
+model CreatorPoolParticipant {
+  id     String      @id @default(uuid())
+  poolId String
+  pool   CreatorPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  userId String
+  user   User        @relation(fields: [userId], references: [id])
+
+  weight            Decimal @default(0) @db.Decimal(18, 4)
+  totalContributed  Decimal @default(0) @db.Decimal(18, 6)
+  contributionCount Int     @default(0)
+
+  // Battle System — mutable weight state. Kept on the participant row (not a
+  // separate table) since every battle action reads/writes exactly one
+  // attacker + one defender participant per action.
+  shieldActiveUntil       DateTime?
+  shieldStrength          Decimal?  @db.Decimal(3, 2) // 0..1, % of incoming attack absorbed
+  lastAttackedById        String?
+  lastAttackedAt          DateTime?
+  weightLostSinceRecovery Decimal   @default(0) @db.Decimal(18, 4)
+  lastActionAt            DateTime? // rate-limit: min cooldown between any battle actions
+  lastBoostAt             DateTime? // separate, longer cooldown for BOOST
+
+  firstJoinedAt  DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+
+  @@unique([poolId, userId])
+  @@index([poolId, weight])
+  @@map("creator_pool_participants")
+}
+
+enum BattleActionType {
+  ATTACK
+  SHIELD
+  COUNTER
+  BOOST
+  RECOVERY
+}
+
+// ---- BATTLE EVENT (immutable audit log — every battle action, no exceptions) ----
+model BattleEvent {
+  id     String      @id @default(uuid())
+  poolId String
+  pool   CreatorPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  actorId  String
+  actor    User    @relation("BattleActor", fields: [actorId], references: [id])
+  targetId String?
+  target   User?   @relation("BattleTarget", fields: [targetId], references: [id])
+
+  actionType  BattleActionType
+  ashSpent    Decimal          @db.Decimal(18, 2)
+  weightDelta Decimal          @db.Decimal(18, 4) // signed — negative for damage taken, positive for gains
+  resultMeta  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([poolId, createdAt])
+  @@index([actorId, targetId, createdAt])
+  @@map("battle_events")
+}
+
+// ---- CREATOR POOL WINNER ----
+model CreatorPoolWinner {
+  id     String      @id @default(uuid())
+  poolId String
+  pool   CreatorPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  userId String
+  user   User        @relation(fields: [userId], references: [id])
+
+  prizeAmount Decimal @db.Decimal(18, 6)
+  txHash      String?
+
+  selectedAt DateTime @default(now())
+
+  @@index([poolId])
+  @@map("creator_pool_winners")
+}
+
+enum CreatorWithdrawalStatus {
+  PENDING
+  APPROVED
+  PROCESSING
+  REJECTED
+  COMPLETED
+  FAILED
+}
+
+// ---- CREATOR WITHDRAWAL REQUEST ----
+model CreatorWithdrawalRequest {
+  id        String  @id @default(uuid())
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+
+  amount  Decimal                 @db.Decimal(18, 6)
+  address String? // destination Solana address, required by the time it's approved
+  status  CreatorWithdrawalStatus @default(PENDING)
+  txHash  String?
+
+  requestedAt DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([creatorId, status])
+  @@map("creator_withdrawal_requests")
+}
+
+// ---- CREATOR FOLLOWER (referral/association tracking) ----
+model CreatorFollower {
+  id        String  @id @default(uuid())
+  creatorId String
+  creator   Creator @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  joinedVia String @default("direct") // "direct" | "referral"
+
+  createdAt DateTime @default(now())
+
+  @@unique([creatorId, userId])
+  @@map("creator_followers")
 }
