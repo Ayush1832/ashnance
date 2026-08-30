@@ -74,6 +74,12 @@ export function LandingNav() {
           >
             Leaderboard
           </Link>
+          <Link
+            href="/whitepaper"
+            className="rounded-full px-3.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          >
+            Whitepaper
+          </Link>
         </div>
 
         <div className="flex items-center gap-2">
@@ -126,6 +132,13 @@ export function LandingNav() {
               className="block w-full rounded-2xl px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
             >
               Leaderboard
+            </Link>
+            <Link
+              href="/whitepaper"
+              onClick={() => setOpen(false)}
+              className="block w-full rounded-2xl px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            >
+              Whitepaper
             </Link>
             <div className="mt-1 grid grid-cols-2 gap-2 p-2">
               <Link

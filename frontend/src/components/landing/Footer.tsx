@@ -9,6 +9,7 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
       { label: "Leaderboard", href: "/leaderboard" },
       { label: "Live round", href: "/burn" },
       { label: "Holy Fire VIP", href: "/subscribe" },
+      { label: "Whitepaper", href: "/whitepaper" },
     ],
   },
   {
@@ -74,7 +75,7 @@ export function Footer() {
           <div className="flex items-center gap-6">
             <a href="#" className="transition-colors hover:text-foreground">Terms</a>
             <a href="#" className="transition-colors hover:text-foreground">Privacy</a>
-            <a href="#" className="transition-colors hover:text-foreground">Docs</a>
+            <Link href="/whitepaper" className="transition-colors hover:text-foreground">Whitepaper</Link>
           </div>
         </div>
       </div>
