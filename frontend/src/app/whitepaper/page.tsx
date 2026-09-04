@@ -188,9 +188,9 @@ export default function WhitepaperPage() {
                   to activate a temporary weight bonus applied to burns for one hour.
                 </li>
                 <li>
-                  <strong className="text-foreground">Staking</strong> &mdash; ASH can be locked
-                  into a staking pool for a fixed term at a fixed APY, rewarding long-term
-                  holders over short-term spenders.
+                  <strong className="text-foreground">Staking</strong> &mdash; ASH will be
+                  lockable into a staking pool for a fixed term at a fixed APY, rewarding
+                  long-term holders over short-term spenders. Arriving in Phase 2.
                 </li>
                 <li>
                   <strong className="text-foreground">Battle actions</strong> &mdash; in Creator
