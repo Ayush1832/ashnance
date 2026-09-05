@@ -138,10 +138,10 @@ export default function WhitepaperPage() {
               <ol>
                 <li>User deposits USDC to their Ashnance wallet address (Solana, USDC mint).</li>
                 <li>
-                  User burns USDC into the active round. Each burn splits, by default,
-                  40% into the round&rsquo;s prize pool, 40% into platform revenue, and 20%
-                  into a dedicated referral budget &mdash; all three splits are configurable
-                  platform parameters.
+                  User burns USDC into the active round. Each burn splits three ways &mdash;
+                  into the round&rsquo;s prize pool, into platform revenue, and into a
+                  dedicated referral budget &mdash; on a ratio the platform can tune as a live
+                  configuration parameter (currently weighted heavily toward the prize pool).
                 </li>
                 <li>
                   The burned amount converts into <strong className="text-foreground">weight</strong>{" "}
@@ -294,9 +294,9 @@ export default function WhitepaperPage() {
 
             <Section id="economics" title="Platform Economics">
               <p>
-                Ashnance&rsquo;s revenue comes from a platform-fee cut on every contribution:
-                by default 40% of each Global Pool burn, and a configurable percentage of each
-                Creator Prize Pool contribution. Platform-fee proceeds route into a shared
+                Ashnance&rsquo;s revenue comes from a platform-fee cut on every contribution: a
+                tunable percentage of each Global Pool burn, and a configurable percentage of
+                each Creator Prize Pool contribution. Platform-fee proceeds route into a shared
                 treasury pool with a dual-approval owner withdrawal process, so no single party
                 can unilaterally move treasury funds.
               </p>
